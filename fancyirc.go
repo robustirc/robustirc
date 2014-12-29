@@ -5,8 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
+	"net/http"
 	"strings"
 	"time"
 
@@ -18,6 +20,8 @@ var (
 	raftDir = flag.String("raftdir", "/tmp/r", "")
 	peers   = flag.String("peers", "", "comma-separated host:port tuples")
 	listen  = flag.String("listen", ":6000", "")
+	listenhttp  = flag.String("listenhttp", ":8000", "")
+	node    *raft.Raft
 )
 
 // Snapshot holds the data needed to serialize storage
@@ -144,6 +148,18 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 	return nil
 }
 
+func handleRequest(res http.ResponseWriter, req *http.Request) {
+	log.Printf("reading body…\n")
+	data, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		log.Println("error reading request:", err)
+		return
+	}
+	log.Printf("proposing()\n")
+	node.Apply(data, 10*time.Second)
+	log.Println("proposed")
+}
+
 func main() {
 	flag.Parse()
 	log.Printf("hey\n")
@@ -199,13 +215,22 @@ func main() {
 	fsm := &FSM{storage}
 
 	// NewRaft(*Config, FSM, LogStore, StableStore, SnapshotStore, PeerStore, Transport)
-	node, err := raft.NewRaft(config, fsm, mdb, mdb, fss, peerStore, transport)
+	node, err = raft.NewRaft(config, fsm, mdb, mdb, fss, peerStore, transport)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// TODO: observeleaderchanges?
 	// TODO: observenexttime?
+
+	//http.HandleFunc("/msg", handleMessages)
+	http.HandleFunc("/put", handleRequest)
+	go func() {
+		err := http.ListenAndServe(*listenhttp, nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
 
 	node.SetPeers(p)
 
