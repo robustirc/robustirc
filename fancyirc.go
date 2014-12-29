@@ -17,11 +17,11 @@ import (
 )
 
 var (
-	raftDir = flag.String("raftdir", "/tmp/r", "")
-	peers   = flag.String("peers", "", "comma-separated host:port tuples")
-	listen  = flag.String("listen", ":6000", "")
-	listenhttp  = flag.String("listenhttp", ":8000", "")
-	node    *raft.Raft
+	raftDir    = flag.String("raftdir", "/tmp/r", "")
+	peers      = flag.String("peers", "", "comma-separated host:port tuples")
+	listen     = flag.String("listen", ":6000", "")
+	listenhttp = flag.String("listenhttp", ":8000", "")
+	node       *raft.Raft
 )
 
 // Snapshot holds the data needed to serialize storage
