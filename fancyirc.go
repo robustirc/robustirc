@@ -12,12 +12,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/hashicorp/raft"
-	"github.com/hashicorp/raft-mdb"
 )
 
 var (
@@ -98,6 +98,37 @@ func (s *fancyLogStore) DeleteRange(min, max uint64) error {
 		}
 	}
 	return nil
+}
+
+type fancyStableStore struct {
+}
+
+func (s *fancyStableStore) Set(key []byte, val []byte) error {
+	return ioutil.WriteFile(filepath.Join(*raftDir, "fancystable", string(key)), val, 0600)
+}
+
+func (s *fancyStableStore) Get(key []byte) ([]byte, error) {
+	b, err := ioutil.ReadFile(filepath.Join(*raftDir, "fancystable", string(key)))
+	if err != nil && os.IsNotExist(err) {
+		return []byte{}, fmt.Errorf("not found")
+	}
+	return b, err
+}
+
+func (s *fancyStableStore) SetUint64(key []byte, val uint64) error {
+	return s.Set(key, []byte(fmt.Sprintf("%d", val)))
+}
+
+func (s *fancyStableStore) GetUint64(key []byte) (uint64, error) {
+	b, err := s.Get(key)
+	if err != nil {
+		return 0, err
+	}
+	i, err := strconv.ParseInt(string(b), 0, 64)
+	if err != nil {
+		return 0, err
+	}
+	return uint64(i), nil
 }
 
 // Snapshot holds the data needed to serialize storage
@@ -278,11 +309,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	mdb, err := raftmdb.NewMDBStore(*raftDir)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	storage, err := NewStorage()
 	if err != nil {
 		log.Fatal(err)
@@ -294,10 +320,15 @@ func main() {
 		log.Fatal(err)
 	}
 
+	if err := os.MkdirAll(filepath.Join(*raftDir, "fancystable"), 0755); err != nil {
+		log.Fatal(err)
+	}
+
 	ls := &fancyLogStore{}
+	stablestore := &fancyStableStore{}
 
 	// NewRaft(*Config, FSM, LogStore, StableStore, SnapshotStore, PeerStore, Transport)
-	node, err = raft.NewRaft(config, fsm, ls, mdb, fss, peerStore, transport)
+	node, err = raft.NewRaft(config, fsm, ls, stablestore, fss, peerStore, transport)
 	if err != nil {
 		log.Fatal(err)
 	}
