@@ -24,13 +24,13 @@ import (
 )
 
 var (
-	raftDir   = flag.String("raftdir", "/tmp/r", "")
-	peers     = flag.String("peers", "", "comma-separated host:port tuples")
-	listen    = flag.String("listen", ":8000", "")
-	join      = flag.String("join", "", "raft master to join")
-	node      *raft.Raft
-	peerStore *raft.JSONPeers
-	logStore  *fancyLogStore
+	raftDir    = flag.String("raftdir", "/tmp/r", "")
+	singleNode = flag.Bool("singlenode", false, "set to true iff starting the first node for the first time")
+	listen     = flag.String("listen", ":8000", "")
+	join       = flag.String("join", "", "raft master to join")
+	node       *raft.Raft
+	peerStore  *raft.JSONPeers
+	logStore   *fancyLogStore
 )
 
 // trivial log store, writing one entry into one file each.
@@ -524,23 +524,8 @@ func main() {
 	var p []net.Addr
 
 	config := raft.DefaultConfig()
-	// TODO(secure): can this code be removed?
-	if *peers == "" {
+	if *singleNode {
 		config.EnableSingleNode = true
-	} else {
-		p, err = peerStore.Peers()
-		if err != nil {
-			log.Fatal(err)
-		}
-		for _, addr := range strings.Split(*peers, ",") {
-			peer, err := net.ResolveTCPAddr("tcp", addr)
-			if err != nil {
-				log.Fatal(err)
-			}
-			log.Printf("adding %v\n", peer)
-			p = raft.AddUniquePeer(p, peer)
-			peerStore.SetPeers(p)
-		}
 	}
 
 	// Keep 5 snapshots in *raftDir/snapshots, log to stderr.
@@ -590,7 +575,9 @@ func main() {
 		p = joinMaster(*join, peerStore)
 	}
 
-	node.SetPeers(p)
+	if len(p) > 0 {
+		node.SetPeers(p)
+	}
 
 	for {
 
