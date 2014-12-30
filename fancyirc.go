@@ -21,11 +21,10 @@ import (
 )
 
 var (
-	raftDir    = flag.String("raftdir", "/tmp/r", "")
-	peers      = flag.String("peers", "", "comma-separated host:port tuples")
-	listen     = flag.String("listen", ":6000", "")
-	listenhttp = flag.String("listenhttp", ":8000", "")
-	node       *raft.Raft
+	raftDir = flag.String("raftdir", "/tmp/r", "")
+	peers   = flag.String("peers", "", "comma-separated host:port tuples")
+	listen  = flag.String("listen", ":8000", "")
+	node    *raft.Raft
 )
 
 // trivial log store, writing one entry into one file each.
@@ -276,10 +275,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	transport, err := raft.NewTCPTransport(*listen, a, 3, 10*time.Second, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
+	transport := NewTransport(a)
+	http.Handle("/raft/", transport)
 
 	peerStore := raft.NewJSONPeers(*raftDir, transport)
 
@@ -339,7 +336,7 @@ func main() {
 	//http.HandleFunc("/msg", handleMessages)
 	http.HandleFunc("/put", handleRequest)
 	go func() {
-		err := http.ListenAndServe(*listenhttp, nil)
+		err := http.ListenAndServe(*listen, nil)
 		if err != nil {
 			log.Fatal(err)
 		}
