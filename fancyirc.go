@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/gob"
 	"encoding/json"
 	"flag"
@@ -40,6 +39,42 @@ type fancyLogStore struct {
 	l         sync.RWMutex
 	lowIndex  uint64
 	highIndex uint64
+}
+
+// GetAll returns all indexes that are currently present in the log store. This
+// is NOT part of the raft.LogStore interface — we use it when snapshotting.
+func (s *fancyLogStore) GetAll() ([]uint64, error) {
+	var indexes []uint64
+	dir, err := os.Open(filepath.Join(*raftDir, "fancylogs"))
+	if err != nil {
+		return indexes, err
+	}
+	defer dir.Close()
+
+	names, err := dir.Readdirnames(-1)
+	if err != nil {
+		return indexes, err
+	}
+
+	for _, name := range names {
+		if !strings.HasPrefix(name, "entry.") {
+			continue
+		}
+
+		dot := strings.LastIndex(name, ".")
+		if dot == -1 {
+			continue
+		}
+
+		index, err := strconv.ParseInt(name[dot+1:], 0, 64)
+		if err != nil {
+			return indexes, fmt.Errorf("Unexpected filename, does not confirm to entry.%%d: %q. Parse error: %v", name, err)
+		}
+
+		indexes = append(indexes, uint64(index))
+	}
+
+	return indexes, nil
 }
 
 func (s *fancyLogStore) FirstIndex() (uint64, error) {
@@ -143,61 +178,34 @@ func (s *fancyStableStore) GetUint64(key []byte) (uint64, error) {
 	return uint64(i), nil
 }
 
-// Snapshot holds the data needed to serialize storage
-type Snapshot struct {
-	uuids   [][]byte
-	entries []string
+type fancySnapshot struct {
+	indexes []uint64
+	store   *fancyLogStore
 }
 
-func uint32ToBytes(u uint32) []byte {
-	buf := make([]byte, 4)
-	binary.BigEndian.PutUint32(buf, u)
-	return buf
-}
-
-// Converts bytes to an integer
-func bytesToUint32(b []byte) uint32 {
-	return binary.BigEndian.Uint32(b)
-}
-
-// Persist writes a snapshot to a file. We just serialize all active entries.
-func (s *Snapshot) Persist(sink raft.SnapshotSink) error {
-	_, err := sink.Write([]byte{0x0})
-	if err != nil {
-		sink.Cancel()
-		return err
-	}
-
-	for i, e := range s.entries {
-		_, err = sink.Write(s.uuids[i])
-		if err != nil {
+func (s *fancySnapshot) Persist(sink raft.SnapshotSink) error {
+	log.Printf("Persisting indexes %v\n", s.indexes)
+	encoder := gob.NewEncoder(sink)
+	var entry raft.Log
+	for _, index := range s.indexes {
+		if err := s.store.GetLog(index, &entry); err != nil {
 			sink.Cancel()
 			return err
 		}
-
-		b := []byte(e)
-		_, err = sink.Write(uint32ToBytes(uint32(len(b))))
-		if err != nil {
-			sink.Cancel()
-			return err
-		}
-
-		_, err = sink.Write(b)
-		if err != nil {
+		if err := encoder.Encode(entry); err != nil {
 			sink.Cancel()
 			return err
 		}
 	}
-
-	return sink.Close()
+	sink.Close()
+	return nil
 }
 
-// Release cleans up a snapshot. We don't need to do anything.
-func (s *Snapshot) Release() {
+func (s *fancySnapshot) Release() {
 }
 
 type FSM struct {
-	store *Storage
+	store *fancyLogStore
 }
 
 func (fsm *FSM) Apply(l *raft.Log) interface{} {
@@ -206,64 +214,47 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 }
 
 func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
-	uuids, entries, err := fsm.store.GetAll()
-	snapshot := &Snapshot{uuids, entries}
-	return snapshot, err
+	indexes, err := fsm.store.GetAll()
+	return &fancySnapshot{indexes, fsm.store}, err
 }
 
 func (fsm *FSM) Restore(snap io.ReadCloser) error {
+	log.Printf("Restoring snapshot\n")
 	defer snap.Close()
 
-	s, err := NewStorage()
-	if err != nil {
+	if err := os.RemoveAll(filepath.Join(*raftDir, "fancylogs-obsolete")); err != nil {
 		return err
 	}
 
-	// swap in the restored storage, with time emission channels.
-	s.c = fsm.store.c
-	s.C = fsm.store.C
-	fsm.store.Close()
-	fsm.store = s
-
-	b := make([]byte, 1)
-	_, err = snap.Read(b)
-	if b[0] != byte(0x00) {
-		msg := "Unknown snapshot schema version"
-		log.Printf(msg)
-		return fmt.Errorf(msg)
+	if err := os.Rename(filepath.Join(*raftDir, "fancylogs"),
+		filepath.Join(*raftDir, "fancylogs-obsolete")); err != nil {
+		return err
 	}
 
-	uuid := make([]byte, 16)
-	size := make([]byte, 4)
-	count := 0
+	if err := os.MkdirAll(filepath.Join(*raftDir, "fancylogs"), 0755); err != nil {
+		return err
+	}
+
+	decoder := gob.NewDecoder(snap)
+	var entry raft.Log
 	for {
-		_, err = snap.Read(uuid)
-		if err == io.EOF {
-			break
-		} else if err != nil {
+		if err := decoder.Decode(&entry); err != nil {
+			if err == io.EOF {
+				break
+			}
 			return err
 		}
-
-		_, err = snap.Read(size)
-		if err != nil {
+		if err := fsm.store.StoreLog(&entry); err != nil {
 			return err
 		}
-
-		eb := make([]byte, bytesToUint32(size))
-		_, err = snap.Read(eb)
-		if err != nil {
-			return err
-		}
-		e := string(eb)
-		err = s.Add(uuid, e)
-		if err != nil {
-			return err
-		}
-
-		count++
 	}
 
-	log.Printf("Restored snapshot. entries=%d", count)
+	if err := os.RemoveAll(filepath.Join(*raftDir, "fancylogs-obsolete")); err != nil {
+		return err
+	}
+
+	log.Printf("Restored snapshot\n")
+
 	return nil
 }
 
@@ -463,6 +454,12 @@ func joinMaster(addr string, peerStore *raft.JSONPeers) []net.Addr {
 	return p
 }
 
+func handleSnapshot(res http.ResponseWriter, req *http.Request) {
+	log.Printf("snapshotting()\n")
+	node.Snapshot()
+	log.Println("snapshotted")
+}
+
 func main() {
 	flag.Parse()
 	log.Printf("hey\n")
@@ -502,17 +499,15 @@ func main() {
 		p = joinMaster(*join, peerStore)
 	}
 
-	fss, err := raft.NewFileSnapshotStore(*raftDir, 1, nil)
+	// Keep 5 snapshots in *raftDir/snapshots, log to stderr.
+	fss, err := raft.NewFileSnapshotStore(*raftDir, 5, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	storage, err := NewStorage()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fsm := &FSM{storage}
+	// TODO(secure): remove this, it’s only for forcing many snapshots right now.
+	config.SnapshotThreshold = 2
+	config.SnapshotInterval = 1 * time.Second
 
 	if err := os.MkdirAll(filepath.Join(*raftDir, "fancylogs"), 0755); err != nil {
 		log.Fatal(err)
@@ -524,6 +519,7 @@ func main() {
 
 	logStore = &fancyLogStore{}
 	stablestore := &fancyStableStore{}
+	fsm := &FSM{logStore}
 
 	// NewRaft(*Config, FSM, LogStore, StableStore, SnapshotStore, PeerStore, Transport)
 	node, err = raft.NewRaft(config, fsm, logStore, stablestore, fss, peerStore, transport)
@@ -538,6 +534,7 @@ func main() {
 	http.HandleFunc("/", handleStatus)
 	http.HandleFunc("/put", handleRequest)
 	http.HandleFunc("/join", handleJoin)
+	http.HandleFunc("/snapshot", handleSnapshot)
 	go func() {
 		err := http.ListenAndServe(*listen, nil)
 		if err != nil {
