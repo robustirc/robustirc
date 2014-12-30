@@ -204,11 +204,30 @@ func (s *fancySnapshot) Persist(sink raft.SnapshotSink) error {
 func (s *fancySnapshot) Release() {
 }
 
+type fancyId int64
+
+type fancyMessage struct {
+	Id   fancyId
+	Data string
+}
+
+func newFancyMessage(data string) *fancyMessage {
+	return &fancyMessage{
+		// TODO(secure): bring in something else than just the time.
+		Id:   fancyId(time.Now().UnixNano()),
+		Data: data,
+	}
+}
+
 type FSM struct {
 	store *fancyLogStore
 }
 
 func (fsm *FSM) Apply(l *raft.Log) interface{} {
+	// Skip all messages that are raft-related.
+	if l.Type != raft.LogCommand {
+		return nil
+	}
 	log.Printf("TODO: apply %v\n", l)
 	return nil
 }
@@ -258,16 +277,44 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 	return nil
 }
 
+// handleRequest is called by the fancyproxy whenever a message should be
+// posted. The handler blocks until either the data was written or an error
+// occurred. If successful, it returns the unique id of the message.
 func handleRequest(res http.ResponseWriter, req *http.Request) {
-	log.Printf("reading body…\n")
 	data, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		log.Println("error reading request:", err)
 		return
 	}
-	log.Printf("proposing()\n")
-	node.Apply(data, 10*time.Second)
-	log.Println("proposed")
+
+	// TODO(secure): properly check that we can convert data to a string at all.
+	msg := newFancyMessage(string(data))
+	msgbytes, err := json.Marshal(msg)
+	if err != nil {
+		http.Error(res, fmt.Sprintf("Could not store message, cannot encode it as JSON: %v", err),
+			http.StatusInternalServerError)
+		return
+	}
+
+	f := node.Apply(msgbytes, 10*time.Second)
+	if err := f.Error(); err != nil {
+		if err == raft.ErrNotLeader {
+			leader := node.Leader()
+			if leader == nil {
+				http.Error(res, fmt.Sprintf("No leader known. Please try another server."),
+					http.StatusInternalServerError)
+				return
+			} else {
+				http.Redirect(res, req, fmt.Sprintf("http://%s/put", leader), 307)
+				return
+			}
+		}
+		http.Error(res, fmt.Sprintf("Apply(): %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	res.Header().Set("Content-Type", "application/json")
+	res.Write(msgbytes)
 }
 
 func handleJoin(res http.ResponseWriter, req *http.Request) {
