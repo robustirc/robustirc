@@ -495,10 +495,6 @@ func main() {
 		}
 	}
 
-	if *join != "" {
-		p = joinMaster(*join, peerStore)
-	}
-
 	// Keep 5 snapshots in *raftDir/snapshots, log to stderr.
 	fss, err := raft.NewFileSnapshotStore(*raftDir, 5, nil)
 	if err != nil {
@@ -541,6 +537,10 @@ func main() {
 			log.Fatal(err)
 		}
 	}()
+
+	if *join != "" {
+		p = joinMaster(*join, peerStore)
+	}
 
 	node.SetPeers(p)
 
