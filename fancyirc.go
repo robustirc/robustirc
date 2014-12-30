@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/gob"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -10,6 +12,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -24,6 +27,7 @@ var (
 	raftDir = flag.String("raftdir", "/tmp/r", "")
 	peers   = flag.String("peers", "", "comma-separated host:port tuples")
 	listen  = flag.String("listen", ":8000", "")
+	join    = flag.String("join", "", "raft master to join")
 	node    *raft.Raft
 )
 
@@ -266,6 +270,91 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 	log.Println("proposed")
 }
 
+func handleJoin(res http.ResponseWriter, req *http.Request) {
+	log.Println("Join request from", req.RemoteAddr)
+	if node.State() != raft.Leader {
+		log.Println("rejecting join request, I am not the leader")
+		http.Redirect(res, req, fmt.Sprintf("http://%s/join", node.Leader()), 307)
+		return
+	}
+
+	data, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		log.Println("Could not read body:", err)
+		return
+	}
+
+	type joinRequest struct {
+		Addr string
+	}
+	var r joinRequest
+
+	if err = json.Unmarshal(data, &r); err != nil {
+		log.Println("Could not decode request:", err)
+		http.Error(res, fmt.Sprintf("Could not decode your request"), 400)
+		return
+	}
+
+	log.Printf("Joining peer: %q\n", r.Addr)
+
+	a, err := net.ResolveTCPAddr("tcp", r.Addr)
+	if err != nil {
+		log.Printf("Could not resolve addr %q: %v\n", r.Addr, err)
+		http.Error(res, "Could not resolve your address", 400)
+		return
+	}
+
+	if err = node.AddPeer(a).Error(); err != nil {
+		log.Println("Could not add peer:", err)
+		http.Error(res, "Could not add peer", 500)
+		return
+	}
+	res.WriteHeader(200)
+}
+
+func joinMaster(addr string, peerStore *raft.JSONPeers) []net.Addr {
+	master, err := net.ResolveTCPAddr("tcp", addr)
+	if err != nil {
+		log.Fatalf("Could not resolve %q: %v", addr, err)
+	}
+
+	type joinRequest struct {
+		Addr string
+	}
+	var buf *bytes.Buffer
+	if data, err := json.Marshal(joinRequest{*listen}); err != nil {
+		log.Fatal("Could not marshal join request:", err)
+	} else {
+		buf = bytes.NewBuffer(data)
+	}
+	if res, err := http.Post(fmt.Sprintf("http://%s/join", addr), "application/json", buf); err != nil {
+		log.Fatal("Could not send join request:", err)
+	} else if res.StatusCode > 399 {
+		data, _ := ioutil.ReadAll(res.Body)
+		log.Fatal("Join request failed:", string(data))
+	} else if res.StatusCode > 299 {
+		loc := res.Header.Get("Location")
+		if loc == "" {
+			log.Fatal("Redirect has no Location header")
+		}
+		u, err := url.Parse(loc)
+		if err != nil {
+			log.Fatalf("Could not parse redirection %q: %v", loc, err)
+		}
+
+		return joinMaster(u.Host, peerStore)
+	}
+
+	log.Printf("Adding master %v as peer\n", master)
+	p, err := peerStore.Peers()
+	if err != nil {
+		log.Fatal("Could not read peers:", err)
+	}
+	p = raft.AddUniquePeer(p, master)
+	peerStore.SetPeers(p)
+	return p
+}
+
 func main() {
 	flag.Parse()
 	log.Printf("hey\n")
@@ -299,6 +388,10 @@ func main() {
 			p = raft.AddUniquePeer(p, peer)
 			peerStore.SetPeers(p)
 		}
+	}
+
+	if *join != "" {
+		p = joinMaster(*join, peerStore)
 	}
 
 	fss, err := raft.NewFileSnapshotStore(*raftDir, 1, nil)
@@ -335,6 +428,7 @@ func main() {
 
 	//http.HandleFunc("/msg", handleMessages)
 	http.HandleFunc("/put", handleRequest)
+	http.HandleFunc("/join", handleJoin)
 	go func() {
 		err := http.ListenAndServe(*listen, nil)
 		if err != nil {
