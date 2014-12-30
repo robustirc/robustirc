@@ -343,7 +343,7 @@ var statusTpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
 		<p>Entries {{ .First }} through {{ .Last }}</p>
 		<ul>
 		{{ range .Entries }}
-			<li>{{ . }}</li>
+			<li>idx={{ .Index }} term={{ .Term }} type={{ .Type }} data={{ .Data }}<br><code>str={{ .Data | printf "%s"}}</code></li>
 		{{ end }}
 		</ul>
 		<h2>Stats</h2>
@@ -477,6 +477,7 @@ func main() {
 	var p []net.Addr
 
 	config := raft.DefaultConfig()
+	// TODO(secure): can this code be removed?
 	if *peers == "" {
 		config.EnableSingleNode = true
 	} else {
