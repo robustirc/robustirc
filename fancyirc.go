@@ -255,8 +255,8 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 	}
 
 	decoder := gob.NewDecoder(snap)
-	var entry raft.Log
 	for {
+		var entry raft.Log
 		if err := decoder.Decode(&entry); err != nil {
 			if err == io.EOF {
 				break
