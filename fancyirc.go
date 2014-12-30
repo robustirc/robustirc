@@ -325,17 +325,29 @@ var statusTpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
 <html>
 	<head>
 		<title>Status of fancyirc node {{ .Addr }}</title>
+		<style>
+			th {
+				text-align: left;
+				padding: 0.2em;
+			}
+		</style>
 	</head>
 	<body>
 		<h1>Status of fancyirc node {{ .Addr }}</h1>
-		<dl>
-			<dt>Status</dt>
-			<dd>{{ .State }}</dd>
-			<dt>Current Leader </dt>
-			<dd>{{ .Leader }}</dd>
-			<dt>Peers</dt>
-			<dd>{{ .Peers }}</dd>
-		</dl>
+		<table>
+			<tr>
+				<th>State</th>
+				<td>{{ .State }}</dd>
+			</tr>
+			<tr>
+				<th>Current Leader</th>
+				<td>{{ .Leader }}</td>
+			</tr>
+			<tr>
+				<th>Peers</th>
+				<td>{{ .Peers }}</td>
+			</tr>
+		</table>
 		<h2>Log</h2>
 		<p>Entries {{ .First }} through {{ .Last }}</p>
 		<ul>
@@ -344,12 +356,14 @@ var statusTpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
 		{{ end }}
 		</ul>
 		<h2>Stats</h2>
-		<dl>
+		<table>
 		{{ range $key, $val := .Stats }}
-			<dt>{{ $key }}</dt>
-			<dd>{{ $val }}</dt>
+			<tr>
+				<th>{{ $key }}</th>
+				<td>{{ $val }}</td>
+			</tr>
 		{{ end }}
-		</dl>
+		</table>
 	</body>
 </html>`))
 
