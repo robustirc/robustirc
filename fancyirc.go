@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/gob"
 	"flag"
 	"fmt"
 	"io"
@@ -9,7 +10,10 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/raft"
@@ -23,6 +27,78 @@ var (
 	listenhttp = flag.String("listenhttp", ":8000", "")
 	node       *raft.Raft
 )
+
+// trivial log store, writing one entry into one file each.
+// fulfills the raft.LogStore interface.
+type fancyLogStore struct {
+	l         sync.RWMutex
+	lowIndex  uint64
+	highIndex uint64
+}
+
+func (s *fancyLogStore) FirstIndex() (uint64, error) {
+	s.l.RLock()
+	defer s.l.RUnlock()
+	return s.lowIndex, nil
+}
+
+func (s *fancyLogStore) LastIndex() (uint64, error) {
+	s.l.RLock()
+	defer s.l.RUnlock()
+	return s.highIndex, nil
+}
+
+func (s *fancyLogStore) GetLog(index uint64, rlog *raft.Log) error {
+	s.l.Lock()
+	defer s.l.Unlock()
+	f, err := os.Open(filepath.Join(*raftDir, fmt.Sprintf("fancylogs/entry.%d", index)))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	var elog raft.Log
+	if err := gob.NewDecoder(f).Decode(&elog); err != nil {
+		return err
+	}
+	*rlog = elog
+	return nil
+}
+
+func (s *fancyLogStore) StoreLog(log *raft.Log) error {
+	return s.StoreLogs([]*raft.Log{log})
+}
+
+func (s *fancyLogStore) StoreLogs(logs []*raft.Log) error {
+	s.l.Lock()
+	defer s.l.Unlock()
+
+	for _, entry := range logs {
+		log.Printf("writing index %d to file (%v)\n", entry.Index, entry)
+		f, err := os.Create(filepath.Join(*raftDir, fmt.Sprintf("fancylogs/entry.%d", entry.Index)))
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if err := gob.NewEncoder(f).Encode(entry); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *fancyLogStore) DeleteRange(min, max uint64) error {
+	s.l.Lock()
+	defer s.l.Unlock()
+	for i := min; i <= max; i++ {
+		log.Printf("deleting index %d\n", i)
+		if err := os.Remove(filepath.Join(*raftDir, fmt.Sprintf("fancylogs/entry.%d", i))); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // Snapshot holds the data needed to serialize storage
 type Snapshot struct {
@@ -214,8 +290,14 @@ func main() {
 
 	fsm := &FSM{storage}
 
+	if err := os.MkdirAll(filepath.Join(*raftDir, "fancylogs"), 0755); err != nil {
+		log.Fatal(err)
+	}
+
+	ls := &fancyLogStore{}
+
 	// NewRaft(*Config, FSM, LogStore, StableStore, SnapshotStore, PeerStore, Transport)
-	node, err = raft.NewRaft(config, fsm, mdb, mdb, fss, peerStore, transport)
+	node, err = raft.NewRaft(config, fsm, ls, mdb, fss, peerStore, transport)
 	if err != nil {
 		log.Fatal(err)
 	}
