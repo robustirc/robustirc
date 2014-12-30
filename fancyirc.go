@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html/template"
 	"io"
 	"io/ioutil"
 	"log"
@@ -24,11 +25,13 @@ import (
 )
 
 var (
-	raftDir = flag.String("raftdir", "/tmp/r", "")
-	peers   = flag.String("peers", "", "comma-separated host:port tuples")
-	listen  = flag.String("listen", ":8000", "")
-	join    = flag.String("join", "", "raft master to join")
-	node    *raft.Raft
+	raftDir   = flag.String("raftdir", "/tmp/r", "")
+	peers     = flag.String("peers", "", "comma-separated host:port tuples")
+	listen    = flag.String("listen", ":8000", "")
+	join      = flag.String("join", "", "raft master to join")
+	node      *raft.Raft
+	peerStore *raft.JSONPeers
+	logStore  *fancyLogStore
 )
 
 // trivial log store, writing one entry into one file each.
@@ -85,6 +88,12 @@ func (s *fancyLogStore) StoreLogs(logs []*raft.Log) error {
 		defer f.Close()
 		if err := gob.NewEncoder(f).Encode(entry); err != nil {
 			return err
+		}
+		if s.lowIndex == 0 {
+			s.lowIndex = entry.Index
+		}
+		if entry.Index > s.highIndex {
+			s.highIndex = entry.Index
 		}
 	}
 
@@ -312,6 +321,91 @@ func handleJoin(res http.ResponseWriter, req *http.Request) {
 	res.WriteHeader(200)
 }
 
+var statusTpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
+<html>
+	<head>
+		<title>Status of fancyirc node {{ .Addr }}</title>
+	</head>
+	<body>
+		<h1>Status of fancyirc node {{ .Addr }}</h1>
+		<dl>
+			<dt>Status</dt>
+			<dd>{{ .State }}</dd>
+			<dt>Current Leader </dt>
+			<dd>{{ .Leader }}</dd>
+			<dt>Peers</dt>
+			<dd>{{ .Peers }}</dd>
+		</dl>
+		<h2>Log</h2>
+		<p>Entries {{ .First }} through {{ .Last }}</p>
+		<ul>
+		{{ range .Entries }}
+			<li>{{ . }}</li>
+		{{ end }}
+		</ul>
+		<h2>Stats</h2>
+		<dl>
+		{{ range $key, $val := .Stats }}
+			<dt>{{ $key }}</dt>
+			<dd>{{ $val }}</dt>
+		{{ end }}
+		</dl>
+	</body>
+</html>`))
+
+func handleStatus(res http.ResponseWriter, req *http.Request) {
+	p, _ := peerStore.Peers()
+
+	lo, err := logStore.FirstIndex()
+	if err != nil {
+		log.Printf("Could not get first index: %v", err)
+		http.Error(res, "internal error", 500)
+		return
+	}
+	hi, err := logStore.LastIndex()
+	if err != nil {
+		log.Printf("Could not get last index: %v", err)
+		http.Error(res, "internal error", 500)
+		return
+	}
+
+	var entries []*raft.Log
+	if lo != 0 && hi != 0 {
+		for i := lo; i <= hi; i++ {
+			l := new(raft.Log)
+
+			if err := logStore.GetLog(i, l); err != nil {
+				log.Printf("Could not get entry %d: %v", i, err)
+				http.Error(res, "internal error", 500)
+				return
+			}
+			entries = append(entries, l)
+		}
+	}
+
+	args := struct {
+		Addr    string
+		State   raft.RaftState
+		Leader  net.Addr
+		Peers   []net.Addr
+		First   uint64
+		Last    uint64
+		Entries []*raft.Log
+		Stats   map[string]string
+	}{
+		*listen,
+		node.State(),
+		node.Leader(),
+		p,
+		lo,
+		hi,
+		entries,
+		node.Stats(),
+	}
+
+	statusTpl.Execute(res, args)
+}
+
 func joinMaster(addr string, peerStore *raft.JSONPeers) []net.Addr {
 	master, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
@@ -367,7 +461,7 @@ func main() {
 	transport := NewTransport(a)
 	http.Handle("/raft/", transport)
 
-	peerStore := raft.NewJSONPeers(*raftDir, transport)
+	peerStore = raft.NewJSONPeers(*raftDir, transport)
 
 	var p []net.Addr
 
@@ -414,11 +508,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ls := &fancyLogStore{}
+	logStore = &fancyLogStore{}
 	stablestore := &fancyStableStore{}
 
 	// NewRaft(*Config, FSM, LogStore, StableStore, SnapshotStore, PeerStore, Transport)
-	node, err = raft.NewRaft(config, fsm, ls, stablestore, fss, peerStore, transport)
+	node, err = raft.NewRaft(config, fsm, logStore, stablestore, fss, peerStore, transport)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -427,6 +521,7 @@ func main() {
 	// TODO: observenexttime?
 
 	//http.HandleFunc("/msg", handleMessages)
+	http.HandleFunc("/", handleStatus)
 	http.HandleFunc("/put", handleRequest)
 	http.HandleFunc("/join", handleJoin)
 	go func() {
