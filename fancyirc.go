@@ -28,9 +28,11 @@ var (
 	singleNode = flag.Bool("singlenode", false, "set to true iff starting the first node for the first time")
 	listen     = flag.String("listen", ":8000", "")
 	join       = flag.String("join", "", "raft master to join")
-	node       *raft.Raft
-	peerStore  *raft.JSONPeers
-	logStore   *fancyLogStore
+	newEvent   = sync.NewCond(&sync.Mutex{})
+
+	node      *raft.Raft
+	peerStore *raft.JSONPeers
+	logStore  *fancyLogStore
 )
 
 // trivial log store, writing one entry into one file each.
@@ -213,7 +215,8 @@ type fancyMessage struct {
 
 func newFancyMessage(data string) *fancyMessage {
 	return &fancyMessage{
-		// TODO(secure): bring in something else than just the time.
+		// TODO(secure): bring in something else than just the time. Perhaps we
+		// can put in the log index so that resumes are faster?
 		Id:   fancyId(time.Now().UnixNano()),
 		Data: data,
 	}
@@ -229,6 +232,7 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		return nil
 	}
 	log.Printf("TODO: apply %v\n", l)
+	newEvent.Broadcast()
 	return nil
 }
 
@@ -507,6 +511,57 @@ func handleSnapshot(res http.ResponseWriter, req *http.Request) {
 	log.Println("snapshotted")
 }
 
+func handleFollow(w http.ResponseWriter, r *http.Request) {
+	// TODO: read params
+	// TODO: register in stats that we are sending
+
+	if r.FormValue("lastseen") != "" {
+		lastSeen, err := strconv.ParseInt(r.FormValue("lastseen"), 0, 64)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Invalid value for lastseen: %v", err),
+				http.StatusInternalServerError)
+			return
+		}
+
+		// TODO(secure): don’t send everything, skip everything until the last seen message
+		log.Printf("need to skip to %d\n", lastSeen)
+	}
+
+	// fancyLogStore’s FirstIndex() and LastIndex() cannot fail.
+	idx, _ := logStore.FirstIndex()
+	for {
+		newEvent.L.Lock()
+		last, _ := logStore.LastIndex()
+		if idx > last {
+			// Sleep until FSM.Apply() wakes us up for a new message.
+			newEvent.Wait()
+			newEvent.L.Unlock()
+			continue
+		}
+		newEvent.L.Unlock()
+
+		var elog raft.Log
+		if err := logStore.GetLog(idx, &elog); err != nil {
+			log.Fatalf("GetLog(%d) failed (LastIndex() = %d): %v\n", idx, last, err)
+		}
+
+		idx++
+
+		if elog.Type != raft.LogCommand {
+			continue
+		}
+
+		if _, err := w.Write(elog.Data); err != nil {
+			log.Printf("Error encoding JSON: %v\n", err)
+			return
+		}
+
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+}
+
 func main() {
 	flag.Parse()
 	log.Printf("hey\n")
@@ -564,6 +619,7 @@ func main() {
 	http.HandleFunc("/put", handleRequest)
 	http.HandleFunc("/join", handleJoin)
 	http.HandleFunc("/snapshot", handleSnapshot)
+	http.HandleFunc("/follow", handleFollow)
 	go func() {
 		err := http.ListenAndServe(*listen, nil)
 		if err != nil {
