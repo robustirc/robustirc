@@ -124,7 +124,7 @@ func (s *fancyLogStore) StoreLogs(logs []*raft.Log) error {
 		if err := gob.NewEncoder(f).Encode(entry); err != nil {
 			return err
 		}
-		if s.lowIndex == 0 {
+		if entry.Index < s.lowIndex || s.lowIndex == 0 {
 			s.lowIndex = entry.Index
 		}
 		if entry.Index > s.highIndex {
