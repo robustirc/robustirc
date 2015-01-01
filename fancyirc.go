@@ -15,12 +15,17 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"fancyirc/types"
+
+	"github.com/gorilla/mux"
 	"github.com/hashicorp/raft"
+	"github.com/sorcix/irc"
 )
 
 var (
@@ -28,12 +33,56 @@ var (
 	singleNode = flag.Bool("singlenode", false, "set to true iff starting the first node for the first time")
 	listen     = flag.String("listen", ":8000", "")
 	join       = flag.String("join", "", "raft master to join")
+	network    = flag.String("network", "fancy.twice-irc.de", "Name of the network. Ideally also a DNS name pointing to one or more servers.")
 	newEvent   = sync.NewCond(&sync.Mutex{})
 
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
 	logStore  *fancyLogStore
+
+	sessionMu sync.Mutex
+	sessions  = make(map[types.FancyId]*Session)
 )
+
+type Session struct {
+	Id       types.FancyId
+	Nick     string
+	Channels map[string]bool
+}
+
+func (s *Session) ircPrefix() *irc.Prefix {
+	// TODO(secure): Is there a better value for User?
+	return &irc.Prefix{
+		Name: s.Nick,
+		User: "fancy",
+		Host: fmt.Sprintf("fancy/0x%x", s.Id),
+	}
+}
+
+func (s *Session) interestedIn(msg types.FancyMessage) bool {
+	log.Printf("[DEBUG] Checking whether %+v is interested in %+v\n", s, msg)
+	ircmsg := irc.ParseMessage(msg.Data)
+	serverPrefix := irc.Prefix{Name: *network}
+
+	if *ircmsg.Prefix == serverPrefix && msg.Session == s.Id {
+		return true
+	}
+
+	switch ircmsg.Command {
+	case irc.NICK:
+		// TODO(secure): does it make sense to restrict this to sessions which
+		// have a channel in common? noting this because it doesn’t handle the
+		// query-only use-case. if there’s no downside (except for the privacy
+		// aspect), perhaps leave it as-is?
+		return true
+	case irc.JOIN:
+		return s.Channels[ircmsg.Trailing]
+	case irc.PRIVMSG:
+		return *s.ircPrefix() != *ircmsg.Prefix && s.Channels[ircmsg.Params[0]]
+	default:
+		return false
+	}
+}
 
 // trivial log store, writing one entry into one file each.
 // fulfills the raft.LogStore interface.
@@ -42,6 +91,12 @@ type fancyLogStore struct {
 	lowIndex  uint64
 	highIndex uint64
 }
+
+type uint64Slice []uint64
+
+func (p uint64Slice) Len() int           { return len(p) }
+func (p uint64Slice) Less(i, j int) bool { return p[i] < p[j] }
+func (p uint64Slice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 // GetAll returns all indexes that are currently present in the log store. This
 // is NOT part of the raft.LogStore interface — we use it when snapshotting.
@@ -75,6 +130,8 @@ func (s *fancyLogStore) GetAll() ([]uint64, error) {
 
 		indexes = append(indexes, uint64(index))
 	}
+
+	sort.Sort(uint64Slice(indexes))
 
 	return indexes, nil
 }
@@ -206,34 +263,105 @@ func (s *fancySnapshot) Persist(sink raft.SnapshotSink) error {
 func (s *fancySnapshot) Release() {
 }
 
-type fancyId int64
-
-type fancyMessage struct {
-	Id   fancyId
-	Data string
-}
-
-func newFancyMessage(data string) *fancyMessage {
-	return &fancyMessage{
-		// TODO(secure): bring in something else than just the time. Perhaps we
-		// can put in the log index so that resumes are faster?
-		Id:   fancyId(time.Now().UnixNano()),
-		Data: data,
-	}
-}
-
 type FSM struct {
 	store *fancyLogStore
 }
 
 func (fsm *FSM) Apply(l *raft.Log) interface{} {
+	var replies []irc.Message
+
 	// Skip all messages that are raft-related.
 	if l.Type != raft.LogCommand {
 		return nil
 	}
+
+	msg := types.NewFancyMessageFromBytes(l.Data)
+	log.Printf("Apply(fmsg.Type=%d)\n", msg.Type)
+	if msg.Type == types.FancyCreateSession {
+		sessions[msg.Id] = &Session{
+			Id:       msg.Id,
+			Channels: make(map[string]bool),
+		}
+		log.Printf("sessions now: %+v\n", sessions)
+	}
+
+	if msg.Type == types.FancyIRCFromClient {
+		message := irc.ParseMessage(string(msg.Data))
+		s := sessions[msg.Session]
+
+		switch message.Command {
+		case irc.NICK:
+			oldPrefix := s.ircPrefix()
+			s.Nick = message.Params[0]
+			// TODO(secure): when connecting, handle nickname already in use.
+			// TODO(secure): handle nickname already in use.
+			log.Printf("nickname now: %+v\n", s)
+			if !strings.HasPrefix(oldPrefix.String(), ":!") {
+				replies = append(replies, irc.Message{
+					Prefix:   oldPrefix,
+					Command:  irc.NICK,
+					Trailing: message.Params[0],
+				})
+			}
+
+		case irc.USER:
+			// TODO(secure): send 002, 003, 004, 005, 251, 252, 254, 255, 265, 266, [motd = 375, 372, 376]
+			replies = append(replies, irc.Message{
+				Prefix:   &irc.Prefix{Name: *network},
+				Command:  irc.RPL_WELCOME,
+				Params:   []string{s.Nick},
+				Trailing: "Welcome to fancyirc :)",
+			})
+
+		case irc.JOIN:
+			// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
+			channel := message.Params[0]
+			s.Channels[channel] = true
+			var nicks []string
+			// TODO(secure): a separate map for quick lookup may be worthwhile for big channels.
+			for _, session := range sessions {
+				if !session.Channels[channel] {
+					continue
+				}
+				nicks = append(nicks, session.Nick)
+			}
+			replies = append(replies, irc.Message{
+				Prefix:   s.ircPrefix(),
+				Command:  irc.JOIN,
+				Trailing: channel,
+			})
+			//replies = append(replies, irc.Message{
+			//	Prefix:  &irc.Prefix{Name: *network},
+			//	Command: irc.RPL_NOTOPIC,
+			//	Params:  []string{channel},
+			//})
+			// TODO(secure): why the = param?
+			replies = append(replies, irc.Message{
+				Prefix:   &irc.Prefix{Name: *network},
+				Command:  irc.RPL_NAMREPLY,
+				Params:   []string{s.Nick, "=", channel},
+				Trailing: strings.Join(nicks, " "),
+			})
+			replies = append(replies, irc.Message{
+				Prefix:   &irc.Prefix{Name: *network},
+				Command:  irc.RPL_ENDOFNAMES,
+				Params:   []string{s.Nick, channel},
+				Trailing: "End of /NAMES list.",
+			})
+
+		case irc.PRIVMSG:
+			replies = append(replies, irc.Message{
+				Prefix:   s.ircPrefix(),
+				Command:  irc.PRIVMSG,
+				Params:   []string{message.Params[0]},
+				Trailing: message.Trailing,
+			})
+		}
+	}
+
 	log.Printf("TODO: apply %v\n", l)
 	newEvent.Broadcast()
-	return nil
+	return replies
 }
 
 func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
@@ -267,6 +395,12 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 			}
 			return err
 		}
+
+		// TODO(secure): is it okay to re-apply these entries? i.e., when
+		// restoring snapshots during normal operation (when does that
+		// happen?), will we re-send messages to clients?
+		fsm.Apply(&entry)
+
 		if err := fsm.store.StoreLog(&entry); err != nil {
 			return err
 		}
@@ -281,21 +415,54 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 	return nil
 }
 
-// handleRequest is called by the fancyproxy whenever a message should be
+func redirectToLeader(w http.ResponseWriter, r *http.Request) {
+	leader := node.Leader()
+	if leader == nil {
+		http.Error(w, fmt.Sprintf("No leader known. Please try another server."),
+			http.StatusInternalServerError)
+		return
+	}
+
+	target := r.URL
+	target.Scheme = "http"
+	target.Host = leader.String()
+	http.Redirect(w, r, target.String(), http.StatusTemporaryRedirect)
+}
+
+func sessionForRequest(r *http.Request) (types.FancyId, error) {
+	idstr := mux.Vars(r)["sessionid"]
+	id, err := strconv.ParseInt(idstr, 0, 64)
+	if err != nil {
+		return types.FancyId(0), fmt.Errorf("Invalid session: %v", err)
+	}
+
+	return types.FancyId(id), nil
+}
+
+// handlePostMessage is called by the fancyproxy whenever a message should be
 // posted. The handler blocks until either the data was written or an error
 // occurred. If successful, it returns the unique id of the message.
-func handleRequest(res http.ResponseWriter, req *http.Request) {
-	data, err := ioutil.ReadAll(req.Body)
+func handlePostMessage(w http.ResponseWriter, r *http.Request) {
+	session, err := sessionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// TODO(secure): read at most 512 byte of body, as the IRC RFC restricts
+	// messages to be that length. this also protects us from “let’s send a
+	// large body” attacks.
+	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		log.Println("error reading request:", err)
 		return
 	}
 
 	// TODO(secure): properly check that we can convert data to a string at all.
-	msg := newFancyMessage(string(data))
+	msg := types.NewFancyMessage(types.FancyIRCFromClient, session, string(data))
 	msgbytes, err := json.Marshal(msg)
 	if err != nil {
-		http.Error(res, fmt.Sprintf("Could not store message, cannot encode it as JSON: %v", err),
+		http.Error(w, fmt.Sprintf("Could not store message, cannot encode it as JSON: %v", err),
 			http.StatusInternalServerError)
 		return
 	}
@@ -303,22 +470,26 @@ func handleRequest(res http.ResponseWriter, req *http.Request) {
 	f := node.Apply(msgbytes, 10*time.Second)
 	if err := f.Error(); err != nil {
 		if err == raft.ErrNotLeader {
-			leader := node.Leader()
-			if leader == nil {
-				http.Error(res, fmt.Sprintf("No leader known. Please try another server."),
-					http.StatusInternalServerError)
-				return
-			} else {
-				http.Redirect(res, req, fmt.Sprintf("http://%s/put", leader), 307)
-				return
-			}
+			redirectToLeader(w, r)
+			return
 		}
-		http.Error(res, fmt.Sprintf("Apply(): %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Apply(): %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	res.Header().Set("Content-Type", "application/json")
-	res.Write(msgbytes)
+	if replies, ok := f.Response().([]irc.Message); ok {
+		for _, msg := range replies {
+			fancymsg := types.NewFancyMessage(types.FancyIRCToClient, session, string(msg.Bytes()))
+			// TODO(secure): error handling
+			fancymsgbytes, _ := json.Marshal(fancymsg)
+			log.Printf("[DEBUG] apply %+v (-> %+v)\n", msg, fancymsg)
+			// TODO(secure): error handling
+			node.Apply(fancymsgbytes, 10*time.Second)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(msgbytes)
 }
 
 func handleJoin(res http.ResponseWriter, req *http.Request) {
@@ -511,7 +682,13 @@ func handleSnapshot(res http.ResponseWriter, req *http.Request) {
 	log.Println("snapshotted")
 }
 
-func handleFollow(w http.ResponseWriter, r *http.Request) {
+func handleGetMessages(w http.ResponseWriter, r *http.Request) {
+	session, err := sessionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	// TODO: read params
 	// TODO: register in stats that we are sending
 
@@ -551,6 +728,11 @@ func handleFollow(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		msg := types.NewFancyMessageFromBytes(elog.Data)
+		if msg.Type != types.FancyIRCToClient || !sessions[session].interestedIn(msg) {
+			continue
+		}
+
 		if _, err := w.Write(elog.Data); err != nil {
 			log.Printf("Error encoding JSON: %v\n", err)
 			return
@@ -560,6 +742,39 @@ func handleFollow(w http.ResponseWriter, r *http.Request) {
 			f.Flush()
 		}
 	}
+}
+
+func handleCreateSession(w http.ResponseWriter, r *http.Request) {
+	msg := types.NewFancyMessage(types.FancyCreateSession, types.FancyId(0), "")
+	// Cannot fail, no user input.
+	msgbytes, _ := json.Marshal(msg)
+
+	f := node.Apply(msgbytes, 10*time.Second)
+	if err := f.Error(); err != nil {
+		if err == raft.ErrNotLeader {
+			redirectToLeader(w, r)
+		}
+		http.Error(w, fmt.Sprintf("Apply(): %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	sessionid := fmt.Sprintf("0x%x", msg.Id)
+
+	w.Header().Set("Content-Type", "application/json")
+
+	type createSessionReply struct {
+		Sessionid string
+		Prefix    string
+	}
+
+	if err := json.NewEncoder(w).Encode(createSessionReply{sessionid, *network}); err != nil {
+		log.Printf("Could not send /session reply: %v\n", err)
+	}
+}
+
+func handleDeleteSession(w http.ResponseWriter, r *http.Request) {
+	sessionid := mux.Vars(r)["sessionid"]
+	log.Printf("TODO: delete session %q\n", sessionid)
 }
 
 func main() {
@@ -614,12 +829,16 @@ func main() {
 	// TODO: observeleaderchanges?
 	// TODO: observenexttime?
 
-	//http.HandleFunc("/msg", handleMessages)
-	http.HandleFunc("/", handleStatus)
-	http.HandleFunc("/put", handleRequest)
-	http.HandleFunc("/join", handleJoin)
-	http.HandleFunc("/snapshot", handleSnapshot)
-	http.HandleFunc("/follow", handleFollow)
+	r := mux.NewRouter()
+	r.HandleFunc("/", handleStatus)
+	r.HandleFunc("/join", handleJoin)
+	r.HandleFunc("/snapshot", handleSnapshot)
+	r.HandleFunc("/fancyirc/v1/session", handleCreateSession).Methods("POST")
+	r.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}", handleDeleteSession).Methods("DELETE")
+	r.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}/message", handlePostMessage).Methods("POST")
+	r.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}/messages", handleGetMessages).Methods("GET")
+	http.Handle("/", r)
+
 	go func() {
 		err := http.ListenAndServe(*listen, nil)
 		if err != nil {

@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"fancyirc/types"
+
 	"github.com/sorcix/irc"
 )
 
@@ -30,12 +32,12 @@ var (
 	allServers    []string
 )
 
-// TODO: move this to a common package, perhaps fancyirc/types?
-type fancyId int64
-type fancyMessage struct {
-	Id   fancyId
-	Data string
-}
+const (
+	pathCreateSession = "/fancyirc/v1/session"
+	pathDeleteSession = "/fancyirc/v1/%s"
+	pathPostMessage   = "/fancyirc/v1/%s/message"
+	pathGetMessages   = "/fancyirc/v1/%s/messages?lastseen=%d"
+)
 
 // TODO(secure): persistent state:
 // - the follow targets (channels)
@@ -43,39 +45,39 @@ type fancyMessage struct {
 // - the last seen message id
 // for hosted mode, this state is stored per-nickname, ideally encrypted with password
 
-func sendFancyMessage(logPrefix string, master string, data []byte) error {
-	res, err := http.Post(
-		fmt.Sprintf("http://%s/put", master),
+func sendFancyMessage(logPrefix, target, path string, data []byte) (*http.Response, error) {
+	resp, err := http.Post(
+		fmt.Sprintf("http://%s%s", target, path),
 		"application/json",
 		bytes.NewBuffer(data))
 
 	if err != nil {
 		// TODO(secure): try one of the other servers.
-		return err
+		return resp, err
 	}
 
-	if res.StatusCode == http.StatusTemporaryRedirect {
-		loc := res.Header.Get("Location")
+	if resp.StatusCode == http.StatusTemporaryRedirect {
+		loc := resp.Header.Get("Location")
 		if loc == "" {
-			return fmt.Errorf("Redirect has no Location header")
+			return resp, fmt.Errorf("Redirect has no Location header")
 		}
 		u, err := url.Parse(loc)
 		if err != nil {
-			return fmt.Errorf("Could not parse redirection %q: %v", loc, err)
+			return resp, fmt.Errorf("Could not parse redirection %q: %v", loc, err)
 		}
 
-		return sendFancyMessage(logPrefix, u.Host, data)
+		return sendFancyMessage(logPrefix, u.Host, path, data)
 	}
 
-	if res.StatusCode != 200 {
-		data, _ := ioutil.ReadAll(res.Body)
-		return fmt.Errorf("sendFancyMessage() failed: %s", string(data))
+	if resp.StatusCode != 200 {
+		data, _ := ioutil.ReadAll(resp.Body)
+		return resp, fmt.Errorf("sendFancyMessage(%s) failed with %v: %s", path, resp.Status, string(data))
 	}
 
 	log.Printf("%s ->fancy: %q\n", logPrefix, string(data))
 
-	currentMaster = master
-	return nil
+	currentMaster = target
+	return resp, nil
 }
 
 func sendIRCMessage(logPrefix string, ircConn *irc.Conn, msg irc.Message) {
@@ -88,22 +90,53 @@ func sendIRCMessage(logPrefix string, ircConn *irc.Conn, msg irc.Message) {
 	log.Printf("%s ->irc: %q\n", logPrefix, msg.Bytes())
 }
 
+func createFancySession(logPrefix string) (session string, prefix irc.Prefix, err error) {
+	var resp *http.Response
+	resp, err = sendFancyMessage(logPrefix, currentMaster, pathCreateSession, []byte{})
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	type createSessionReply struct {
+		Sessionid string
+		Prefix    string
+	}
+
+	var createreply createSessionReply
+
+	if err = json.NewDecoder(resp.Body).Decode(&createreply); err != nil {
+		return
+	}
+
+	session = createreply.Sessionid
+	prefix = irc.Prefix{Name: createreply.Prefix}
+	return
+}
+
 func handleIRC(conn net.Conn) {
 	var (
-		logPrefix = conn.RemoteAddr().String()
-		ircConn   = irc.NewConn(conn)
-		// TODO(secure): use proper prefix
-		ircPrefix     = irc.Prefix{Name: "proxy.fancyirc"}
+		logPrefix     = conn.RemoteAddr().String()
+		ircConn       = irc.NewConn(conn)
 		ircErrors     = make(chan error)
 		ircMessages   = make(chan irc.Message)
 		fancyMessages = make(chan string)
 
-		quitmsg  string
-		done     bool
-		pingSent bool
+		ircPrefix irc.Prefix
+		session   string
+		quitmsg   string
+		done      bool
+		pingSent  bool
+		err       error
 	)
 
-	// TODO(secure): create a session first.
+	session, ircPrefix, err = createFancySession(logPrefix)
+	if err != nil {
+		// TODO(secure): how can we properly kill an irc session? i.e. how do servers handle bans/overload?
+		log.Printf("%s Could not create fancyirc session: %v\n", logPrefix, err)
+		ircConn.Close()
+		return
+	}
 
 	go func() {
 		for {
@@ -120,14 +153,14 @@ func handleIRC(conn net.Conn) {
 	// TODO(secure): periodically get all the servers in the network, overwrite allServers (so that deletions work)
 
 	go func() {
-		var lastSeen fancyId
+		var lastSeen types.FancyId
 
 		for !done {
 			host := allServers[rand.Intn(len(allServers))]
 			// TODO(secure): exponential backoff in a per-server fashion
 			log.Printf("%s Connecting to %q...\n", logPrefix, host)
 			// TODO(secure): build targets (= filters) and add them to the url
-			hostUrl := fmt.Sprintf("http://%s/follow?lastseen=%d", host, lastSeen)
+			hostUrl := fmt.Sprintf("http://%s"+pathGetMessages, host, session, lastSeen)
 			resp, err := http.Get(hostUrl)
 			if err != nil {
 				log.Printf("%s HTTP GET %q failed: %v\n", logPrefix, hostUrl, err)
@@ -148,7 +181,7 @@ func handleIRC(conn net.Conn) {
 			dec := json.NewDecoder(resp.Body)
 			for !done {
 				// TODO(secure): we need a ping message here as well, so that we can detect timeouts quickly. It could include the current servers.
-				var msg fancyMessage
+				var msg types.FancyMessage
 				if err := dec.Decode(&msg); err != nil {
 					log.Printf("%s Protocol error on %q: Could not decode response chunk as JSON: %v\n", logPrefix, host, err)
 					break
@@ -232,7 +265,7 @@ func handleIRC(conn net.Conn) {
 				//	})
 				//case irc.PRIVMSG:
 				// TODO: we need to associate a session with this.
-				if err := sendFancyMessage(logPrefix, currentMaster, message.Bytes()); err != nil {
+				if _, err := sendFancyMessage(logPrefix, currentMaster, fmt.Sprintf(pathPostMessage, session), message.Bytes()); err != nil {
 					// TODO(secure): what should we do here?
 					log.Printf("message could not be sent: %v\n", err)
 				}
