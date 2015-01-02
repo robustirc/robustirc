@@ -3,7 +3,10 @@ package main
 import (
 	"io/ioutil"
 	"os"
+	"reflect"
+	"strconv"
 	"testing"
+	"time"
 
 	"fancyirc/ircserver"
 	"fancyirc/raft_logstore"
@@ -20,8 +23,6 @@ func appendLog(logs []*raft.Log, msg string) []*raft.Log {
 	})
 }
 
-// TODO(secure): we need a timestamp on each message and a threshold before which messages will not be garbage-collected. almost every message causes not only a state change, but also a message to be sent out. if these messages are not present, the resume feature will not work.
-
 // TODO(secure): kill all running GetMessages sessions after a compaction, as their indexes are wrong. or perhaps introduce a way to tell them that there was a compaction and they’ll need to re-sync their indexes
 
 func verifyEndState(t *testing.T) {
@@ -31,6 +32,13 @@ func verifyEndState(t *testing.T) {
 	}
 	if s.Nick != "secure_" {
 		t.Fatalf("session.Nick: got %q, want %q", s.Nick, "secure_")
+	}
+
+	want := make(map[string]bool)
+	want["#chaos-hd"] = true
+
+	if !reflect.DeepEqual(s.Channels, want) {
+		t.Fatalf("session.Channels: got %v, want %v", s.Channels, want)
 	}
 }
 
@@ -51,8 +59,17 @@ func TestCompaction(t *testing.T) {
 	logs = appendLog(logs, `{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`)
 	logs = appendLog(logs, `{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`)
 	logs = appendLog(logs, `{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK secure_"}`)
-	logs = appendLog(logs, `{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "PRIVMSG #chaos-hd :heya"}`)
-	logs = appendLog(logs, `{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "PRIVMSG #chaos-hd :newer message"}`)
+	logs = appendLog(logs, `{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`)
+	logs = appendLog(logs, `{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #i3"}`)
+	logs = appendLog(logs, `{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "PRIVMSG #chaos-hd :heya"}`)
+	logs = appendLog(logs, `{"Id": {"Id": 7}, "Session": {"Id": 1}, "Type": 2, "Data": "PRIVMSG #chaos-hd :newer message"}`)
+	logs = appendLog(logs, `{"Id": {"Id": 8}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #i3"}`)
+
+	// These messages are too new to be compacted.
+	nowId := time.Now().UnixNano()
+	logs = appendLog(logs, `{"Id": {"Id": `+strconv.FormatInt(nowId, 10)+`}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #chaos-hd"}`)
+	nowId += 1
+	logs = appendLog(logs, `{"Id": {"Id": `+strconv.FormatInt(nowId, 10)+`}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`)
 
 	if err := store.StoreLogs(logs); err != nil {
 		t.Fatalf("Unexpected error in store.StoreLogs: %v", err)
@@ -66,6 +83,15 @@ func TestCompaction(t *testing.T) {
 	snapshot, err := fsm.Snapshot()
 	if err != nil {
 		t.Fatalf("Unexpected error in fsm.Snapshot(): %v", err)
+	}
+
+	fancysnap, ok := snapshot.(*fancySnapshot)
+	if !ok {
+		t.Fatalf("fsm.Snapshot() return value is not a fancySnapshot")
+	}
+	if fancysnap.indexes[len(fancysnap.indexes)-1] != uint64(len(logs)-1) ||
+		fancysnap.indexes[len(fancysnap.indexes)-2] != uint64(len(logs)-2) {
+		t.Fatalf("snapshot does not retain the last two (recent) messages")
 	}
 
 	fss, err := raft.NewFileSnapshotStore(tempdir, 5, nil)
@@ -98,6 +124,15 @@ func TestCompaction(t *testing.T) {
 
 	if err := fsm.Restore(readcloser); err != nil {
 		t.Fatalf("fsm.Restore(): %v", err)
+	}
+
+	indexes, err := store.GetAll()
+	if err != nil {
+		t.Fatalf("store.GetAll(): %v", err)
+	}
+
+	if len(indexes) >= len(logs) {
+		t.Fatalf("Compaction did not decrease log size. got: %d, want: < %d", len(indexes), len(logs))
 	}
 
 	verifyEndState(t)

@@ -200,7 +200,7 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 	case irc.PART:
 		// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
 		channel := message.Params[0]
-		s.Channels[channel] = false
+		delete(s.Channels, channel)
 		replies = append(replies, irc.Message{
 			Prefix:  s.ircPrefix(),
 			Command: irc.PART,

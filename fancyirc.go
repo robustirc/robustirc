@@ -95,9 +95,66 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 	return nil
 }
 
+// Snapshot returns a list of pointers based on which a snapshot can be
+// created. After restoring that snapshot, the server state (current sessions,
+// channels, modes, …) should be identical to the state before taking the
+// snapshot. Note that entries are compacted, i.e. useless state
+// transformations (think multiple nickname changes) are skipped. Also note
+// that the IRC output is not guaranteed to end up the same as before. This is
+// not a problem in practice as only log entries which are older than a couple
+// of days are compacted, and proxy connections are only disconnected for a
+// couple of minutes at a time.
 func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 	indexes, err := fsm.store.GetAll()
-	return &fancySnapshot{indexes, fsm.store}, err
+
+	var filtered []uint64
+	for i := len(indexes) - 1; i >= 0; i-- {
+		var elog raft.Log
+
+		if err := fsm.store.GetLog(indexes[i], &elog); err != nil {
+			return nil, err
+		}
+
+		if elog.Type == raft.LogCommand {
+			msg := types.NewFancyMessageFromBytes(elog.Data)
+			if time.Since(time.Unix(0, msg.Id.Id)) > 7*24*time.Hour &&
+				msg.Type == types.FancyIRCFromClient {
+				ircmsg := irc.ParseMessage(msg.Data)
+				// TODO: MODE (tricky)
+				// Delete messages which don’t modify state.
+				if ircmsg.Command == irc.PRIVMSG ||
+					ircmsg.Command == irc.USER ||
+					ircmsg.Command == irc.WHO ||
+					ircmsg.Command == irc.QUIT {
+					continue
+				}
+				if ircmsg.Command == irc.PART {
+					// Delete all PARTs because we only keep JOINs that are still relevant.
+					continue
+				}
+				// TODO: even better for JOIN/NICK: only retain the most recent one
+				if ircmsg.Command == irc.JOIN {
+					if s, ok := ircserver.GetSession(msg.Session); ok {
+						// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
+						if _, ok := s.Channels[ircmsg.Params[0]]; !ok {
+							continue
+						}
+					}
+				}
+				if ircmsg.Command == irc.NICK {
+					if s, ok := ircserver.GetSession(msg.Session); ok {
+						if s.Nick != ircmsg.Params[0] {
+							continue
+						}
+					}
+				}
+			}
+		}
+
+		filtered = append([]uint64{indexes[i]}, filtered...)
+	}
+
+	return &fancySnapshot{filtered, fsm.store}, err
 }
 
 func (fsm *FSM) Restore(snap io.ReadCloser) error {
