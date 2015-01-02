@@ -28,6 +28,10 @@ type Session struct {
 	Channels map[string]bool
 }
 
+func (s *Session) loggedIn() bool {
+	return s.Nick != ""
+}
+
 func (s *Session) ircPrefix() *irc.Prefix {
 	// TODO(secure): Is there a better value for User?
 	return &irc.Prefix{
@@ -79,13 +83,39 @@ func processMessage(session types.FancyId, message *irc.Message) {
 	// alias for convenience
 	s := sessions[session]
 
+	if !s.loggedIn() && message.Command != irc.NICK {
+		log.Printf("Ignoring line %q, user not logged in\n", message.Bytes())
+		return
+	}
+
 	switch message.Command {
 	case irc.NICK:
 		oldPrefix := s.ircPrefix()
+		if len(message.Params) < 1 {
+			replies = append(replies, irc.Message{
+				Prefix:   &irc.Prefix{Name: *network},
+				Command:  irc.ERR_NONICKNAMEGIVEN,
+				Trailing: "No nickname given",
+			})
+			break
+		}
+		inuse := false
+		for _, session := range sessions {
+			if session.Nick == message.Params[0] {
+				inuse = true
+				break
+			}
+		}
+		if inuse {
+			replies = append(replies, irc.Message{
+				Prefix:   &irc.Prefix{Name: *network},
+				Command:  irc.ERR_NICKNAMEINUSE,
+				Params:   []string{"*", message.Params[0]},
+				Trailing: "Nickname is already in use.",
+			})
+			break
+		}
 		s.Nick = message.Params[0]
-		// TODO(secure): when connecting, handle nickname already in use.
-		// :ridcully.twice-irc.de 433 * secure :Nickname is already in use.
-		// TODO(secure): handle nickname already in use.
 		log.Printf("nickname now: %+v\n", s)
 		if !strings.HasPrefix(oldPrefix.String(), "!") {
 			replies = append(replies, irc.Message{
@@ -95,7 +125,6 @@ func processMessage(session types.FancyId, message *irc.Message) {
 			})
 		}
 
-	case irc.USER:
 		// TODO(secure): send 002, 003, 004, 005, 251, 252, 254, 255, 265, 266, [motd = 375, 372, 376]
 		replies = append(replies, irc.Message{
 			Prefix:   &irc.Prefix{Name: *network},
@@ -103,6 +132,10 @@ func processMessage(session types.FancyId, message *irc.Message) {
 			Params:   []string{s.Nick},
 			Trailing: "Welcome to fancyirc :)",
 		})
+
+	case irc.USER:
+		// We don’t need any information from the USER message.
+		break
 
 	case irc.JOIN:
 		// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
