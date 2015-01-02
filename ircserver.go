@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"strings"
 	"sync"
 
@@ -16,8 +17,9 @@ var (
 	sessionMu sync.Mutex
 	sessions  = make(map[types.FancyId]*Session)
 
-	ircOutput  []types.FancyMessage
-	newMessage = sync.NewCond(&sync.Mutex{})
+	ircOutputMu sync.Mutex
+	ircOutput   []types.FancyMessage
+	newMessage  = sync.NewCond(&sync.Mutex{})
 )
 
 type Session struct {
@@ -37,6 +39,9 @@ func (s *Session) ircPrefix() *irc.Prefix {
 
 func (s *Session) interestedIn(msg *types.FancyMessage) bool {
 	log.Printf("[DEBUG] Checking whether %+v is interested in %+v\n", s, msg)
+	if msg.Type == types.FancyPing {
+		return true
+	}
 	ircmsg := irc.ParseMessage(msg.Data)
 	serverPrefix := irc.Prefix{Name: *network}
 
@@ -45,6 +50,8 @@ func (s *Session) interestedIn(msg *types.FancyMessage) bool {
 	}
 
 	switch ircmsg.Command {
+	case irc.QUIT:
+		fallthrough
 	case irc.NICK:
 		// TODO(secure): does it make sense to restrict this to sessions which
 		// have a channel in common? noting this because it doesn’t handle the
@@ -143,6 +150,13 @@ func processMessage(session types.FancyId, message *irc.Message) {
 			Params:  []string{channel},
 		})
 
+	case irc.QUIT:
+		replies = append(replies, irc.Message{
+			Prefix:   s.ircPrefix(),
+			Command:  irc.QUIT,
+			Trailing: message.Trailing,
+		})
+
 	case irc.PRIVMSG:
 		replies = append(replies, irc.Message{
 			Prefix:   s.ircPrefix(),
@@ -211,6 +225,8 @@ func processMessage(session types.FancyId, message *irc.Message) {
 		})
 	}
 
+	ircOutputMu.Lock()
+	defer ircOutputMu.Unlock()
 	for _, reply := range replies {
 		fancymsg := types.NewFancyMessage(types.FancyIRCToClient, session, string(reply.Bytes()))
 		ircOutput = append(ircOutput, *fancymsg)
@@ -219,6 +235,18 @@ func processMessage(session types.FancyId, message *irc.Message) {
 	if len(replies) > 0 {
 		newMessage.Broadcast()
 	}
+}
+
+func SendPing(master net.Addr, peers []net.Addr) {
+	ircOutputMu.Lock()
+	defer ircOutputMu.Unlock()
+	pingmsg := types.NewFancyMessage(types.FancyPing, types.FancyId(0), "")
+	for _, peer := range peers {
+		pingmsg.Servers = append(pingmsg.Servers, peer.String())
+	}
+	pingmsg.Currentmaster = master.String()
+	ircOutput = append(ircOutput, *pingmsg)
+	newMessage.Broadcast()
 }
 
 // GetMessage returns the IRC message with index 'idx', possibly blocking until

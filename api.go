@@ -145,9 +145,13 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	enc := json.NewEncoder(w)
-	s := sessions[session]
 	for idx := 0; ; idx++ {
 		msg := GetMessage(idx)
+		s, ok := sessions[session]
+		if !ok {
+			// Session was deleted in the meanwhile.
+			break
+		}
 
 		if !s.interestedIn(msg) {
 			continue
@@ -193,6 +197,33 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleDeleteSession(w http.ResponseWriter, r *http.Request) {
-	sessionid := mux.Vars(r)["sessionid"]
-	log.Printf("TODO: delete session %q\n", sessionid)
+	session, err := sessionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	type deleteSessionRequest struct {
+		Quitmessage string
+	}
+
+	var req deleteSessionRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Could not decode request: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	msg := types.NewFancyMessage(types.FancyDeleteSession, session, req.Quitmessage)
+	// Cannot fail, no user input.
+	msgbytes, _ := json.Marshal(msg)
+
+	f := node.Apply(msgbytes, 10*time.Second)
+	if err := f.Error(); err != nil {
+		if err == raft.ErrNotLeader {
+			redirectToLeader(w, r)
+		}
+		http.Error(w, fmt.Sprintf("Apply(): %v", err), http.StatusInternalServerError)
+		return
+	}
 }

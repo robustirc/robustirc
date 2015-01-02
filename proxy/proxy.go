@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"fancyirc/types"
@@ -27,7 +28,7 @@ import (
 )
 
 var (
-	servers = flag.String("servers",
+	serversList = flag.String("servers",
 		"localhost:8001",
 		"(comma-separated) list of host:port network addresses of the server(s) to connect to")
 
@@ -35,6 +36,7 @@ var (
 		"localhost:6667",
 		"host:port to listen on for IRC connections")
 
+	serversMu     sync.RWMutex
 	currentMaster string
 	allServers    []string
 )
@@ -51,7 +53,14 @@ const (
 // - for resuming sessions (later): the last seen message id, perhaps setup messages (JOINs, MODEs, …)
 // for hosted mode, this state is stored per-nickname, ideally encrypted with password
 
-func sendFancyMessage(logPrefix string, targets []string, path string, data []byte) (*http.Response, error) {
+// servers returns all configured servers, with the last-known master prepended.
+func servers() []string {
+	serversMu.RLock()
+	defer serversMu.RUnlock()
+	return append([]string{currentMaster}, allServers...)
+}
+
+func sendFancyMessage(logPrefix, method string, targets []string, path string, data []byte) (*http.Response, error) {
 	var (
 		resp   *http.Response
 		target string
@@ -70,10 +79,12 @@ func sendFancyMessage(logPrefix string, targets []string, path string, data []by
 		log.Printf("%s targets = %v, candidate = %s\n", logPrefix, targets, target)
 
 		var err error
-		resp, err = http.Post(
-			fmt.Sprintf("http://%s%s", target, path),
-			"application/json",
-			bytes.NewBuffer(data))
+		req, err := http.NewRequest(method, fmt.Sprintf("http://%s%s", target, path), bytes.NewBuffer(data))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err = http.DefaultClient.Do(req)
 
 		if err != nil {
 			log.Printf("%s %v\n", logPrefix, err)
@@ -115,7 +126,9 @@ func sendFancyMessage(logPrefix string, targets []string, path string, data []by
 	}
 	log.Printf("%s ->fancy: %q\n", logPrefix, string(data))
 
+	serversMu.Lock()
 	currentMaster = target
+	serversMu.Unlock()
 	return resp, nil
 }
 
@@ -131,8 +144,7 @@ func sendIRCMessage(logPrefix string, ircConn *irc.Conn, msg irc.Message) {
 
 func createFancySession(logPrefix string) (session string, prefix irc.Prefix, err error) {
 	var resp *http.Response
-	targets := append([]string{currentMaster}, allServers...)
-	resp, err = sendFancyMessage(logPrefix, targets, pathCreateSession, []byte{})
+	resp, err = sendFancyMessage(logPrefix, "POST", servers(), pathCreateSession, []byte{})
 	if err != nil {
 		return
 	}
@@ -154,13 +166,33 @@ func createFancySession(logPrefix string) (session string, prefix irc.Prefix, er
 	return
 }
 
+func deleteFancySession(logPrefix, session, quitmsg string) error {
+	type deleteSessionRequest struct {
+		Quitmessage string
+	}
+	b, err := json.Marshal(deleteSessionRequest{Quitmessage: quitmsg})
+	if err != nil {
+		return err
+	}
+	resp, err := sendFancyMessage(logPrefix, "DELETE", servers(), fmt.Sprintf(pathDeleteSession, session), b)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	log.Printf("%s deleted session\n", logPrefix)
+
+	return nil
+}
+
 func handleIRC(conn net.Conn) {
 	var (
-		logPrefix     = conn.RemoteAddr().String()
-		ircConn       = irc.NewConn(conn)
-		ircErrors     = make(chan error)
-		ircMessages   = make(chan irc.Message)
-		fancyMessages = make(chan string)
+		logPrefix       = conn.RemoteAddr().String()
+		ircConn         = irc.NewConn(conn)
+		ircErrors       = make(chan error)
+		ircMessages     = make(chan irc.Message)
+		fancyMessages   = make(chan string)
+		stopGetMessages = make(chan bool)
 
 		ircPrefix irc.Prefix
 		session   string
@@ -206,36 +238,74 @@ func handleIRC(conn net.Conn) {
 			// master, but because it is reachable. When sending messages, we will
 			// either reach the master by chance or get redirected, at which point
 			// we update currentMaster.
+			serversMu.Lock()
 			currentMaster = host
+			serversMu.Unlock()
 
 			dec := json.NewDecoder(resp.Body)
+			msgchan := make(chan types.FancyMessage)
+			errchan := make(chan error)
+
+			go func() {
+				for {
+					var msg types.FancyMessage
+					if err := dec.Decode(&msg); err != nil {
+						errchan <- err
+						return
+					}
+					msgchan <- msg
+				}
+			}()
+
+		Readloop:
 			for !done {
-				// TODO(secure): we need a ping message here as well, so that we can detect timeouts quickly. It could include the current servers.
-				var msg types.FancyMessage
-				if err := dec.Decode(&msg); err != nil {
+				select {
+				case err := <-errchan:
 					log.Printf("%s Protocol error on %q: Could not decode response chunk as JSON: %v\n", logPrefix, host, err)
-					break
+					serverFailed(host)
+					break Readloop
+
+				case <-time.After(1 * time.Minute):
+					log.Printf("%s Timeout (60s) on GetMessages, reconnecting…\n", logPrefix)
+					serverFailed(host)
+					break Readloop
+
+				case <-stopGetMessages:
+					log.Printf("%s GetMessages aborted.\n", logPrefix)
+					break Readloop
+
+				case msg := <-msgchan:
+					if msg.Type == types.FancyPing {
+						serversMu.Lock()
+						allServers = msg.Servers
+						currentMaster = msg.Currentmaster
+						serversMu.Unlock()
+						log.Printf("received ping (%+v). Servers are now %v\n", msg, servers())
+					} else if msg.Type == types.FancyIRCToClient {
+						log.Printf("%s <-fancy: %q\n", logPrefix, msg.Data)
+						fancyMessages <- msg.Data
+					}
+					lastSeen = msg.Id
 				}
 
-				log.Printf("%s <-fancy: %q\n", logPrefix, msg.Data)
-				fancyMessages <- msg.Data
-				lastSeen = msg.Id
+				// TODO(secure): we need a ping message here as well, so that we can detect timeouts quickly. It could include the current servers.
 			}
 			resp.Body.Close()
 		}
 
 		close(fancyMessages)
-
-		log.Printf("Disconnecting.\n")
 	}()
 
-	// Read all remaining messages to prevent goroutine hangs.
+	// Cancel the GetMessages goroutine, read all remaining messages to prevent
+	// goroutine hangs, then delete the session.
 	defer func() {
+		stopGetMessages <- true
 		for _ = range fancyMessages {
 		}
 
-		log.Printf("TODO: close session with msg %q\n", quitmsg)
-		// TODO: close the session on the server
+		if err := deleteFancySession(logPrefix, session, quitmsg); err != nil {
+			log.Printf("%s Could not delete session: %v\n", logPrefix, err)
+		}
 	}()
 
 	for {
@@ -279,9 +349,9 @@ func handleIRC(conn net.Conn) {
 				})
 			case irc.QUIT:
 				quitmsg = message.Trailing
+				ircConn.Close()
 			default:
-				targets := append([]string{currentMaster}, allServers...)
-				resp, err := sendFancyMessage(logPrefix, targets, fmt.Sprintf(pathPostMessage, session), message.Bytes())
+				resp, err := sendFancyMessage(logPrefix, "POST", servers(), fmt.Sprintf(pathPostMessage, session), message.Bytes())
 				if err != nil {
 					// TODO(secure): what should we do here?
 					log.Printf("message could not be sent: %v\n", err)
@@ -298,9 +368,9 @@ func main() {
 	rand.Seed(time.Now().Unix())
 
 	// Start with any server. Will be overwritten later.
-	allServers = strings.Split(*servers, ",")
+	allServers = strings.Split(*serversList, ",")
 	if len(allServers) == 0 {
-		log.Fatalf("Invalid -servers value (%q). Need at least one server.\n", *servers)
+		log.Fatalf("Invalid -servers value (%q). Need at least one server.\n", *serversList)
 	}
 	currentMaster = allServers[0]
 

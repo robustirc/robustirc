@@ -73,20 +73,23 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 
 	msg := types.NewFancyMessageFromBytes(l.Data)
 	log.Printf("Apply(fmsg.Type=%d)\n", msg.Type)
-	if msg.Type == types.FancyCreateSession {
+
+	switch msg.Type {
+	case types.FancyCreateSession:
 		sessions[msg.Id] = &Session{
 			Id:       msg.Id,
 			Channels: make(map[string]bool),
 		}
 		log.Printf("sessions now: %+v\n", sessions)
+
+	case types.FancyDeleteSession:
+		processMessage(msg.Session, irc.ParseMessage("QUIT :"+string(msg.Data)))
+		delete(sessions, msg.Session)
+
+	case types.FancyIRCFromClient:
+		processMessage(msg.Session, irc.ParseMessage(string(msg.Data)))
 	}
 
-	if msg.Type == types.FancyIRCFromClient {
-		message := irc.ParseMessage(string(msg.Data))
-		processMessage(msg.Session, message)
-	}
-
-	log.Printf("TODO: apply %v\n", l)
 	return nil
 }
 
@@ -262,15 +265,11 @@ func main() {
 	}
 
 	for {
-
-		time.Sleep(1000 * time.Millisecond)
-
-		// err = s.raft.Add(b, raftMaxTime)
-		// if err != nil {
-		// 	eWrapper.Done(false)
-		// }
-
-		// eWrapper.Done(true)
-
+		time.Sleep(30 * time.Second)
+		peers, err := peerStore.Peers()
+		if err != nil {
+			log.Fatalf("Could not get peers: %v (Peer file corrupted on disk?)\n", err)
+		}
+		SendPing(node.Leader(), peers)
 	}
 }
