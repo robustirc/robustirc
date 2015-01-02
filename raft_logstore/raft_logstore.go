@@ -20,7 +20,7 @@ type FancyLogStore struct {
 	l         sync.RWMutex
 	lowIndex  uint64
 	highIndex uint64
-	Dir       string
+	dir       string
 }
 
 type uint64Slice []uint64
@@ -29,11 +29,21 @@ func (p uint64Slice) Len() int           { return len(p) }
 func (p uint64Slice) Less(i, j int) bool { return p[i] < p[j] }
 func (p uint64Slice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
+func NewFancyLogStore(dir string) (*FancyLogStore, error) {
+	if err := os.MkdirAll(filepath.Join(dir, "fancylogs"), 0700); err != nil {
+		return nil, err
+	}
+
+	return &FancyLogStore{
+		dir: dir,
+	}, nil
+}
+
 // GetAll returns all indexes that are currently present in the log store. This
 // is NOT part of the raft.LogStore interface — we use it when snapshotting.
 func (s *FancyLogStore) GetAll() ([]uint64, error) {
 	var indexes []uint64
-	dir, err := os.Open(filepath.Join(s.Dir, "fancylogs"))
+	dir, err := os.Open(filepath.Join(s.dir, "fancylogs"))
 	if err != nil {
 		return indexes, err
 	}
@@ -82,7 +92,7 @@ func (s *FancyLogStore) LastIndex() (uint64, error) {
 func (s *FancyLogStore) GetLog(index uint64, rlog *raft.Log) error {
 	s.l.Lock()
 	defer s.l.Unlock()
-	f, err := os.Open(filepath.Join(s.Dir, fmt.Sprintf("fancylogs/entry.%d", index)))
+	f, err := os.Open(filepath.Join(s.dir, fmt.Sprintf("fancylogs/entry.%d", index)))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return raft.ErrLogNotFound
@@ -109,7 +119,7 @@ func (s *FancyLogStore) StoreLogs(logs []*raft.Log) error {
 
 	for _, entry := range logs {
 		log.Printf("writing index %d to file (%v)\n", entry.Index, entry)
-		f, err := os.Create(filepath.Join(s.Dir, fmt.Sprintf("fancylogs/entry.%d", entry.Index)))
+		f, err := os.Create(filepath.Join(s.dir, fmt.Sprintf("fancylogs/entry.%d", entry.Index)))
 		if err != nil {
 			return err
 		}
@@ -133,9 +143,23 @@ func (s *FancyLogStore) DeleteRange(min, max uint64) error {
 	defer s.l.Unlock()
 	for i := min; i <= max; i++ {
 		log.Printf("deleting index %d\n", i)
-		if err := os.Remove(filepath.Join(s.Dir, fmt.Sprintf("fancylogs/entry.%d", i))); err != nil {
+		if err := os.Remove(filepath.Join(s.dir, fmt.Sprintf("fancylogs/entry.%d", i))); err != nil {
 			return err
 		}
 	}
+	return nil
+}
+
+func (s *FancyLogStore) DeleteAll() error {
+	s.l.Lock()
+	defer s.l.Unlock()
+	if err := os.RemoveAll(filepath.Join(s.dir, "fancylogs")); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Join(s.dir, "fancylogs"), 0700); err != nil {
+		return err
+	}
+	s.lowIndex = 0
+	s.highIndex = 0
 	return nil
 }

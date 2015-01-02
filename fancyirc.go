@@ -104,16 +104,7 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 	log.Printf("Restoring snapshot\n")
 	defer snap.Close()
 
-	if err := os.RemoveAll(filepath.Join(*raftDir, "fancylogs-obsolete")); err != nil {
-		return err
-	}
-
-	if err := os.Rename(filepath.Join(*raftDir, "fancylogs"),
-		filepath.Join(*raftDir, "fancylogs-obsolete")); err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(filepath.Join(*raftDir, "fancylogs"), 0755); err != nil {
+	if err := fsm.store.DeleteAll(); err != nil {
 		return err
 	}
 
@@ -241,15 +232,10 @@ func main() {
 	config.SnapshotThreshold = 2
 	config.SnapshotInterval = 1 * time.Second
 
-	if err := os.MkdirAll(filepath.Join(*raftDir, "fancylogs"), 0755); err != nil {
+	logStore, err = raft_logstore.NewFancyLogStore(*raftDir)
+	if err != nil {
 		log.Fatal(err)
 	}
-
-	if err := os.MkdirAll(filepath.Join(*raftDir, "fancystable"), 0755); err != nil {
-		log.Fatal(err)
-	}
-
-	logStore = &raft_logstore.FancyLogStore{Dir: *raftDir}
 	stablestore := &fancyStableStore{}
 	fsm := &FSM{logStore}
 
