@@ -132,8 +132,12 @@ func handleIRC(conn net.Conn) {
 
 	session, ircPrefix, err = createFancySession(logPrefix)
 	if err != nil {
-		// TODO(secure): how can we properly kill an irc session? i.e. how do servers handle bans/overload?
 		log.Printf("%s Could not create fancyirc session: %v\n", logPrefix, err)
+		sendIRCMessage(logPrefix, ircConn, irc.Message{
+			Command:  "ERROR",
+			Trailing: fmt.Sprintf("Could not create fancyirc session: %v", err),
+		})
+
 		ircConn.Close()
 		return
 	}
