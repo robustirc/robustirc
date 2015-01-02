@@ -34,10 +34,10 @@ func sessionForRequest(r *http.Request) (types.FancyId, error) {
 	idstr := mux.Vars(r)["sessionid"]
 	id, err := strconv.ParseInt(idstr, 0, 64)
 	if err != nil {
-		return types.FancyId(0), fmt.Errorf("Invalid session: %v", err)
+		return types.FancyId{}, fmt.Errorf("Invalid session: %v", err)
 	}
 
-	return types.FancyId(id), nil
+	return types.FancyId{Id: id}, nil
 }
 
 // handlePostMessage is called by the fancyproxy whenever a message should be
@@ -129,19 +129,11 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: read params
 	// TODO: register in stats that we are sending
 
-	if r.FormValue("lastseen") != "" {
-		lastSeen, err := strconv.ParseInt(r.FormValue("lastseen"), 0, 64)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Invalid value for lastseen: %v", err),
-				http.StatusInternalServerError)
-			return
-		}
-
-		// TODO(secure): don’t send everything, skip everything until the last seen message
-		log.Printf("need to skip to %d\n", lastSeen)
+	lastSeen := r.FormValue("lastseen")
+	if lastSeen == "0.0" {
+		lastSeen = ""
 	}
 
 	enc := json.NewEncoder(w)
@@ -153,7 +145,20 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		if !s.interestedIn(msg) {
+		if lastSeen != "" {
+			if msg.Id.String() == lastSeen {
+				log.Printf("Skipped %d messages, now at lastseen=%s.\n", idx, lastSeen)
+				lastSeen = ""
+				continue
+			} else {
+				log.Printf("looking for %s, ignoring %d\n", lastSeen, msg.Id)
+				continue
+			}
+		}
+
+		interested := s.interestedIn(msg)
+		log.Printf("[DEBUG] Checking whether %+v is interested in %+v --> %v\n", s, msg, interested)
+		if !interested {
 			continue
 		}
 
@@ -169,7 +174,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleCreateSession(w http.ResponseWriter, r *http.Request) {
-	msg := types.NewFancyMessage(types.FancyCreateSession, types.FancyId(0), "")
+	msg := types.NewFancyMessage(types.FancyCreateSession, types.FancyId{}, "")
 	// Cannot fail, no user input.
 	msgbytes, _ := json.Marshal(msg)
 
@@ -182,7 +187,7 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessionid := fmt.Sprintf("0x%x", msg.Id)
+	sessionid := fmt.Sprintf("0x%x", msg.Id.Id)
 
 	w.Header().Set("Content-Type", "application/json")
 

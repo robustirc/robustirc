@@ -83,11 +83,11 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		log.Printf("sessions now: %+v\n", sessions)
 
 	case types.FancyDeleteSession:
-		processMessage(msg.Session, irc.ParseMessage("QUIT :"+string(msg.Data)))
+		processMessage(msg.Session, msg.Id.Id, irc.ParseMessage("QUIT :"+string(msg.Data)))
 		delete(sessions, msg.Session)
 
 	case types.FancyIRCFromClient:
-		processMessage(msg.Session, irc.ParseMessage(string(msg.Data)))
+		processMessage(msg.Session, msg.Id.Id, irc.ParseMessage(string(msg.Data)))
 	}
 
 	return nil

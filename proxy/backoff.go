@@ -76,7 +76,7 @@ func getMessages(logPrefix, session string, lastSeen types.FancyId) (string, *ht
 		}
 
 		log.Printf("%s Connecting to %q...\n", logPrefix, candidate)
-		resp, err := http.Get(fmt.Sprintf("http://%s"+pathGetMessages, candidate, session, lastSeen))
+		resp, err := http.Get(fmt.Sprintf("http://%s"+pathGetMessages, candidate, session, lastSeen.String()))
 		if err != nil {
 			log.Printf("%s %v\n", logPrefix, err)
 		} else if resp.StatusCode != 200 {

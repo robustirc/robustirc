@@ -45,7 +45,7 @@ const (
 	pathCreateSession = "/fancyirc/v1/session"
 	pathDeleteSession = "/fancyirc/v1/%s"
 	pathPostMessage   = "/fancyirc/v1/%s/message"
-	pathGetMessages   = "/fancyirc/v1/%s/messages?lastseen=%d"
+	pathGetMessages   = "/fancyirc/v1/%s/messages?lastseen=%s"
 )
 
 // TODO(secure): persistent state:
@@ -226,8 +226,6 @@ func handleIRC(conn net.Conn) {
 		}
 	}()
 
-	// TODO(secure): periodically get all the servers in the network, overwrite allServers (so that deletions work)
-
 	go func() {
 		var lastSeen types.FancyId
 
@@ -284,11 +282,9 @@ func handleIRC(conn net.Conn) {
 					} else if msg.Type == types.FancyIRCToClient {
 						log.Printf("%s <-fancy: %q\n", logPrefix, msg.Data)
 						fancyMessages <- msg.Data
+						lastSeen = msg.Id
 					}
-					lastSeen = msg.Id
 				}
-
-				// TODO(secure): we need a ping message here as well, so that we can detect timeouts quickly. It could include the current servers.
 			}
 			resp.Body.Close()
 		}

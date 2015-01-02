@@ -37,12 +37,11 @@ func (s *Session) ircPrefix() *irc.Prefix {
 	return &irc.Prefix{
 		Name: s.Nick,
 		User: "fancy",
-		Host: fmt.Sprintf("fancy/0x%x", s.Id),
+		Host: fmt.Sprintf("fancy/0x%x", s.Id.Id),
 	}
 }
 
 func (s *Session) interestedIn(msg *types.FancyMessage) bool {
-	log.Printf("[DEBUG] Checking whether %+v is interested in %+v\n", s, msg)
 	if msg.Type == types.FancyPing {
 		return true
 	}
@@ -77,7 +76,7 @@ func (s *Session) interestedIn(msg *types.FancyMessage) bool {
 
 // processMessage modifies state in response to 'message' and returns zero or
 // more IRC messages in response to 'message'.
-func processMessage(session types.FancyId, message *irc.Message) {
+func processMessage(session types.FancyId, id int64, message *irc.Message) {
 	var replies []irc.Message
 
 	// alias for convenience
@@ -260,8 +259,13 @@ func processMessage(session types.FancyId, message *irc.Message) {
 
 	ircOutputMu.Lock()
 	defer ircOutputMu.Unlock()
-	for _, reply := range replies {
+	for idx, reply := range replies {
 		fancymsg := types.NewFancyMessage(types.FancyIRCToClient, session, string(reply.Bytes()))
+		// The IDs must be the same across servers.
+		fancymsg.Id = types.FancyId{
+			Id:    id,
+			Reply: int64(idx+1),
+		}
 		ircOutput = append(ircOutput, *fancymsg)
 	}
 
@@ -273,11 +277,13 @@ func processMessage(session types.FancyId, message *irc.Message) {
 func SendPing(master net.Addr, peers []net.Addr) {
 	ircOutputMu.Lock()
 	defer ircOutputMu.Unlock()
-	pingmsg := types.NewFancyMessage(types.FancyPing, types.FancyId(0), "")
+	pingmsg := types.NewFancyMessage(types.FancyPing, types.FancyId{}, "")
 	for _, peer := range peers {
 		pingmsg.Servers = append(pingmsg.Servers, peer.String())
 	}
-	pingmsg.Currentmaster = master.String()
+	if master != nil {
+		pingmsg.Currentmaster = master.String()
+	}
 	ircOutput = append(ircOutput, *pingmsg)
 	newMessage.Broadcast()
 }
