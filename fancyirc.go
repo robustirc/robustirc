@@ -78,6 +78,7 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 	case types.FancyCreateSession:
 		sessions[msg.Id] = &Session{
 			Id:       msg.Id,
+			StartIdx: CurrentIdx(),
 			Channels: make(map[string]bool),
 		}
 		log.Printf("sessions now: %+v\n", sessions)

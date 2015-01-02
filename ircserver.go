@@ -26,6 +26,10 @@ type Session struct {
 	Id       types.FancyId
 	Nick     string
 	Channels map[string]bool
+
+	// The current IRC message index at the time when the session was started.
+	// This is used in handleGetMessages to skip uninteresting messages.
+	StartIdx int
 }
 
 func (s *Session) loggedIn() bool {
@@ -264,7 +268,7 @@ func processMessage(session types.FancyId, id int64, message *irc.Message) {
 		// The IDs must be the same across servers.
 		fancymsg.Id = types.FancyId{
 			Id:    id,
-			Reply: int64(idx+1),
+			Reply: int64(idx + 1),
 		}
 		ircOutput = append(ircOutput, *fancymsg)
 	}
@@ -299,4 +303,8 @@ func GetMessage(idx int) *types.FancyMessage {
 	newMessage.L.Unlock()
 
 	return &ircOutput[idx]
+}
+
+func CurrentIdx() int {
+	return len(ircOutput)
 }

@@ -137,7 +137,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	enc := json.NewEncoder(w)
-	for idx := 0; ; idx++ {
+	for idx := sessions[session].StartIdx; ; idx++ {
 		msg := GetMessage(idx)
 		s, ok := sessions[session]
 		if !ok {
