@@ -56,7 +56,7 @@ func (s *Session) interestedIn(msg *types.FancyMessage) bool {
 	case irc.PART:
 		return *s.ircPrefix() == *ircmsg.Prefix || s.Channels[ircmsg.Params[0]]
 	case irc.PRIVMSG:
-		return *s.ircPrefix() != *ircmsg.Prefix && s.Channels[ircmsg.Params[0]]
+		return *s.ircPrefix() != *ircmsg.Prefix && (s.Channels[ircmsg.Params[0]] || ircmsg.Params[0] == s.Nick)
 	case irc.MODE:
 		return ircmsg.Params[0] == s.Nick || s.Channels[ircmsg.Params[0]]
 	default:
