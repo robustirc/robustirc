@@ -51,35 +51,68 @@ const (
 // - for resuming sessions (later): the last seen message id, perhaps setup messages (JOINs, MODEs, …)
 // for hosted mode, this state is stored per-nickname, ideally encrypted with password
 
-func sendFancyMessage(logPrefix, target, path string, data []byte) (*http.Response, error) {
-	resp, err := http.Post(
-		fmt.Sprintf("http://%s%s", target, path),
-		"application/json",
-		bytes.NewBuffer(data))
-
-	if err != nil {
-		// TODO(secure): try one of the other servers.
-		return resp, err
-	}
-
-	if resp.StatusCode == http.StatusTemporaryRedirect {
-		loc := resp.Header.Get("Location")
-		if loc == "" {
-			return resp, fmt.Errorf("Redirect has no Location header")
+func sendFancyMessage(logPrefix string, targets []string, path string, data []byte) (*http.Response, error) {
+	var (
+		resp   *http.Response
+		target string
+	)
+	for {
+		var soonest time.Duration
+		target = ""
+		for target == "" {
+			target, soonest = nextCandidate(targets)
+			if target == "" {
+				log.Printf("%s Waiting %v for back-off time to expire…\n", logPrefix, soonest)
+				time.Sleep(soonest)
+			}
 		}
-		u, err := url.Parse(loc)
+
+		log.Printf("%s targets = %v, candidate = %s\n", logPrefix, targets, target)
+
+		var err error
+		resp, err = http.Post(
+			fmt.Sprintf("http://%s%s", target, path),
+			"application/json",
+			bytes.NewBuffer(data))
+
 		if err != nil {
-			return resp, fmt.Errorf("Could not parse redirection %q: %v", loc, err)
+			log.Printf("%s %v\n", logPrefix, err)
+			serverFailed(target)
+			continue
 		}
 
-		return sendFancyMessage(logPrefix, u.Host, path, data)
-	}
+		if resp.StatusCode == http.StatusTemporaryRedirect {
+			loc := resp.Header.Get("Location")
+			if loc == "" {
+				return nil, fmt.Errorf("Redirect has no Location header")
+			}
+			u, err := url.Parse(loc)
+			if err != nil {
+				return nil, fmt.Errorf("Could not parse redirection %q: %v", loc, err)
+			}
 
-	if resp.StatusCode != 200 {
-		data, _ := ioutil.ReadAll(resp.Body)
-		return resp, fmt.Errorf("sendFancyMessage(%s) failed with %v: %s", path, resp.Status, string(data))
-	}
+			resp.Body.Close()
 
+			log.Printf("%s %q redirects us to %q\n", logPrefix, target, u.Host)
+
+			// Even though the server did not actually fail, it did not answer our
+			// request either. To prevent hammering it, mark it as failed for
+			// back-off purposes.
+			serverFailed(target)
+			targets = append([]string{u.Host}, targets...)
+			continue
+		}
+
+		if resp.StatusCode != 200 {
+			data, _ := ioutil.ReadAll(resp.Body)
+			resp.Body.Close()
+			log.Printf("%s sendFancyMessage(%q) failed with %v: %s", logPrefix, path, resp.Status, string(data))
+			serverFailed(target)
+			continue
+		}
+
+		break
+	}
 	log.Printf("%s ->fancy: %q\n", logPrefix, string(data))
 
 	currentMaster = target
@@ -98,7 +131,8 @@ func sendIRCMessage(logPrefix string, ircConn *irc.Conn, msg irc.Message) {
 
 func createFancySession(logPrefix string) (session string, prefix irc.Prefix, err error) {
 	var resp *http.Response
-	resp, err = sendFancyMessage(logPrefix, currentMaster, pathCreateSession, []byte{})
+	targets := append([]string{currentMaster}, allServers...)
+	resp, err = sendFancyMessage(logPrefix, targets, pathCreateSession, []byte{})
 	if err != nil {
 		return
 	}
@@ -246,10 +280,13 @@ func handleIRC(conn net.Conn) {
 			case irc.QUIT:
 				quitmsg = message.Trailing
 			default:
-				if _, err := sendFancyMessage(logPrefix, currentMaster, fmt.Sprintf(pathPostMessage, session), message.Bytes()); err != nil {
+				targets := append([]string{currentMaster}, allServers...)
+				resp, err := sendFancyMessage(logPrefix, targets, fmt.Sprintf(pathPostMessage, session), message.Bytes())
+				if err != nil {
 					// TODO(secure): what should we do here?
 					log.Printf("message could not be sent: %v\n", err)
 				}
+				resp.Body.Close()
 			}
 		}
 	}

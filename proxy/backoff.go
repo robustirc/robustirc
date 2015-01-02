@@ -19,30 +19,52 @@ type backoffState struct {
 	next time.Time
 }
 
+// nextCandidate returns a candidate out of servers, or the empty string and a
+// time to sleep until a candidate will become available, at which point
+// nextCandidate should be called again.
+func nextCandidate(servers []string) (string, time.Duration) {
+	soonest := time.Duration(math.MaxInt64)
+	for _, host := range servers {
+		b, ok := state[host]
+		if !ok {
+			return host, soonest
+		}
+		wait := b.next.Sub(time.Now())
+		if wait <= 0 {
+			return host, soonest
+		}
+		if wait < soonest {
+			soonest = wait
+		}
+	}
+
+	return "", soonest
+}
+
+func serverFailed(host string) {
+	if s, ok := state[host]; ok {
+		if s.exp < 6 {
+			s.exp++
+		}
+		s.next = time.Now().Add(time.Duration(math.Pow(2, s.exp)) * time.Second)
+	} else {
+		state[host] = &backoffState{
+			exp:  0,
+			next: time.Now().Add(1 * time.Second),
+		}
+	}
+}
+
 // getMessages (blockingly) tries to connect to a server until it gets a
 // successful GetMessages response.
 func getMessages(logPrefix, session string, lastSeen types.FancyId) (string, *http.Response) {
 	for {
 		var (
 			candidate string
-			soonest   = time.Duration(math.MaxInt64)
+			soonest   time.Duration
 		)
 		for candidate == "" {
-			for _, host := range allServers {
-				b, ok := state[host]
-				if !ok {
-					candidate = host
-					break
-				}
-				wait := b.next.Sub(time.Now())
-				if wait <= 0 {
-					candidate = host
-					break
-				}
-				if wait < soonest {
-					soonest = wait
-				}
-			}
+			candidate, soonest = nextCandidate(allServers)
 
 			log.Printf("%s [DEBUG] candidate = %s, soonest = %v, state = %+v, allServers = %v\n",
 				logPrefix, candidate, soonest, state, allServers)
@@ -62,17 +84,7 @@ func getMessages(logPrefix, session string, lastSeen types.FancyId) (string, *ht
 		}
 
 		if err != nil || resp.StatusCode != 200 {
-			if s, ok := state[candidate]; ok {
-				if s.exp < 6 {
-					s.exp++
-				}
-				s.next = time.Now().Add(time.Duration(math.Pow(2, s.exp)) * time.Second)
-			} else {
-				state[candidate] = &backoffState{
-					exp:  0,
-					next: time.Now().Add(1 * time.Second),
-				}
-			}
+			serverFailed(candidate)
 			log.Printf("%s [DEBUG] backoffState = %v\n", logPrefix, state[candidate])
 			continue
 		}
