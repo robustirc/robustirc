@@ -15,8 +15,7 @@ import (
 )
 
 var (
-	sessionMu sync.Mutex
-	sessions  = make(map[types.FancyId]*Session)
+	sessions = make(map[types.FancyId]*Session)
 
 	ircOutputMu sync.Mutex
 	ircOutput   []types.FancyMessage
@@ -82,6 +81,10 @@ func (s *Session) InterestedIn(msg *types.FancyMessage) bool {
 	}
 }
 
+func ClearState() {
+	sessions = make(map[types.FancyId]*Session)
+}
+
 // CreateSession creates a new session (equivalent to an IRC connection).
 func CreateSession(id types.FancyId, auth string) {
 	sessions[id] = &Session{
@@ -122,7 +125,7 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 		}
 		inuse := false
 		for _, session := range sessions {
-			if session.Nick == message.Params[0] {
+			if strings.ToLower(session.Nick) == strings.ToLower(message.Params[0]) {
 				inuse = true
 				break
 			}
