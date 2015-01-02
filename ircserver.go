@@ -15,6 +15,9 @@ import (
 var (
 	sessionMu sync.Mutex
 	sessions  = make(map[types.FancyId]*Session)
+
+	ircOutput  []types.FancyMessage
+	newMessage = sync.NewCond(&sync.Mutex{})
 )
 
 type Session struct {
@@ -32,7 +35,7 @@ func (s *Session) ircPrefix() *irc.Prefix {
 	}
 }
 
-func (s *Session) interestedIn(msg types.FancyMessage) bool {
+func (s *Session) interestedIn(msg *types.FancyMessage) bool {
 	log.Printf("[DEBUG] Checking whether %+v is interested in %+v\n", s, msg)
 	ircmsg := irc.ParseMessage(msg.Data)
 	serverPrefix := irc.Prefix{Name: *network}
@@ -59,7 +62,7 @@ func (s *Session) interestedIn(msg types.FancyMessage) bool {
 
 // processMessage modifies state in response to 'message' and returns zero or
 // more IRC messages in response to 'message'.
-func processMessage(session types.FancyId, message *irc.Message) []irc.Message {
+func processMessage(session types.FancyId, message *irc.Message) {
 	var replies []irc.Message
 
 	// alias for convenience
@@ -134,5 +137,25 @@ func processMessage(session types.FancyId, message *irc.Message) []irc.Message {
 		})
 	}
 
-	return replies
+	for _, reply := range replies {
+		fancymsg := types.NewFancyMessage(types.FancyIRCToClient, session, string(reply.Bytes()))
+		ircOutput = append(ircOutput, *fancymsg)
+	}
+
+	if len(replies) > 0 {
+		newMessage.Broadcast()
+	}
+}
+
+// GetMessage returns the IRC message with index 'idx', possibly blocking until
+// that message appears.
+func GetMessage(idx int) *types.FancyMessage {
+	newMessage.L.Lock()
+	// Sleep until processMessage() wakes us up for a new message.
+	for idx >= len(ircOutput) {
+		newMessage.Wait()
+	}
+	newMessage.L.Unlock()
+
+	return &ircOutput[idx]
 }

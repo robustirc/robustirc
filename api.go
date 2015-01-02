@@ -14,7 +14,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/raft"
-	"github.com/sorcix/irc"
 )
 
 func redirectToLeader(w http.ResponseWriter, r *http.Request) {
@@ -77,17 +76,6 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Error(w, fmt.Sprintf("Apply(): %v", err), http.StatusInternalServerError)
 		return
-	}
-
-	if replies, ok := f.Response().([]irc.Message); ok {
-		for _, msg := range replies {
-			fancymsg := types.NewFancyMessage(types.FancyIRCToClient, session, string(msg.Bytes()))
-			// TODO(secure): error handling
-			fancymsgbytes, _ := json.Marshal(fancymsg)
-			log.Printf("[DEBUG] apply %+v (-> %+v)\n", msg, fancymsg)
-			// TODO(secure): error handling
-			node.Apply(fancymsgbytes, 10*time.Second)
-		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -164,36 +152,16 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 		log.Printf("need to skip to %d\n", lastSeen)
 	}
 
-	// fancyLogStore’s FirstIndex() and LastIndex() cannot fail.
-	idx, _ := logStore.FirstIndex()
-	for {
-		newEvent.L.Lock()
-		last, _ := logStore.LastIndex()
-		if idx > last {
-			// Sleep until FSM.Apply() wakes us up for a new message.
-			newEvent.Wait()
-			newEvent.L.Unlock()
-			continue
-		}
-		newEvent.L.Unlock()
+	enc := json.NewEncoder(w)
+	s := sessions[session]
+	for idx := 0; ; idx++ {
+		msg := GetMessage(idx)
 
-		var elog raft.Log
-		if err := logStore.GetLog(idx, &elog); err != nil {
-			log.Fatalf("GetLog(%d) failed (LastIndex() = %d): %v\n", idx, last, err)
-		}
-
-		idx++
-
-		if elog.Type != raft.LogCommand {
+		if !s.interestedIn(msg) {
 			continue
 		}
 
-		msg := types.NewFancyMessageFromBytes(elog.Data)
-		if msg.Type != types.FancyIRCToClient || !sessions[session].interestedIn(msg) {
-			continue
-		}
-
-		if _, err := w.Write(elog.Data); err != nil {
+		if err := enc.Encode(msg); err != nil {
 			log.Printf("Error encoding JSON: %v\n", err)
 			return
 		}

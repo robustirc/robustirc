@@ -14,7 +14,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"fancyirc/types"
@@ -30,7 +29,6 @@ var (
 	listen     = flag.String("listen", ":8000", "")
 	join       = flag.String("join", "", "raft master to join")
 	network    = flag.String("network", "fancy.twice-irc.de", "Name of the network. Ideally also a DNS name pointing to one or more servers.")
-	newEvent   = sync.NewCond(&sync.Mutex{})
 
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
@@ -68,8 +66,6 @@ type FSM struct {
 }
 
 func (fsm *FSM) Apply(l *raft.Log) interface{} {
-	var replies []irc.Message
-
 	// Skip all messages that are raft-related.
 	if l.Type != raft.LogCommand {
 		return nil
@@ -87,12 +83,11 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 
 	if msg.Type == types.FancyIRCFromClient {
 		message := irc.ParseMessage(string(msg.Data))
-		replies = processMessage(msg.Session, message)
+		processMessage(msg.Session, message)
 	}
 
 	log.Printf("TODO: apply %v\n", l)
-	newEvent.Broadcast()
-	return replies
+	return nil
 }
 
 func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
