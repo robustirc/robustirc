@@ -17,6 +17,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"strings"
 	"sync"
@@ -39,6 +40,7 @@ var (
 	serversMu     sync.RWMutex
 	currentMaster string
 	allServers    []string
+	httpClient    http.Client
 )
 
 const (
@@ -79,12 +81,12 @@ func sendFancyMessage(logPrefix, method string, targets []string, path string, d
 		log.Printf("%s targets = %v, candidate = %s\n", logPrefix, targets, target)
 
 		var err error
-		req, err := http.NewRequest(method, fmt.Sprintf("http://%s%s", target, path), bytes.NewBuffer(data))
+		req, err := http.NewRequest(method, fmt.Sprintf("https://%s%s", target, path), bytes.NewBuffer(data))
 		if err != nil {
 			return nil, err
 		}
 		req.Header.Set("Content-Type", "application/json")
-		resp, err = http.DefaultClient.Do(req)
+		resp, err = httpClient.Do(req)
 
 		if err != nil {
 			log.Printf("%s %v\n", logPrefix, err)
@@ -369,6 +371,13 @@ func main() {
 		log.Fatalf("Invalid -servers value (%q). Need at least one server.\n", *serversList)
 	}
 	currentMaster = allServers[0]
+
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	httpClient = http.Client{Jar: jar}
 
 	ln, err := net.Listen("tcp", *listen)
 	if err != nil {

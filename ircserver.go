@@ -24,6 +24,7 @@ var (
 
 type Session struct {
 	Id       types.FancyId
+	Auth     string
 	Nick     string
 	Channels map[string]bool
 

@@ -66,11 +66,11 @@ func (t *Transport) AppendEntriesPipeline(target net.Addr) (raft.AppendPipeline,
 }
 
 func (t *Transport) AppendEntries(target net.Addr, args *raft.AppendEntriesRequest, resp *raft.AppendEntriesResponse) error {
-	return t.send(fmt.Sprintf("http://%v/raft/AppendEntries", target), args, resp)
+	return t.send(fmt.Sprintf("https://%v/raft/AppendEntries", target), args, resp)
 }
 
 func (t *Transport) RequestVote(target net.Addr, args *raft.RequestVoteRequest, resp *raft.RequestVoteResponse) error {
-	return t.send(fmt.Sprintf("http://%v/raft/RequestVote", target), args, resp)
+	return t.send(fmt.Sprintf("https://%v/raft/RequestVote", target), args, resp)
 }
 
 func (t *Transport) InstallSnapshot(target net.Addr, args *raft.InstallSnapshotRequest, resp *raft.InstallSnapshotResponse, data io.Reader) error {
@@ -79,7 +79,7 @@ func (t *Transport) InstallSnapshot(target net.Addr, args *raft.InstallSnapshotR
 		return fmt.Errorf("could not read data: %v", err)
 	}
 
-	return t.send(fmt.Sprintf("http://%v/raft/InstallSnapshot", target), installSnapshotRequest{args, buf}, resp)
+	return t.send(fmt.Sprintf("https://%v/raft/InstallSnapshot", target), installSnapshotRequest{args, buf}, resp)
 }
 
 func (t *Transport) EncodePeer(a net.Addr) []byte {
@@ -87,12 +87,7 @@ func (t *Transport) EncodePeer(a net.Addr) []byte {
 }
 
 func (t *Transport) DecodePeer(b []byte) net.Addr {
-	a, err := net.ResolveTCPAddr("tcp", string(b))
-	if err != nil {
-		// TODO(mero): What to do here?
-		return nil
-	}
-	return a
+	return &dnsAddr{string(b)}
 }
 
 func (t *Transport) handle(res http.ResponseWriter, req *http.Request, rpc raft.RPC) {

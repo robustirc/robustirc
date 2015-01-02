@@ -1,11 +1,11 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -37,7 +37,21 @@ func sessionForRequest(r *http.Request) (types.FancyId, error) {
 		return types.FancyId{}, fmt.Errorf("Invalid session: %v", err)
 	}
 
-	return types.FancyId{Id: id}, nil
+	session := types.FancyId{Id: id}
+	s, ok := sessions[session]
+	if !ok {
+		return types.FancyId{}, fmt.Errorf("No such session")
+	}
+
+	cookie, err := r.Cookie("SessionAuth")
+	if err != nil {
+		return types.FancyId{}, fmt.Errorf("No SessionAuth cookie set")
+	}
+	if cookie.Value != s.Auth {
+		return types.FancyId{}, fmt.Errorf("Invalid SessionAuth cookie")
+	}
+
+	return session, nil
 }
 
 // handlePostMessage is called by the fancyproxy whenever a message should be
@@ -102,14 +116,7 @@ func handleJoin(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Adding peer %q to the network.\n", req.Addr)
 
-	a, err := net.ResolveTCPAddr("tcp", req.Addr)
-	if err != nil {
-		log.Printf("Could not resolve addr %q: %v\n", req.Addr, err)
-		http.Error(w, "Could not resolve your address", 400)
-		return
-	}
-
-	if err := node.AddPeer(a).Error(); err != nil {
+	if err := node.AddPeer(&dnsAddr{req.Addr}).Error(); err != nil {
 		log.Println("Could not add peer:", err)
 		http.Error(w, "Could not add peer", 500)
 		return
@@ -174,7 +181,13 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleCreateSession(w http.ResponseWriter, r *http.Request) {
-	msg := types.NewFancyMessage(types.FancyCreateSession, types.FancyId{}, "")
+	b := make([]byte, 128)
+	if _, err := rand.Read(b); err != nil {
+		http.Error(w, fmt.Sprintf("Cannot generate SessionAuth cookie: %v", err), http.StatusInternalServerError)
+		return
+	}
+	sessionauth := fmt.Sprintf("%x", b)
+	msg := types.NewFancyMessage(types.FancyCreateSession, types.FancyId{}, sessionauth)
 	// Cannot fail, no user input.
 	msgbytes, _ := json.Marshal(msg)
 
@@ -182,6 +195,7 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if err := f.Error(); err != nil {
 		if err == raft.ErrNotLeader {
 			redirectToLeader(w, r)
+			return
 		}
 		http.Error(w, fmt.Sprintf("Apply(): %v", err), http.StatusInternalServerError)
 		return
@@ -190,6 +204,16 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	sessionid := fmt.Sprintf("0x%x", msg.Id.Id)
 
 	w.Header().Set("Content-Type", "application/json")
+	http.SetCookie(w, &http.Cookie{
+		Name:  "SessionAuth",
+		Value: sessionauth,
+		Path:  "/",
+		// TODO(secure): make this configurable? we also need to make sure we use DNS names instead of ip:port pairs
+		Domain:   "twice-irc.de",
+		Expires:  time.Now().Add(50 * 365 * 24 * time.Hour),
+		Secure:   true,
+		HttpOnly: true,
+	})
 
 	type createSessionReply struct {
 		Sessionid string
