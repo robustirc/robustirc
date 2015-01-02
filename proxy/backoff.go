@@ -57,7 +57,7 @@ func serverFailed(host string) {
 
 // getMessages (blockingly) tries to connect to a server until it gets a
 // successful GetMessages response.
-func getMessages(logPrefix, session string, lastSeen types.FancyId) (string, *http.Response) {
+func getMessages(logPrefix string, httpClient http.Client, session string, lastSeen types.FancyId) (string, *http.Response) {
 	for {
 		var (
 			candidate string

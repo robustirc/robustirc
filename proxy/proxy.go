@@ -40,7 +40,6 @@ var (
 	serversMu     sync.RWMutex
 	currentMaster string
 	allServers    []string
-	httpClient    http.Client
 )
 
 const (
@@ -62,7 +61,7 @@ func servers() []string {
 	return append([]string{currentMaster}, allServers...)
 }
 
-func sendFancyMessage(logPrefix, method string, targets []string, path string, data []byte) (*http.Response, error) {
+func sendFancyMessage(logPrefix string, httpClient http.Client, method string, targets []string, path string, data []byte) (*http.Response, error) {
 	var (
 		resp   *http.Response
 		target string
@@ -144,9 +143,9 @@ func sendIRCMessage(logPrefix string, ircConn *irc.Conn, msg irc.Message) {
 	log.Printf("%s ->irc: %q\n", logPrefix, msg.Bytes())
 }
 
-func createFancySession(logPrefix string) (session string, prefix irc.Prefix, err error) {
+func createFancySession(logPrefix string, httpClient http.Client) (session string, prefix irc.Prefix, err error) {
 	var resp *http.Response
-	resp, err = sendFancyMessage(logPrefix, "POST", servers(), pathCreateSession, []byte{})
+	resp, err = sendFancyMessage(logPrefix, httpClient, "POST", servers(), pathCreateSession, []byte{})
 	if err != nil {
 		return
 	}
@@ -168,7 +167,7 @@ func createFancySession(logPrefix string) (session string, prefix irc.Prefix, er
 	return
 }
 
-func deleteFancySession(logPrefix, session, quitmsg string) error {
+func deleteFancySession(logPrefix string, httpClient http.Client, session string, quitmsg string) error {
 	type deleteSessionRequest struct {
 		Quitmessage string
 	}
@@ -176,7 +175,7 @@ func deleteFancySession(logPrefix, session, quitmsg string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := sendFancyMessage(logPrefix, "DELETE", servers(), fmt.Sprintf(pathDeleteSession, session), b)
+	resp, err := sendFancyMessage(logPrefix, httpClient, "DELETE", servers(), fmt.Sprintf(pathDeleteSession, session), b)
 	if err != nil {
 		return err
 	}
@@ -196,15 +195,23 @@ func handleIRC(conn net.Conn) {
 		fancyMessages   = make(chan string)
 		stopGetMessages = make(chan bool)
 
-		ircPrefix irc.Prefix
-		session   string
-		quitmsg   string
-		done      bool
-		pingSent  bool
-		err       error
+		ircPrefix  irc.Prefix
+		httpClient http.Client
+		session    string
+		quitmsg    string
+		done       bool
+		pingSent   bool
+		err        error
 	)
 
-	session, ircPrefix, err = createFancySession(logPrefix)
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	httpClient = http.Client{Jar: jar}
+
+	session, ircPrefix, err = createFancySession(logPrefix, httpClient)
 	if err != nil {
 		log.Printf("%s Could not create fancyirc session: %v\n", logPrefix, err)
 		sendIRCMessage(logPrefix, ircConn, irc.Message{
@@ -232,7 +239,7 @@ func handleIRC(conn net.Conn) {
 		var lastSeen types.FancyId
 
 		for !done {
-			host, resp := getMessages(logPrefix, session, lastSeen)
+			host, resp := getMessages(logPrefix, httpClient, session, lastSeen)
 
 			// We set the host as currentMaster, not because the host is the
 			// master, but because it is reachable. When sending messages, we will
@@ -301,7 +308,7 @@ func handleIRC(conn net.Conn) {
 		for _ = range fancyMessages {
 		}
 
-		if err := deleteFancySession(logPrefix, session, quitmsg); err != nil {
+		if err := deleteFancySession(logPrefix, httpClient, session, quitmsg); err != nil {
 			log.Printf("%s Could not delete session: %v\n", logPrefix, err)
 		}
 	}()
@@ -349,7 +356,7 @@ func handleIRC(conn net.Conn) {
 				quitmsg = message.Trailing
 				ircConn.Close()
 			default:
-				resp, err := sendFancyMessage(logPrefix, "POST", servers(), fmt.Sprintf(pathPostMessage, session), message.Bytes())
+				resp, err := sendFancyMessage(logPrefix, httpClient, "POST", servers(), fmt.Sprintf(pathPostMessage, session), message.Bytes())
 				if err != nil {
 					// TODO(secure): what should we do here?
 					log.Printf("message could not be sent: %v\n", err)
@@ -371,13 +378,6 @@ func main() {
 		log.Fatalf("Invalid -servers value (%q). Need at least one server.\n", *serversList)
 	}
 	currentMaster = allServers[0]
-
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	httpClient = http.Client{Jar: jar}
 
 	ln, err := net.Listen("tcp", *listen)
 	if err != nil {
