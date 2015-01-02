@@ -1,3 +1,10 @@
+// proxy bridges between IRC clients (RFC1459) and fancyirc servers.
+//
+// Proxy instances are supposed to be long-running, and ideally as close to the
+// IRC client as possible, e.g. on the same machine. When running on the same
+// machine, there should not be any network problems between the IRC client and
+// the proxy. Network problems between the proxy and a fancyirc network are
+// handled transparently.
 package main
 
 import (
