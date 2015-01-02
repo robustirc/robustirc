@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"fancyirc/ircserver"
+	"fancyirc/raft_logstore"
 	"fancyirc/types"
 
 	"github.com/gorilla/mux"
@@ -35,12 +36,12 @@ var (
 
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
-	logStore  *fancyLogStore
+	logStore  *raft_logstore.FancyLogStore
 )
 
 type fancySnapshot struct {
 	indexes []uint64
-	store   *fancyLogStore
+	store   *raft_logstore.FancyLogStore
 }
 
 func (s *fancySnapshot) Persist(sink raft.SnapshotSink) error {
@@ -65,7 +66,7 @@ func (s *fancySnapshot) Release() {
 }
 
 type FSM struct {
-	store *fancyLogStore
+	store *raft_logstore.FancyLogStore
 }
 
 func (fsm *FSM) Apply(l *raft.Log) interface{} {
@@ -248,7 +249,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	logStore = &fancyLogStore{}
+	logStore = &raft_logstore.FancyLogStore{Dir: *raftDir}
 	stablestore := &fancyStableStore{}
 	fsm := &FSM{logStore}
 
