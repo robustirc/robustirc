@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"fancyirc/ircserver"
 	"fancyirc/types"
 
 	"github.com/gorilla/mux"
@@ -38,7 +39,7 @@ func sessionForRequest(r *http.Request) (types.FancyId, error) {
 	}
 
 	session := types.FancyId{Id: id}
-	s, ok := sessions[session]
+	s, ok := ircserver.GetSession(session)
 	if !ok {
 		return types.FancyId{}, fmt.Errorf("No such session")
 	}
@@ -143,10 +144,12 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 		lastSeen = ""
 	}
 
+	s, _ := ircserver.GetSession(session)
+
 	enc := json.NewEncoder(w)
-	for idx := sessions[session].StartIdx; ; idx++ {
-		msg := GetMessage(idx)
-		s, ok := sessions[session]
+	for idx := s.StartIdx; ; idx++ {
+		msg := ircserver.GetMessage(idx)
+		s, ok := ircserver.GetSession(session)
 		if !ok {
 			// Session was deleted in the meanwhile.
 			break
@@ -163,7 +166,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		interested := s.interestedIn(msg)
+		interested := s.InterestedIn(msg)
 		log.Printf("[DEBUG] Checking whether %+v is interested in %+v --> %v\n", s, msg, interested)
 		if !interested {
 			continue
@@ -220,7 +223,7 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		Prefix    string
 	}
 
-	if err := json.NewEncoder(w).Encode(createSessionReply{sessionid, *network}); err != nil {
+	if err := json.NewEncoder(w).Encode(createSessionReply{sessionid, ircserver.GetPrefix()}); err != nil {
 		log.Printf("Could not send /session reply: %v\n", err)
 	}
 }

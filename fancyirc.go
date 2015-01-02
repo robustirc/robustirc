@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"fancyirc/ircserver"
 	"fancyirc/types"
 
 	"github.com/gorilla/mux"
@@ -29,7 +30,6 @@ var (
 	singleNode  = flag.Bool("singlenode", false, "set to true iff starting the first node for the first time")
 	listen      = flag.String("listen", ":8000", "")
 	join        = flag.String("join", "", "raft master to join")
-	network     = flag.String("network", "fancy.twice-irc.de", "Name of the network. Ideally also a DNS name pointing to one or more servers.")
 	tlsCertPath = flag.String("tls_cert_path", "", "Path to a .pem file containing the public key.")
 	tlsKeyPath  = flag.String("tls_key_path", "", "Path to a .pem file containing the private key.")
 
@@ -79,20 +79,16 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 
 	switch msg.Type {
 	case types.FancyCreateSession:
-		sessions[msg.Id] = &Session{
-			Id:       msg.Id,
-			Auth:     msg.Data,
-			StartIdx: CurrentIdx(),
-			Channels: make(map[string]bool),
-		}
-		log.Printf("sessions now: %+v\n", sessions)
+		ircserver.CreateSession(msg.Id, msg.Data)
 
 	case types.FancyDeleteSession:
-		processMessage(msg.Session, msg.Id.Id, irc.ParseMessage("QUIT :"+string(msg.Data)))
-		delete(sessions, msg.Session)
+		replies := ircserver.ProcessMessage(msg.Session, irc.ParseMessage("QUIT :"+string(msg.Data)))
+		ircserver.SendMessages(replies, msg.Session, msg.Id.Id)
+		ircserver.DeleteSession(msg.Session)
 
 	case types.FancyIRCFromClient:
-		processMessage(msg.Session, msg.Id.Id, irc.ParseMessage(string(msg.Data)))
+		replies := ircserver.ProcessMessage(msg.Session, irc.ParseMessage(string(msg.Data)))
+		ircserver.SendMessages(replies, msg.Session, msg.Id.Id)
 	}
 
 	return nil
@@ -311,6 +307,6 @@ func main() {
 		if err != nil {
 			log.Fatalf("Could not get peers: %v (Peer file corrupted on disk?)\n", err)
 		}
-		SendPing(node.Leader(), peers)
+		ircserver.SendPing(node.Leader(), peers)
 	}
 }

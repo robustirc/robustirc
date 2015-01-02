@@ -1,7 +1,8 @@
 // ircserver is the entry point for all IRC-related logic.
-package main
+package ircserver
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -20,6 +21,8 @@ var (
 	ircOutputMu sync.Mutex
 	ircOutput   []types.FancyMessage
 	newMessage  = sync.NewCond(&sync.Mutex{})
+
+	network = flag.String("network", "fancy.twice-irc.de", "Name of the network. Ideally also a DNS name pointing to one or more servers.")
 )
 
 type Session struct {
@@ -46,7 +49,7 @@ func (s *Session) ircPrefix() *irc.Prefix {
 	}
 }
 
-func (s *Session) interestedIn(msg *types.FancyMessage) bool {
+func (s *Session) InterestedIn(msg *types.FancyMessage) bool {
 	if msg.Type == types.FancyPing {
 		return true
 	}
@@ -79,9 +82,23 @@ func (s *Session) interestedIn(msg *types.FancyMessage) bool {
 	}
 }
 
-// processMessage modifies state in response to 'message' and returns zero or
+// CreateSession creates a new session (equivalent to an IRC connection).
+func CreateSession(id types.FancyId, auth string) {
+	sessions[id] = &Session{
+		Id:       id,
+		Auth:     auth,
+		StartIdx: len(ircOutput),
+		Channels: make(map[string]bool),
+	}
+}
+
+func DeleteSession(id types.FancyId) {
+	delete(sessions, id)
+}
+
+// ProcessMessage modifies state in response to 'message' and returns zero or
 // more IRC messages in response to 'message'.
-func processMessage(session types.FancyId, id int64, message *irc.Message) {
+func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 	var replies []irc.Message
 
 	// alias for convenience
@@ -89,7 +106,7 @@ func processMessage(session types.FancyId, id int64, message *irc.Message) {
 
 	if !s.loggedIn() && message.Command != irc.NICK {
 		log.Printf("Ignoring line %q, user not logged in\n", message.Bytes())
-		return
+		return replies
 	}
 
 	switch message.Command {
@@ -262,6 +279,10 @@ func processMessage(session types.FancyId, id int64, message *irc.Message) {
 		})
 	}
 
+	return replies
+}
+
+func SendMessages(replies []irc.Message, session types.FancyId, id int64) {
 	ircOutputMu.Lock()
 	defer ircOutputMu.Unlock()
 	for idx, reply := range replies {
@@ -306,6 +327,11 @@ func GetMessage(idx int) *types.FancyMessage {
 	return &ircOutput[idx]
 }
 
-func CurrentIdx() int {
-	return len(ircOutput)
+func GetSession(id types.FancyId) (*Session, bool) {
+	s, ok := sessions[id]
+	return s, ok
+}
+
+func GetPrefix() string {
+	return *network
 }
