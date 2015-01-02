@@ -82,46 +82,38 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request) {
 	w.Write(msgbytes)
 }
 
-func handleJoin(res http.ResponseWriter, req *http.Request) {
-	log.Println("Join request from", req.RemoteAddr)
+func handleJoin(w http.ResponseWriter, r *http.Request) {
+	log.Println("Join request from", r.RemoteAddr)
 	if node.State() != raft.Leader {
-		log.Println("rejecting join request, I am not the leader")
-		http.Redirect(res, req, fmt.Sprintf("http://%s/join", node.Leader()), 307)
-		return
-	}
-
-	data, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		log.Println("Could not read body:", err)
+		redirectToLeader(w, r)
 		return
 	}
 
 	type joinRequest struct {
 		Addr string
 	}
-	var r joinRequest
+	var req joinRequest
 
-	if err = json.Unmarshal(data, &r); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Println("Could not decode request:", err)
-		http.Error(res, fmt.Sprintf("Could not decode your request"), 400)
+		http.Error(w, fmt.Sprintf("Could not decode your request"), 400)
 		return
 	}
 
-	log.Printf("Joining peer: %q\n", r.Addr)
+	log.Printf("Adding peer %q to the network.\n", req.Addr)
 
-	a, err := net.ResolveTCPAddr("tcp", r.Addr)
+	a, err := net.ResolveTCPAddr("tcp", req.Addr)
 	if err != nil {
-		log.Printf("Could not resolve addr %q: %v\n", r.Addr, err)
-		http.Error(res, "Could not resolve your address", 400)
+		log.Printf("Could not resolve addr %q: %v\n", req.Addr, err)
+		http.Error(w, "Could not resolve your address", 400)
 		return
 	}
 
-	if err = node.AddPeer(a).Error(); err != nil {
+	if err := node.AddPeer(a).Error(); err != nil {
 		log.Println("Could not add peer:", err)
-		http.Error(res, "Could not add peer", 500)
+		http.Error(w, "Could not add peer", 500)
 		return
 	}
-	res.WriteHeader(200)
 }
 
 func handleSnapshot(res http.ResponseWriter, req *http.Request) {
