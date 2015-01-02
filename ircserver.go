@@ -55,6 +55,8 @@ func (s *Session) interestedIn(msg *types.FancyMessage) bool {
 		return s.Channels[ircmsg.Trailing]
 	case irc.PRIVMSG:
 		return *s.ircPrefix() != *ircmsg.Prefix && s.Channels[ircmsg.Params[0]]
+	case irc.MODE:
+		return ircmsg.Params[0] == s.Nick || s.Channels[ircmsg.Params[0]]
 	default:
 		return false
 	}
@@ -73,9 +75,10 @@ func processMessage(session types.FancyId, message *irc.Message) {
 		oldPrefix := s.ircPrefix()
 		s.Nick = message.Params[0]
 		// TODO(secure): when connecting, handle nickname already in use.
+		// :ridcully.twice-irc.de 433 * secure :Nickname is already in use.
 		// TODO(secure): handle nickname already in use.
 		log.Printf("nickname now: %+v\n", s)
-		if !strings.HasPrefix(oldPrefix.String(), ":!") {
+		if !strings.HasPrefix(oldPrefix.String(), "!") {
 			replies = append(replies, irc.Message{
 				Prefix:   oldPrefix,
 				Command:  irc.NICK,
@@ -134,6 +137,65 @@ func processMessage(session types.FancyId, message *irc.Message) {
 			Command:  irc.PRIVMSG,
 			Params:   []string{message.Params[0]},
 			Trailing: message.Trailing,
+		})
+
+	case irc.MODE:
+		channel := message.Params[0]
+		// TODO(secure): properly distinguish between users and channels
+		if s.Channels[channel] {
+			if len(message.Params) > 1 && message.Params[1] == "b" {
+				replies = append(replies, irc.Message{
+					Prefix:   &irc.Prefix{Name: *network},
+					Command:  irc.RPL_ENDOFBANLIST,
+					Params:   []string{s.Nick, channel},
+					Trailing: "End of Channel Ban List",
+				})
+			} else {
+				replies = append(replies, irc.Message{
+					Prefix:  &irc.Prefix{Name: *network},
+					Command: irc.RPL_CHANNELMODEIS,
+					Params:  []string{s.Nick, channel, "+"},
+				})
+			}
+		} else {
+			if channel == s.Nick {
+				replies = append(replies, irc.Message{
+					Prefix:   s.ircPrefix(),
+					Command:  irc.MODE,
+					Params:   []string{s.Nick},
+					Trailing: "+",
+				})
+			} else {
+				replies = append(replies, irc.Message{
+					Prefix:   &irc.Prefix{Name: *network},
+					Command:  irc.ERR_NOTONCHANNEL,
+					Params:   []string{s.Nick, channel},
+					Trailing: "You're not on that channel",
+				})
+			}
+		}
+
+	case irc.WHO:
+		channel := message.Params[0]
+		// TODO(secure): a separate map for quick lookup may be worthwhile for big channels.
+		for _, session := range sessions {
+			if !session.Channels[channel] {
+				continue
+			}
+			prefix := session.ircPrefix()
+			replies = append(replies, irc.Message{
+				Prefix:   &irc.Prefix{Name: *network},
+				Command:  irc.RPL_WHOREPLY,
+				Params:   []string{s.Nick, channel, prefix.User, prefix.Host, *network, prefix.Name, "H"},
+				Trailing: "0 Unknown",
+			})
+		}
+
+		replies = append(replies, irc.Message{
+			Prefix:   &irc.Prefix{Name: *network},
+			Command:  irc.RPL_ENDOFWHO,
+			Params:   []string{s.Nick, channel},
+			Trailing: "End of /WHO list",
 		})
 	}
 
