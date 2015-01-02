@@ -166,20 +166,7 @@ func handleIRC(conn net.Conn) {
 		var lastSeen types.FancyId
 
 		for !done {
-			host := allServers[rand.Intn(len(allServers))]
-			// TODO(secure): exponential backoff in a per-server fashion
-			log.Printf("%s Connecting to %q...\n", logPrefix, host)
-			hostUrl := fmt.Sprintf("http://%s"+pathGetMessages, host, session, lastSeen)
-			resp, err := http.Get(hostUrl)
-			if err != nil {
-				log.Printf("%s HTTP GET %q failed: %v\n", logPrefix, hostUrl, err)
-				continue
-			}
-
-			if resp.StatusCode != 200 {
-				log.Printf("%s Received unexpected status code from %q: %v\n", logPrefix, host, resp.Status)
-				continue
-			}
+			host, resp := getMessages(logPrefix, session, lastSeen)
 
 			// We set the host as currentMaster, not because the host is the
 			// master, but because it is reachable. When sending messages, we will
