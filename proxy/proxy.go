@@ -40,9 +40,8 @@ const (
 )
 
 // TODO(secure): persistent state:
-// - the follow targets (channels)
 // - the last known server(s) in the network. added to *servers
-// - the last seen message id
+// - for resuming sessions (later): the last seen message id, perhaps setup messages (JOINs, MODEs, …)
 // for hosted mode, this state is stored per-nickname, ideally encrypted with password
 
 func sendFancyMessage(logPrefix, target, path string, data []byte) (*http.Response, error) {
@@ -163,7 +162,6 @@ func handleIRC(conn net.Conn) {
 			host := allServers[rand.Intn(len(allServers))]
 			// TODO(secure): exponential backoff in a per-server fashion
 			log.Printf("%s Connecting to %q...\n", logPrefix, host)
-			// TODO(secure): build targets (= filters) and add them to the url
 			hostUrl := fmt.Sprintf("http://%s"+pathGetMessages, host, session, lastSeen)
 			resp, err := http.Get(hostUrl)
 			if err != nil {
@@ -254,21 +252,6 @@ func handleIRC(conn net.Conn) {
 			case irc.QUIT:
 				quitmsg = message.Trailing
 			default:
-				//case irc.NICK:
-				//	log.Printf("requested nickname is %q\n", message.Params[0])
-				//	nick = message.Params[0]
-				//	// TODO(secure): this needs to create a session on the IRC server.
-				//	// TODO(secure): figure out whether we want to have at most 1 irc connection per nickname/session.
-				//case irc.USER:
-				//	// TODO(secure): the irc server, not the proxy, is supposed to send these messages
-				//	// TODO(secure): send 002, 003, 004, 005, 251, 252, 254, 255, 265, 266, [motd = 375, 372, 376]
-				//	reply(irc.Message{
-				//		Command:  irc.RPL_WELCOME,
-				//		Params:   []string{nick},
-				//		Trailing: "Welcome to fancyirc :)",
-				//	})
-				//case irc.PRIVMSG:
-				// TODO: we need to associate a session with this.
 				if _, err := sendFancyMessage(logPrefix, currentMaster, fmt.Sprintf(pathPostMessage, session), message.Bytes()); err != nil {
 					// TODO(secure): what should we do here?
 					log.Printf("message could not be sent: %v\n", err)
