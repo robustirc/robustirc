@@ -53,6 +53,8 @@ func (s *Session) interestedIn(msg *types.FancyMessage) bool {
 		return true
 	case irc.JOIN:
 		return s.Channels[ircmsg.Trailing]
+	case irc.PART:
+		return *s.ircPrefix() == *ircmsg.Prefix || s.Channels[ircmsg.Params[0]]
 	case irc.PRIVMSG:
 		return *s.ircPrefix() != *ircmsg.Prefix && s.Channels[ircmsg.Params[0]]
 	case irc.MODE:
@@ -129,6 +131,16 @@ func processMessage(session types.FancyId, message *irc.Message) {
 			Command:  irc.RPL_ENDOFNAMES,
 			Params:   []string{s.Nick, channel},
 			Trailing: "End of /NAMES list.",
+		})
+
+	case irc.PART:
+		// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
+		channel := message.Params[0]
+		s.Channels[channel] = false
+		replies = append(replies, irc.Message{
+			Prefix:  s.ircPrefix(),
+			Command: irc.PART,
+			Params:  []string{channel},
 		})
 
 	case irc.PRIVMSG:
