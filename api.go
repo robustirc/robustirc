@@ -18,6 +18,21 @@ import (
 	"github.com/hashicorp/raft"
 )
 
+var (
+	GetMessageRequests = make(map[string]GetMessageStats)
+)
+
+type GetMessageStats struct {
+	Session types.FancyId
+	Nick    string
+	Started time.Time
+}
+
+func (stats GetMessageStats) StartedAndRelative() string {
+	return stats.Started.Format("2006-01-02 15:04:05 -07:00") + " (" +
+		time.Now().Round(time.Second).Sub(stats.Started.Round(time.Second)).String() + " ago)"
+}
+
 func redirectToLeader(w http.ResponseWriter, r *http.Request) {
 	leader := node.Leader()
 	if leader == nil {
@@ -139,9 +154,17 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: register in stats that we are sending
-
 	s, _ := ircserver.GetSession(session)
+
+	remoteAddr := r.RemoteAddr
+	GetMessageRequests[remoteAddr] = GetMessageStats{
+		Session: session,
+		Nick:    s.Nick,
+		Started: time.Now(),
+	}
+	defer func() {
+		delete(GetMessageRequests, remoteAddr)
+	}()
 
 	lastSeen := s.StartId
 	lastSeenStr := r.FormValue("lastseen")

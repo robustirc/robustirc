@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	sessions = make(map[types.FancyId]*Session)
+	Sessions = make(map[types.FancyId]*Session)
 
 	ircOutputMu sync.Mutex
 	ircOutput   []types.FancyMessage
@@ -64,7 +64,7 @@ func (s *Session) InterestedIn(msg *types.FancyMessage) bool {
 	case irc.QUIT:
 		fallthrough
 	case irc.NICK:
-		// TODO(secure): does it make sense to restrict this to sessions which
+		// TODO(secure): does it make sense to restrict this to Sessions which
 		// have a channel in common? noting this because it doesn’t handle the
 		// query-only use-case. if there’s no downside (except for the privacy
 		// aspect), perhaps leave it as-is?
@@ -83,7 +83,7 @@ func (s *Session) InterestedIn(msg *types.FancyMessage) bool {
 }
 
 func ClearState() {
-	sessions = make(map[types.FancyId]*Session)
+	Sessions = make(map[types.FancyId]*Session)
 	idToIdx = make(map[types.FancyId]int)
 	idToIdx[types.FancyId{}] = -1
 }
@@ -94,7 +94,7 @@ func CreateSession(id types.FancyId, auth string) {
 	if len(ircOutput) > 0 {
 		lastSeen = ircOutput[len(ircOutput)-1].Id
 	}
-	sessions[id] = &Session{
+	Sessions[id] = &Session{
 		Id:       id,
 		Auth:     auth,
 		StartId:  lastSeen,
@@ -103,7 +103,7 @@ func CreateSession(id types.FancyId, auth string) {
 }
 
 func DeleteSession(id types.FancyId) {
-	delete(sessions, id)
+	delete(Sessions, id)
 }
 
 // ProcessMessage modifies state in response to 'message' and returns zero or
@@ -112,7 +112,7 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 	var replies []irc.Message
 
 	// alias for convenience
-	s := sessions[session]
+	s := Sessions[session]
 
 	if !s.loggedIn() && message.Command != irc.NICK {
 		log.Printf("Ignoring line %q, user not logged in\n", message.Bytes())
@@ -131,7 +131,7 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 			break
 		}
 		inuse := false
-		for _, session := range sessions {
+		for _, session := range Sessions {
 			if strings.ToLower(session.Nick) == strings.ToLower(message.Params[0]) {
 				inuse = true
 				break
@@ -174,7 +174,7 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 		s.Channels[channel] = true
 		var nicks []string
 		// TODO(secure): a separate map for quick lookup may be worthwhile for big channels.
-		for _, session := range sessions {
+		for _, session := range Sessions {
 			if !session.Channels[channel] {
 				continue
 			}
@@ -268,7 +268,7 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 	case irc.WHO:
 		channel := message.Params[0]
 		// TODO(secure): a separate map for quick lookup may be worthwhile for big channels.
-		for _, session := range sessions {
+		for _, session := range Sessions {
 			if !session.Channels[channel] {
 				continue
 			}
@@ -327,6 +327,14 @@ func SendPing(master net.Addr, peers []net.Addr) {
 	newMessage.Broadcast()
 }
 
+func GetMessageNonBlocking(lastseen types.FancyId) *types.FancyMessage {
+	idx, _ := idToIdx[lastseen]
+	if idx+1 >= len(ircOutput) {
+		return nil
+	}
+	return &ircOutput[idx+1]
+}
+
 // GetMessage returns the IRC message with index 'idx', possibly blocking until
 // that message appears.
 func GetMessage(lastseen types.FancyId) *types.FancyMessage {
@@ -343,7 +351,7 @@ func GetMessage(lastseen types.FancyId) *types.FancyMessage {
 }
 
 func GetSession(id types.FancyId) (*Session, bool) {
-	s, ok := sessions[id]
+	s, ok := Sessions[id]
 	return s, ok
 }
 

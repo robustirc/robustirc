@@ -1,10 +1,15 @@
 package main
 
 import (
+	"fmt"
 	"html/template"
 	"log"
 	"net"
 	"net/http"
+	"strconv"
+
+	"fancyirc/ircserver"
+	"fancyirc/types"
 
 	"github.com/hashicorp/raft"
 )
@@ -12,46 +17,171 @@ import (
 var statusTpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
 <html>
 	<head>
-		<title>Status of fancyirc node {{ .Addr }}</title>
-		<style>
-			th {
-				text-align: left;
-				padding: 0.2em;
-			}
-		</style>
+		<title>Status of RobustIRC node {{ .Addr }}</title>
+		<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap.min.css">
 	</head>
 	<body>
-		<h1>Status of fancyirc node {{ .Addr }}</h1>
-		<table>
-			<tr>
-				<th>State</th>
-				<td>{{ .State }}</dd>
-			</tr>
-			<tr>
-				<th>Current Leader</th>
-				<td>{{ .Leader }}</td>
-			</tr>
-			<tr>
-				<th>Peers</th>
-				<td>{{ .Peers }}</td>
-			</tr>
-		</table>
-		<h2>Log</h2>
-		<p>Entries {{ .First }} through {{ .Last }}</p>
-		<ul>
-		{{ range .Entries }}
-			<li>idx={{ .Index }} term={{ .Term }} type={{ .Type }} data={{ .Data }}<br><code>str={{ .Data | printf "%s"}}</code></li>
-		{{ end }}
-		</ul>
-		<h2>Stats</h2>
-		<table>
-		{{ range $key, $val := .Stats }}
-			<tr>
-				<th>{{ $key }}</th>
-				<td>{{ $val }}</td>
-			</tr>
-		{{ end }}
-		</table>
+		<div class="container">
+			<div class="page-header">
+				<h1>RobustIRC status <small>{{ .Addr }}</small></h1>
+			</div>
+
+			<div class="row">
+				<div class="col-sm-6">
+					<h2>Node status</h2>
+					<table class="table">
+						<tbody>
+							<tr>
+								<th>State</th>
+								<td>{{ .State }}</td>
+							</tr>
+							<tr>
+								<th>Leader</th>
+								<td><a href="https://{{ .Leader }}">{{ .Leader }}</a></td>
+							</tr>
+							<tr>
+								<td class="col-sm-2 field-label"><label>Peers:</label></td>
+								<td class="col-sm-10"><ul class="list-unstyled">
+								{{ range .Peers }}
+									<li><a href="https://{{ . }}">{{ . }}</a></li>
+								{{ end }}
+								</ul></td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+
+				<div class="col-sm-6">
+					<h2>Raft Stats</h2>
+					<table class="table table-condensed table-striped">
+					{{ range $key, $val := .Stats }}
+						<tr>
+							<th>{{ $key }}</th>
+							<td>{{ $val }}</td>
+						</tr>
+					{{ end }}
+					</table>
+				</div>
+			</div>
+
+			<div class="row">
+				<h2>Active GetMessage requests <span class="badge" style="vertical-align: middle">{{ .GetMessageRequests | len }}</span></h2>
+				<table class="table table-striped">
+					<thead>
+						<tr>
+							<th>Session ID</th>
+							<th>Nick</th>
+							<th>RemoteAddr</th>
+							<th>Started</th>
+						</tr>
+					</thead>
+					<tbody>
+					{{ range $key, $val := .GetMessageRequests }}
+						<tr>
+							<td><code>{{ $val.Session.Id | printf "0x%x" }}</code></td>
+							<td>{{ $val.Nick }}</td>
+							<td>{{ $key }}</td>
+							<td>{{ $val.StartedAndRelative }}</td>
+						</tr>
+					{{ end }}
+					</tbody>
+				</table>
+			</div>
+
+			<div class="row">
+				<h2>Active Sessions <span class="badge" style="vertical-align: middle">{{ .Sessions | len }}</span></h2>
+				<table class="table table-striped">
+					<thead>
+						<tr>
+							<th></th>
+							<th>Session ID</th>
+							<th>Nick</th>
+							<th>Channels</th>
+						</tr>
+					</thead>
+					<tbody>
+						{{ range .Sessions }}
+						<tr>
+							<td class="col-sm-1" style="text-align: center"><a href="/irclog?sessionid={{ .Id.Id | printf "0x%x" }}"><span class="glyphicon glyphicon-list"></span></a></td>
+							<td class="col-sm-2"><code>{{ .Id.Id | printf "0x%x" }}</code></td>
+							<td class="col-sm-2">{{ .Nick }}</td>
+							<td class="col-sm-7">
+							{{ range $key, $val := .Channels }}
+							{{ $key }},
+							{{ end }}
+							</td>
+						</tr>
+						{{ end }}
+					</tbody>
+				</table>
+			</div>
+
+			<div class="row">
+				<h2>Raft Log Entries (index={{ .First }} to index={{ .Last}})</h2>
+				<table class="table table-striped">
+					<thead>
+						<tr>
+							<th>Index</th>
+							<th>Term</th>
+							<th>Type</th>
+							<th>Data</th>
+						</tr>
+					</thead>
+					<tbody>
+					{{ range .Entries }}
+						<tr>
+							<td class="col-sm-1">{{ .Index }}</td>
+							<td class="col-sm-1">{{ .Term }}</td>
+							<td class="col-sm-1">{{ .Type }}</td>
+							<td class="col-sm-8"><code>{{ .Data | printf "%s" }}</code></td>
+						</tr>
+					{{ end }}
+					</tbody>
+                </table>
+			</div>
+		</div>
+	</body>
+</html>`))
+
+var irclogTpl = template.Must(template.New("irclog").Parse(`<!DOCTYPE html>
+<html>
+	<head>
+		<title>IRC log</title>
+		<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap.min.css">
+	</head>
+	<body>
+		<div class="container-fluid">
+			<div class="page-header">
+				<h1>IRC log <small>{{ .Session.Id | printf "0x%x" }}</small></h1>
+			</div>
+
+			<div class="row">
+				<table class="table table-striped table-condensed">
+					<thead>
+						<tr>
+							<th>Message ID</th>
+							<th>Time</th>
+							<th>Text</th>
+						</tr>
+					</thead>
+					<tbody>
+						{{ range .Messages }}
+						<tr>
+							<td class="col-sm-2"><code>{{ .Id.Id }}.{{ .Id.Reply }}</code></td>
+							<td class="col-sm-3">{{ .Timestamp }}</td>
+							<td class="col-sm-7">
+							{{ if eq .Id.Reply 0 }}
+							<span class="glyphicon glyphicon-arrow-right"></span>
+							{{ else }}
+							<span class="glyphicon glyphicon-arrow-left"></span>
+							{{ end }}
+							<samp>{{ .PrivacyFilter }}</samp></td>
+						</tr>
+						{{ end }}
+					</tbody>
+				</table>
+			</div>
+		</div>
 	</body>
 </html>`))
 
@@ -86,14 +216,16 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 	}
 
 	args := struct {
-		Addr    string
-		State   raft.RaftState
-		Leader  net.Addr
-		Peers   []net.Addr
-		First   uint64
-		Last    uint64
-		Entries []*raft.Log
-		Stats   map[string]string
+		Addr               string
+		State              raft.RaftState
+		Leader             net.Addr
+		Peers              []net.Addr
+		First              uint64
+		Last               uint64
+		Entries            []*raft.Log
+		Stats              map[string]string
+		Sessions           map[types.FancyId]*ircserver.Session
+		GetMessageRequests map[string]GetMessageStats
 	}{
 		*listen,
 		node.State(),
@@ -103,7 +235,82 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		hi,
 		entries,
 		node.Stats(),
+		ircserver.Sessions,
+		GetMessageRequests,
 	}
 
 	statusTpl.Execute(res, args)
+}
+
+func handleIrclog(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.FormValue("sessionid"), 0, 64)
+	if err != nil || id == 0 {
+		http.Error(w, "Invalid session", http.StatusBadRequest)
+		return
+	}
+
+	session := types.FancyId{Id: id}
+
+	s, ok := ircserver.GetSession(session)
+	if !ok {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	// TODO(secure): pagination
+
+	lastSeen := s.StartId
+	var messages []*types.FancyMessage
+	// XXX: The following code is pretty horrible. It iterates through _all_
+	// log messages to create a map from id to decoded message, in order to add
+	// them to the messages slice in the second loop. We should come up with a
+	// better way that is lighter on resources. Perhaps store the processed
+	// indexes in the session?
+	inputs := make(map[types.FancyId]*types.FancyMessage)
+	first, _ := logStore.FirstIndex()
+	last, _ := logStore.LastIndex()
+	for idx := first; idx <= last; idx++ {
+		var elog raft.Log
+
+		if err := logStore.GetLog(idx, &elog); err != nil {
+			http.Error(w, fmt.Sprintf("Cannot read log: %v", err), http.StatusInternalServerError)
+			return
+		}
+		if elog.Type != raft.LogCommand {
+			continue
+		}
+		msg := types.NewFancyMessageFromBytes(elog.Data)
+		if msg.Session.Id != session.Id {
+			continue
+		}
+		inputs[msg.Id] = &msg
+	}
+
+	for {
+		if msg := ircserver.GetMessageNonBlocking(lastSeen); msg != nil {
+			if msg.Type == types.FancyIRCToClient && s.InterestedIn(msg) {
+				if msg.Id.Reply == 1 {
+					if inputmsg, ok := inputs[types.FancyId{Id: msg.Id.Id}]; ok {
+						messages = append(messages, inputmsg)
+					}
+				}
+				messages = append(messages, msg)
+			}
+			lastSeen = msg.Id
+		} else {
+			break
+		}
+	}
+
+	args := struct {
+		Session  types.FancyId
+		Messages []*types.FancyMessage
+	}{
+		session,
+		messages,
+	}
+	if err := irclogTpl.Execute(w, args); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }

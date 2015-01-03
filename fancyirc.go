@@ -326,6 +326,7 @@ func main() {
 
 	privaterouter := mux.NewRouter()
 	privaterouter.HandleFunc("/", handleStatus)
+	privaterouter.HandleFunc("/irclog", handleIrclog)
 	privaterouter.PathPrefix("/raft/").Handler(transport)
 	privaterouter.HandleFunc("/join", handleJoin)
 	privaterouter.HandleFunc("/snapshot", handleSnapshot)
