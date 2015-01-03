@@ -293,7 +293,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	stablestore := &fancyStableStore{}
+	stablestore, err := NewFancyStableStore(*raftDir)
+	if err != nil {
+		log.Fatal(err)
+	}
 	fsm := &FSM{logStore}
 
 	// NewRaft(*Config, FSM, LogStore, StableStore, SnapshotStore, PeerStore, Transport)
