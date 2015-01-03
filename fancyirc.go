@@ -324,15 +324,17 @@ func main() {
 	// TODO: observeleaderchanges?
 	// TODO: observenexttime?
 
-	router := mux.NewRouter()
-	router.HandleFunc("/", handleStatus)
-	router.PathPrefix("/raft/").Handler(transport)
-	router.HandleFunc("/join", handleJoin)
-	router.HandleFunc("/snapshot", handleSnapshot)
-	router.HandleFunc("/fancyirc/v1/session", handleCreateSession).Methods("POST")
-	router.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}", handleDeleteSession).Methods("DELETE")
-	router.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}/message", handlePostMessage).Methods("POST")
-	router.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}/messages", handleGetMessages).Methods("GET")
+	privaterouter := mux.NewRouter()
+	privaterouter.HandleFunc("/", handleStatus)
+	privaterouter.PathPrefix("/raft/").Handler(transport)
+	privaterouter.HandleFunc("/join", handleJoin)
+	privaterouter.HandleFunc("/snapshot", handleSnapshot)
+
+	publicrouter := mux.NewRouter()
+	publicrouter.HandleFunc("/fancyirc/v1/session", handleCreateSession).Methods("POST")
+	publicrouter.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}", handleDeleteSession).Methods("DELETE")
+	publicrouter.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}/message", handlePostMessage).Methods("POST")
+	publicrouter.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}/messages", handleGetMessages).Methods("GET")
 
 	a := auth.NewBasicAuthenticator("robustirc", func(user, realm string) string {
 		if user == "robustirc" {
@@ -341,11 +343,13 @@ func main() {
 		return ""
 	})
 
+	http.Handle("/fancyirc/", publicrouter)
+
 	http.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if username := a.CheckAuth(r); username == "" {
 			a.RequireAuth(w, r)
 		} else {
-			router.ServeHTTP(w, r)
+			privaterouter.ServeHTTP(w, r)
 		}
 	}))
 
