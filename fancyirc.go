@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/gob"
 	"encoding/json"
 	"flag"
@@ -21,18 +23,22 @@ import (
 	"fancyirc/raft_logstore"
 	"fancyirc/types"
 
+	auth "github.com/abbot/go-http-auth"
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/raft"
 	"github.com/sorcix/irc"
 )
 
 var (
-	raftDir     = flag.String("raftdir", "/tmp/r", "")
-	singleNode  = flag.Bool("singlenode", false, "set to true iff starting the first node for the first time")
-	listen      = flag.String("listen", ":8000", "")
-	join        = flag.String("join", "", "raft master to join")
-	tlsCertPath = flag.String("tls_cert_path", "", "Path to a .pem file containing the public key.")
-	tlsKeyPath  = flag.String("tls_key_path", "", "Path to a .pem file containing the private key.")
+	raftDir         = flag.String("raftdir", "/tmp/r", "")
+	singleNode      = flag.Bool("singlenode", false, "set to true iff starting the first node for the first time")
+	listen          = flag.String("listen", ":8000", "")
+	join            = flag.String("join", "", "raft master to join")
+	tlsCertPath     = flag.String("tls_cert_path", "", "Path to a .pem file containing the public key.")
+	tlsKeyPath      = flag.String("tls_key_path", "", "Path to a .pem file containing the private key.")
+	networkPassword = flag.String("network_password",
+		"",
+		"A (secure) password to protect the communication between raft nodes.")
 
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
@@ -267,12 +273,18 @@ func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
 
 func main() {
 	flag.Parse()
-	log.Printf("fancyirc listening on %q…\n", *listen)
+	log.Printf("Initializing RobustIRC…\n")
+
+	if *networkPassword == "" {
+		log.Fatalf("-network_password flag not specified. You MUST protect your network.")
+	}
+	digest := sha1.New()
+	digest.Write([]byte(*networkPassword))
+	passwordHash := "{SHA}" + base64.StdEncoding.EncodeToString(digest.Sum(nil))
 
 	ircserver.ClearState()
 
-	transport := NewTransport(&dnsAddr{*listen})
-	http.Handle("/raft/", transport)
+	transport := NewTransport(&dnsAddr{*listen}, *networkPassword)
 
 	peerStore = raft.NewJSONPeers(*raftDir, transport)
 
@@ -312,15 +324,30 @@ func main() {
 	// TODO: observeleaderchanges?
 	// TODO: observenexttime?
 
-	r := mux.NewRouter()
-	r.HandleFunc("/", handleStatus)
-	r.HandleFunc("/join", handleJoin)
-	r.HandleFunc("/snapshot", handleSnapshot)
-	r.HandleFunc("/fancyirc/v1/session", handleCreateSession).Methods("POST")
-	r.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}", handleDeleteSession).Methods("DELETE")
-	r.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}/message", handlePostMessage).Methods("POST")
-	r.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}/messages", handleGetMessages).Methods("GET")
-	http.Handle("/", r)
+	router := mux.NewRouter()
+	router.HandleFunc("/", handleStatus)
+	router.PathPrefix("/raft/").Handler(transport)
+	router.HandleFunc("/join", handleJoin)
+	router.HandleFunc("/snapshot", handleSnapshot)
+	router.HandleFunc("/fancyirc/v1/session", handleCreateSession).Methods("POST")
+	router.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}", handleDeleteSession).Methods("DELETE")
+	router.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}/message", handlePostMessage).Methods("POST")
+	router.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}/messages", handleGetMessages).Methods("GET")
+
+	a := auth.NewBasicAuthenticator("robustirc", func(user, realm string) string {
+		if user == "robustirc" {
+			return passwordHash
+		}
+		return ""
+	})
+
+	http.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if username := a.CheckAuth(r); username == "" {
+			a.RequireAuth(w, r)
+		} else {
+			router.ServeHTTP(w, r)
+		}
+	}))
 
 	// Manually create the net.TCPListener so that joinMaster() does not run
 	// into connection refused errors (the master will try to contact the
@@ -343,6 +370,10 @@ func main() {
 	tlsListener := tls.NewListener(tcpKeepAliveListener{ln.(*net.TCPListener)}, tlsconfig)
 	srv := http.Server{Addr: *listen}
 	go srv.Serve(tlsListener)
+
+	log.Printf("RobustIRC listening on %q. For status, see %s\n",
+		*listen,
+		fmt.Sprintf("https://robustirc:%s@%s/", *networkPassword, *listen))
 
 	if *join != "" {
 		p = joinMaster(*join, peerStore)

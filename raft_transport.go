@@ -18,12 +18,14 @@ import (
 type Transport struct {
 	consumer chan raft.RPC
 	addr     net.Addr
+	password string
 }
 
-func NewTransport(addr net.Addr) *Transport {
+func NewTransport(addr net.Addr, password string) *Transport {
 	return &Transport{
 		consumer: make(chan raft.RPC),
 		addr:     addr,
+		password: password,
 	}
 }
 
@@ -38,9 +40,18 @@ func (t *Transport) send(url string, in, out interface{}) error {
 		return fmt.Errorf("could not serialize request: %v", err)
 	}
 
-	res, err := http.Post(url, "application/json", bytes.NewReader(buf))
+	req, err := http.NewRequest("POST", url, bytes.NewReader(buf))
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth("robustirc", t.password)
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("could not send request: %v", err)
+	}
+
+	if res.StatusCode != 200 {
+		return fmt.Errorf("Unexpected HTTP status code: %v", res.Status)
 	}
 
 	if buf, err = ioutil.ReadAll(res.Body); err != nil {
