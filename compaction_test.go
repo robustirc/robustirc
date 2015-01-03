@@ -23,8 +23,6 @@ func appendLog(logs []*raft.Log, msg string) []*raft.Log {
 	})
 }
 
-// TODO(secure): kill all running GetMessages sessions after a compaction, as their indexes are wrong. or perhaps introduce a way to tell them that there was a compaction and they’ll need to re-sync their indexes
-
 func verifyEndState(t *testing.T) {
 	s, ok := ircserver.GetSession(types.FancyId{Id: 1})
 	if !ok {
@@ -107,8 +105,6 @@ func TestCompaction(t *testing.T) {
 	if err := snapshot.Persist(sink); err != nil {
 		t.Fatalf("Unexpected error in snapshot.Persist(): %v", err)
 	}
-
-	ircserver.ClearState()
 
 	snapshots, err := fss.List()
 	if err != nil {

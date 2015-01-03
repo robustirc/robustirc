@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"fancyirc/ircserver"
@@ -133,38 +134,56 @@ func handleSnapshot(res http.ResponseWriter, req *http.Request) {
 func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 	session, err := sessionForRequest(r)
 	if err != nil {
+		log.Printf("invalid session: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// TODO: register in stats that we are sending
 
-	lastSeen := r.FormValue("lastseen")
-	if lastSeen == "0.0" {
-		lastSeen = ""
-	}
-
 	s, _ := ircserver.GetSession(session)
 
+	lastSeen := s.StartId
+	lastSeenStr := r.FormValue("lastseen")
+	if lastSeenStr != "0.0" {
+		parts := strings.Split(lastSeenStr, ".")
+		if len(parts) != 2 {
+			log.Printf("cannot parse %q\n", lastSeenStr)
+			http.Error(w, fmt.Sprintf("Malformed lastseen value (%q)", lastSeenStr),
+				http.StatusInternalServerError)
+			return
+		}
+		first, err := strconv.ParseInt(parts[0], 0, 64)
+		if err != nil {
+			log.Printf("cannot parse %q\n", lastSeenStr)
+			http.Error(w, fmt.Sprintf("Malformed lastseen value (%q)", lastSeenStr),
+				http.StatusInternalServerError)
+			return
+		}
+		last, err := strconv.ParseInt(parts[1], 0, 64)
+		if err != nil {
+			log.Printf("cannot parse %q\n", lastSeenStr)
+			http.Error(w, fmt.Sprintf("Malformed lastseen value (%q)", lastSeenStr),
+				http.StatusInternalServerError)
+			return
+		}
+		lastSeen = types.FancyId{
+			Id:    first,
+			Reply: last,
+		}
+		log.Printf("Trying to resume at %v\n", lastSeen)
+	}
+
 	enc := json.NewEncoder(w)
-	for idx := s.StartIdx; ; idx++ {
-		msg := ircserver.GetMessage(idx)
+	for {
+		msg := ircserver.GetMessage(lastSeen)
 		s, ok := ircserver.GetSession(session)
 		if !ok {
 			// Session was deleted in the meanwhile.
 			break
 		}
 
-		if lastSeen != "" {
-			if msg.Id.String() == lastSeen {
-				log.Printf("Skipped %d messages, now at lastseen=%s.\n", idx, lastSeen)
-				lastSeen = ""
-				continue
-			} else {
-				log.Printf("looking for %s, ignoring %d\n", lastSeen, msg.Id)
-				continue
-			}
-		}
+		lastSeen = msg.Id
 
 		interested := s.InterestedIn(msg)
 		log.Printf("[DEBUG] Checking whether %+v is interested in %+v --> %v\n", s, msg, interested)

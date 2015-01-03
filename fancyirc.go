@@ -165,6 +165,8 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 		return err
 	}
 
+	ircserver.ClearState()
+
 	decoder := gob.NewDecoder(snap)
 	for {
 		var entry raft.Log
@@ -266,6 +268,8 @@ func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
 func main() {
 	flag.Parse()
 	log.Printf("fancyirc listening on %q…\n", *listen)
+
+	ircserver.ClearState()
 
 	transport := NewTransport(&dnsAddr{*listen})
 	http.Handle("/raft/", transport)

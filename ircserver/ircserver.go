@@ -19,6 +19,7 @@ var (
 
 	ircOutputMu sync.Mutex
 	ircOutput   []types.FancyMessage
+	idToIdx     map[types.FancyId]int
 	newMessage  = sync.NewCond(&sync.Mutex{})
 
 	network = flag.String("network", "fancy.twice-irc.de", "Name of the network. Ideally also a DNS name pointing to one or more servers.")
@@ -30,9 +31,9 @@ type Session struct {
 	Nick     string
 	Channels map[string]bool
 
-	// The current IRC message index at the time when the session was started.
+	// The current IRC message id at the time when the session was started.
 	// This is used in handleGetMessages to skip uninteresting messages.
-	StartIdx int
+	StartId types.FancyId
 }
 
 func (s *Session) loggedIn() bool {
@@ -83,14 +84,20 @@ func (s *Session) InterestedIn(msg *types.FancyMessage) bool {
 
 func ClearState() {
 	sessions = make(map[types.FancyId]*Session)
+	idToIdx = make(map[types.FancyId]int)
+	idToIdx[types.FancyId{}] = -1
 }
 
 // CreateSession creates a new session (equivalent to an IRC connection).
 func CreateSession(id types.FancyId, auth string) {
+	var lastSeen types.FancyId
+	if len(ircOutput) > 0 {
+		lastSeen = ircOutput[len(ircOutput)-1].Id
+	}
 	sessions[id] = &Session{
 		Id:       id,
 		Auth:     auth,
-		StartIdx: len(ircOutput),
+		StartId:  lastSeen,
 		Channels: make(map[string]bool),
 	}
 }
@@ -295,6 +302,8 @@ func SendMessages(replies []irc.Message, session types.FancyId, id int64) {
 			Id:    id,
 			Reply: int64(idx + 1),
 		}
+		idToIdx[fancymsg.Id] = len(ircOutput)
+		log.Printf("Writing id %v as idx %d: %v\n", fancymsg.Id, len(ircOutput), fancymsg)
 		ircOutput = append(ircOutput, *fancymsg)
 	}
 
@@ -313,21 +322,24 @@ func SendPing(master net.Addr, peers []net.Addr) {
 	if master != nil {
 		pingmsg.Currentmaster = master.String()
 	}
+	idToIdx[pingmsg.Id] = len(ircOutput)
 	ircOutput = append(ircOutput, *pingmsg)
 	newMessage.Broadcast()
 }
 
 // GetMessage returns the IRC message with index 'idx', possibly blocking until
 // that message appears.
-func GetMessage(idx int) *types.FancyMessage {
+func GetMessage(lastseen types.FancyId) *types.FancyMessage {
 	newMessage.L.Lock()
+	idx, ok := idToIdx[lastseen]
+	log.Printf("lastseen = %v, idx = %v, ok = %v\n", lastseen, idx, ok)
 	// Sleep until processMessage() wakes us up for a new message.
-	for idx >= len(ircOutput) {
+	for idToIdx[lastseen]+1 >= len(ircOutput) {
 		newMessage.Wait()
 	}
 	newMessage.L.Unlock()
 
-	return &ircOutput[idx]
+	return &ircOutput[idToIdx[lastseen]+1]
 }
 
 func GetSession(id types.FancyId) (*Session, bool) {
