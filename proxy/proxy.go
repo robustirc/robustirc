@@ -415,7 +415,11 @@ func main() {
 				continue
 			}
 			for _, addr := range addrs {
-				allServers = append(allServers, fmt.Sprintf("%s:%d", addr.Target, addr.Port))
+				target := addr.Target
+				if target[len(target)-1] == '.' {
+					target = target[:len(target)-1]
+				}
+				allServers = append(allServers, fmt.Sprintf("%s:%d", target, addr.Port))
 			}
 			break
 		}
