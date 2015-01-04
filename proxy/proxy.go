@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"math/rand"
 	"net"
 	"net/http"
@@ -28,8 +29,12 @@ import (
 )
 
 var (
+	network = flag.String("network",
+		"",
+		`DNS name to connect to (e.g. "robustirc.net"). The _robustirc._tcp SRV record must be present.`)
+
 	serversList = flag.String("servers",
-		"localhost:8001",
+		"",
 		"(comma-separated) list of host:port network addresses of the server(s) to connect to")
 
 	listen = flag.String("listen",
@@ -363,8 +368,8 @@ func handleIRC(conn net.Conn) {
 				if err != nil {
 					log.Printf("Message could not be encoded as JSON: %v\n", err)
 					sendIRCMessage(logPrefix, ircConn, irc.Message{
-						Prefix: &ircPrefix,
-						Command: irc.ERROR,
+						Prefix:   &ircPrefix,
+						Command:  irc.ERROR,
 						Trailing: fmt.Sprintf("Message could not be encoded as JSON: %v", err),
 					})
 					ircConn.Close()
@@ -387,11 +392,43 @@ func main() {
 
 	rand.Seed(time.Now().Unix())
 
-	// Start with any server. Will be overwritten later.
-	allServers = strings.Split(*serversList, ",")
-	if len(allServers) == 0 {
-		log.Fatalf("Invalid -servers value (%q). Need at least one server.\n", *serversList)
+	if *network == "" && *serversList == "" {
+		log.Fatal("You must specify either -network or -servers.")
 	}
+
+	if *network != "" {
+		// Try to resolve the DNS name up to 5 times. This is to be nice to
+		// people in environments with flaky network connections at boot, who,
+		// for some reason, don’t run this program under systemd with
+		// Restart=on-failure.
+		try := 0
+		for {
+			_, addrs, err := net.LookupSRV("robustirc", "tcp", *network)
+			if err != nil {
+				log.Println(err)
+				if try < 4 {
+					time.Sleep(time.Duration(int64(math.Pow(2, float64(try)))) * time.Second)
+				} else {
+					log.Fatalf("DNS lookup failed 5 times, exiting\n")
+				}
+				try++
+				continue
+			}
+			for _, addr := range addrs {
+				allServers = append(allServers, fmt.Sprintf("%s:%d", addr.Target, addr.Port))
+			}
+			break
+		}
+	}
+
+	if *serversList != "" {
+		// Start with any server. Will be overwritten later.
+		allServers = append(allServers, strings.Split(*serversList, ",")...)
+		if len(allServers) == 0 {
+			log.Fatalf("Invalid -servers value (%q). Need at least one server.\n", *serversList)
+		}
+	}
+
 	currentMaster = allServers[0]
 
 	ln, err := net.Listen("tcp", *listen)
