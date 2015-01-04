@@ -235,7 +235,13 @@ func joinMaster(addr string, peerStore *raft.JSONPeers) []net.Addr {
 	} else {
 		buf = bytes.NewBuffer(data)
 	}
-	if res, err := http.Post(fmt.Sprintf("https://%s/join", addr), "application/json", buf); err != nil {
+	req, err := http.NewRequest("POST", fmt.Sprintf("https://%s/join", addr), buf)
+	if err != nil {
+		log.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth("robustirc", *networkPassword)
+	if res, err := http.DefaultClient.Do(req); err != nil {
 		log.Fatal("Could not send join request:", err)
 	} else if res.StatusCode > 399 {
 		data, _ := ioutil.ReadAll(res.Body)
