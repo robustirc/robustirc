@@ -43,7 +43,7 @@ func TestNickCollision(t *testing.T) {
 	CreateSession(idSecure, "auth-secure")
 	CreateSession(idMero, "auth-mero")
 
-	got = ProcessMessage(idSecure, irc.ParseMessage("NICK sECuRE"))
+	got = ProcessMessage(idSecure, irc.ParseMessage("NICK s[E]CuRE"))
 	if len(got) > 0 {
 		for _, msg := range got {
 			if msg.Command != irc.ERR_NICKNAMEINUSE {
@@ -52,15 +52,79 @@ func TestNickCollision(t *testing.T) {
 			t.Fatalf("got %v, wanted anything but ERR_NICKNAMEINUSE", msg)
 		}
 	}
-	got = ProcessMessage(idMero, irc.ParseMessage("NICK sECuRE"))
-	want = []irc.Message{*irc.ParseMessage(":robustirc.net 433 * sECuRE :Nickname is already in use.")}
+	got = ProcessMessage(idMero, irc.ParseMessage("NICK s[E]CuRE"))
+	want = []irc.Message{*irc.ParseMessage(":robustirc.net 433 * s[E]CuRE :Nickname is already in use.")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 
-	got = ProcessMessage(idMero, irc.ParseMessage("NICK SECURE"))
-	want = []irc.Message{*irc.ParseMessage(":robustirc.net 433 * SECURE :Nickname is already in use.")}
+	got = ProcessMessage(idMero, irc.ParseMessage("NICK S[E]CURE"))
+	want = []irc.Message{*irc.ParseMessage(":robustirc.net 433 * S[E]CURE :Nickname is already in use.")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	got = ProcessMessage(idMero, irc.ParseMessage("NICK S{E}CURE"))
+	want = []irc.Message{*irc.ParseMessage(":robustirc.net 433 * S{E}CURE :Nickname is already in use.")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestInvalidNick(t *testing.T) {
+	validNicks := []string{
+		"secure",
+		"[nn]secure",
+		"[nn]-secure",
+		"`secure",
+		"^secure",
+		"^",
+		"^0",
+		"^0-",
+		"^^0secure",
+	}
+
+	invalidNicks := []string{
+		"0secure",
+		"-secure",
+		"0",
+		"secöre",
+	}
+
+	for _, nick := range validNicks {
+		if !IsValidNickname(nick) {
+			t.Fatalf("IsValidNickname(%q): got %v, want %v", nick, false, true)
+		}
+	}
+
+	for _, nick := range invalidNicks {
+		if IsValidNickname(nick) {
+			t.Fatalf("IsValidNickname(%q): got %v, want %v", nick, true, false)
+		}
+	}
+}
+
+func TestInvalidNickPlumbing(t *testing.T) {
+	id := types.FancyId{Id: time.Now().UnixNano()}
+
+	CreateSession(id, "authbytes")
+
+	s, ok := GetSession(id)
+	if !ok {
+		t.Fatalf("GetSession(%v) did not return a session", id)
+	}
+
+	if s.loggedIn() {
+		t.Fatalf("session.loggedIn() true before sending NICK")
+	}
+
+	got := ProcessMessage(id, irc.ParseMessage("NICK 0secure"))
+	want := []irc.Message{*irc.ParseMessage(":robustirc.net 432 * 0secure :Erroneus nickname.")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	if s.Nick != "" {
+		t.Fatalf("session.Nick: got %q, want %q", s.Nick, "")
 	}
 }

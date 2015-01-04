@@ -5,12 +5,29 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"regexp"
 	"strings"
 	"sync"
 
 	"fancyirc/types"
 
 	"github.com/sorcix/irc"
+)
+
+const (
+	maxNickLen = "30"
+
+	// Message format according to RFC2812, section 2.3.1
+	// A-Z / a-z
+	letter = `\x41-\x5A\x61-\x7A`
+	// 0-9
+	digit = `\x30-\x39`
+	// "[", "]", "\", "`", "_", "^", "{", "|", "}"
+	special = `\x5B-\x60\x7B-\x7D`
+)
+
+var (
+	validNickRe = regexp.MustCompile(`^[` + letter + special + `][` + letter + digit + special + `-]{0,` + maxNickLen + `}$`)
 )
 
 var (
@@ -103,6 +120,24 @@ func DeleteSession(id types.FancyId) {
 	delete(Sessions, id)
 }
 
+// IsValidNickname returns true if the provided nickname is valid according to
+// RFC2812 (see https://tools.ietf.org/html/rfc2812#section-2.3.1), otherwise
+// false.
+func IsValidNickname(nick string) bool {
+	return validNickRe.MatchString(nick)
+}
+
+// NickToLower converts a nickname to lower case, following RFC2812:
+//
+// Because of IRC's scandanavian origin, the characters {}| are
+// considered to be the lower case equivalents of the characters []\,
+// respectively. This is a critical issue when determining the
+// equivalence of two nicknames.
+func NickToLower(nick string) string {
+	r := strings.NewReplacer("[", "{", "]", "}", "\\", "|")
+	return r.Replace(strings.ToLower(nick))
+}
+
 // ProcessMessage modifies state in response to 'message' and returns zero or
 // more IRC messages in response to 'message'.
 func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
@@ -127,9 +162,18 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 			})
 			break
 		}
+		if !IsValidNickname(message.Params[0]) {
+			replies = append(replies, irc.Message{
+				Prefix:   ServerPrefix,
+				Command:  irc.ERR_ERRONEUSNICKNAME,
+				Params:   []string{"*", message.Params[0]},
+				Trailing: "Erroneus nickname.",
+			})
+			break
+		}
 		inuse := false
 		for _, session := range Sessions {
-			if strings.ToLower(session.Nick) == strings.ToLower(message.Params[0]) {
+			if NickToLower(session.Nick) == NickToLower(message.Params[0]) {
 				inuse = true
 				break
 			}
