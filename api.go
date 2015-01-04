@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -47,51 +47,55 @@ func redirectToLeader(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, target.String(), http.StatusTemporaryRedirect)
 }
 
-func sessionForRequest(r *http.Request) (types.FancyId, error) {
+func sessionForRequest(r *http.Request) (*ircserver.Session, types.FancyId, error) {
 	idstr := mux.Vars(r)["sessionid"]
 	id, err := strconv.ParseInt(idstr, 0, 64)
 	if err != nil {
-		return types.FancyId{}, fmt.Errorf("Invalid session: %v", err)
+		return nil, types.FancyId{}, fmt.Errorf("Invalid session: %v", err)
 	}
 
 	session := types.FancyId{Id: id}
 	s, ok := ircserver.GetSession(session)
 	if !ok {
-		return types.FancyId{}, fmt.Errorf("No such session")
+		return nil, types.FancyId{}, fmt.Errorf("No such session")
 	}
 
 	cookie := r.Header.Get("X-Session-Auth")
 	if cookie == "" {
-		return types.FancyId{}, fmt.Errorf("No SessionAuth cookie set")
+		return nil, types.FancyId{}, fmt.Errorf("No SessionAuth cookie set")
 	}
 	if cookie != s.Auth {
-		return types.FancyId{}, fmt.Errorf("Invalid SessionAuth cookie")
+		return nil, types.FancyId{}, fmt.Errorf("Invalid SessionAuth cookie")
 	}
 
-	return session, nil
+	return s, session, nil
 }
 
 // handlePostMessage is called by the fancyproxy whenever a message should be
 // posted. The handler blocks until either the data was written or an error
 // occurred. If successful, it returns the unique id of the message.
 func handlePostMessage(w http.ResponseWriter, r *http.Request) {
-	session, err := sessionForRequest(r)
+	_, session, err := sessionForRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// TODO(secure): read at most 512 byte of body, as the IRC RFC restricts
-	// messages to be that length. this also protects us from “let’s send a
-	// large body” attacks.
-	data, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		log.Println("error reading request:", err)
+	type postMessageRequest struct {
+		Data string
+	}
+
+	var req postMessageRequest
+
+	// We limit the amount of bytes read to 1024 to prevent reading overly long
+	// requests in the first place. The IRC line length limit is 512 bytes, so
+	// with 1024 bytes we have plenty of headroom to encode 512 bytes in JSON.
+	if err := json.NewDecoder(&io.LimitedReader{r.Body, 1024}).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// TODO(secure): properly check that we can convert data to a string at all.
-	msg := types.NewFancyMessage(types.FancyIRCFromClient, session, string(data))
+	msg := types.NewFancyMessage(types.FancyIRCFromClient, session, req.Data)
 	msgbytes, err := json.Marshal(msg)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Could not store message, cannot encode it as JSON: %v", err),
@@ -147,14 +151,12 @@ func handleSnapshot(res http.ResponseWriter, req *http.Request) {
 }
 
 func handleGetMessages(w http.ResponseWriter, r *http.Request) {
-	session, err := sessionForRequest(r)
+	s, session, err := sessionForRequest(r)
 	if err != nil {
 		log.Printf("invalid session: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	s, _ := ircserver.GetSession(session)
 
 	remoteAddr := r.RemoteAddr
 	GetMessageRequests[remoteAddr] = GetMessageStats{
@@ -262,7 +264,7 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleDeleteSession(w http.ResponseWriter, r *http.Request) {
-	session, err := sessionForRequest(r)
+	_, session, err := sessionForRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

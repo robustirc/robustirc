@@ -183,6 +183,10 @@ func deleteFancySession(logPrefix, sessionauth, session string, quitmsg string) 
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("got %v, expected 200", resp.Status)
+	}
+
 	log.Printf("%s deleted session\n", logPrefix)
 
 	return nil
@@ -351,7 +355,23 @@ func handleIRC(conn net.Conn) {
 				quitmsg = message.Trailing
 				ircConn.Close()
 			default:
-				resp, err := sendFancyMessage(logPrefix, sessionauth, "POST", servers(), fmt.Sprintf(pathPostMessage, session), message.Bytes())
+				type postMessageRequest struct {
+					Data string
+				}
+
+				b, err := json.Marshal(postMessageRequest{Data: string(message.Bytes())})
+				if err != nil {
+					log.Printf("Message could not be encoded as JSON: %v\n", err)
+					sendIRCMessage(logPrefix, ircConn, irc.Message{
+						Prefix: &ircPrefix,
+						Command: irc.ERROR,
+						Trailing: fmt.Sprintf("Message could not be encoded as JSON: %v", err),
+					})
+					ircConn.Close()
+					break
+				}
+
+				resp, err := sendFancyMessage(logPrefix, sessionauth, "POST", servers(), fmt.Sprintf(pathPostMessage, session), b)
 				if err != nil {
 					// TODO(secure): what should we do here?
 					log.Printf("message could not be sent: %v\n", err)

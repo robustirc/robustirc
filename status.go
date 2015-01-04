@@ -261,6 +261,9 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 
 	lastSeen := s.StartId
 	var messages []*types.FancyMessage
+	// TODO(secure): input messages (i.e. raft log entries) which don’t result
+	// in an output message in the current session (e.g. PRIVMSGs) don’t show
+	// up in here at all.
 	// XXX: The following code is pretty horrible. It iterates through _all_
 	// log messages to create a map from id to decoded message, in order to add
 	// them to the messages slice in the second loop. We should come up with a
