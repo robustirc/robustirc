@@ -1,7 +1,7 @@
 # Start with busybox, but with libc.so.6
 FROM busybox:ubuntu-14.04
 
-MAINTAINER Michael Stapelberg <michael+robustirc@stapelberg.ch>
+MAINTAINER Michael Stapelberg <michael@robustirc.net>
 
 ADD fancyirc /usr/bin/fancyirc
 
