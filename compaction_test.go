@@ -41,6 +41,8 @@ func verifyEndState(t *testing.T) {
 }
 
 func TestCompaction(t *testing.T) {
+	ircserver.ClearState()
+
 	tempdir, err := ioutil.TempDir("", "fancy-test-")
 	if err != nil {
 		t.Fatalf("ioutil.TempDir: %v", err)
