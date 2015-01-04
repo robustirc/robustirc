@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"fancyirc/types"
 
@@ -36,8 +37,9 @@ var (
 )
 
 var (
-	Sessions     = make(map[types.FancyId]*Session)
-	ServerPrefix *irc.Prefix
+	serverCreation = time.Now()
+	Sessions       = make(map[types.FancyId]*Session)
+	ServerPrefix   *irc.Prefix
 
 	ircOutputMu sync.Mutex
 	ircOutput   []types.FancyMessage
@@ -204,15 +206,51 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 				Command:  irc.NICK,
 				Trailing: message.Params[0],
 			})
-		}
+		} else {
+			// TODO(secure): send 002, 003, 004, 251, 252, 254, 255, 265, 266, [motd = 375, 372, 376]
+			replies = append(replies, irc.Message{
+				Prefix:   ServerPrefix,
+				Command:  irc.RPL_WELCOME,
+				Params:   []string{s.Nick},
+				Trailing: "Welcome to RobustIRC!",
+			})
 
-		// TODO(secure): send 002, 003, 004, 005, 251, 252, 254, 255, 265, 266, [motd = 375, 372, 376]
-		replies = append(replies, irc.Message{
-			Prefix:   ServerPrefix,
-			Command:  irc.RPL_WELCOME,
-			Params:   []string{s.Nick},
-			Trailing: "Welcome to fancyirc :)",
-		})
+			replies = append(replies, irc.Message{
+				Prefix:   ServerPrefix,
+				Command:  irc.RPL_YOURHOST,
+				Params:   []string{s.Nick},
+				Trailing: "Your host is " + ServerPrefix.Name,
+			})
+
+			replies = append(replies, irc.Message{
+				Prefix:   ServerPrefix,
+				Command:  irc.RPL_CREATED,
+				Params:   []string{s.Nick},
+				Trailing: "This server was created " + serverCreation.String(),
+			})
+
+			replies = append(replies, irc.Message{
+				Prefix:  ServerPrefix,
+				Command: irc.RPL_MYINFO,
+				Params:  []string{s.Nick},
+				// TODO(secure): actually support these modes.
+				Trailing: ServerPrefix.Name + " v1 i nst",
+			})
+
+			// send ISUPPORT as per http://www.irc.org/tech_docs/draft-brocklesby-irc-isupport-03.txt
+			replies = append(replies, irc.Message{
+				Prefix:  ServerPrefix,
+				Command: "005",
+				Params: []string{
+					"CHANTYPES=#",
+					"CHANNELLEN=" + maxChannelLen,
+					"NICKLEN=" + maxNickLen,
+					"MODES=1",
+					"PREFIX=",
+				},
+				Trailing: "are supported by this server",
+			})
+		}
 
 	case irc.USER:
 		// We don’t need any information from the USER message.

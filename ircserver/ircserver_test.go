@@ -14,6 +14,7 @@ func TestSessionInitialization(t *testing.T) {
 	id := types.FancyId{Id: time.Now().UnixNano()}
 
 	CreateSession(id, "authbytes")
+	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
 
 	s, ok := GetSession(id)
 	if !ok {
@@ -107,6 +108,8 @@ func TestInvalidNick(t *testing.T) {
 func TestInvalidNickPlumbing(t *testing.T) {
 	id := types.FancyId{Id: time.Now().UnixNano()}
 
+	ClearState()
+	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
 	CreateSession(id, "authbytes")
 
 	s, ok := GetSession(id)
@@ -132,6 +135,8 @@ func TestInvalidNickPlumbing(t *testing.T) {
 func TestInvalidChannelPlumbing(t *testing.T) {
 	id := types.FancyId{Id: time.Now().UnixNano()}
 
+	ClearState()
+	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
 	CreateSession(id, "authbytes")
 
 	s, ok := GetSession(id)
