@@ -35,6 +35,7 @@ func TestNickCollision(t *testing.T) {
 	var got, want []irc.Message
 
 	ClearState()
+	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
 
 	idSecure := types.FancyId{Id: 1420228218166687917}
 	idMero := types.FancyId{Id: 1420228218166687918}
@@ -52,13 +53,13 @@ func TestNickCollision(t *testing.T) {
 		}
 	}
 	got = ProcessMessage(idMero, irc.ParseMessage("NICK sECuRE"))
-	want = []irc.Message{*irc.ParseMessage(":fancy.twice-irc.de 433 * sECuRE :Nickname is already in use.")}
+	want = []irc.Message{*irc.ParseMessage(":robustirc.net 433 * sECuRE :Nickname is already in use.")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 
 	got = ProcessMessage(idMero, irc.ParseMessage("NICK SECURE"))
-	want = []irc.Message{*irc.ParseMessage(":fancy.twice-irc.de 433 * SECURE :Nickname is already in use.")}
+	want = []irc.Message{*irc.ParseMessage(":robustirc.net 433 * SECURE :Nickname is already in use.")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
