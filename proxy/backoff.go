@@ -57,7 +57,7 @@ func serverFailed(host string) {
 
 // getMessages (blockingly) tries to connect to a server until it gets a
 // successful GetMessages response.
-func getMessages(logPrefix string, httpClient http.Client, session string, lastSeen types.FancyId) (string, *http.Response) {
+func getMessages(logPrefix, sessionauth, session string, lastSeen types.FancyId) (string, *http.Response) {
 	for {
 		var (
 			candidate string
@@ -76,7 +76,12 @@ func getMessages(logPrefix string, httpClient http.Client, session string, lastS
 		}
 
 		log.Printf("%s Connecting to %q...\n", logPrefix, candidate)
-		resp, err := httpClient.Get(fmt.Sprintf("https://%s"+pathGetMessages, candidate, session, lastSeen.String()))
+		req, err := http.NewRequest("GET", fmt.Sprintf("https://%s"+pathGetMessages, candidate, session, lastSeen.String()), nil)
+		if err != nil {
+			log.Fatalf("%s %v\n", logPrefix, err)
+		}
+		req.Header.Set("X-Session-Auth", sessionauth)
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			log.Printf("%s %v\n", logPrefix, err)
 		} else if resp.StatusCode != 200 {

@@ -395,10 +395,10 @@ func main() {
 	privaterouter.HandleFunc("/snapshot", handleSnapshot)
 
 	publicrouter := mux.NewRouter()
-	publicrouter.HandleFunc("/fancyirc/v1/session", handleCreateSession).Methods("POST")
-	publicrouter.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}", handleDeleteSession).Methods("DELETE")
-	publicrouter.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}/message", handlePostMessage).Methods("POST")
-	publicrouter.HandleFunc("/fancyirc/v1/{sessionid:0x[0-9a-f]+}/messages", handleGetMessages).Methods("GET")
+	publicrouter.HandleFunc("/robustirc/v1/session", handleCreateSession).Methods("POST")
+	publicrouter.HandleFunc("/robustirc/v1/{sessionid:0x[0-9a-f]+}", handleDeleteSession).Methods("DELETE")
+	publicrouter.HandleFunc("/robustirc/v1/{sessionid:0x[0-9a-f]+}/message", handlePostMessage).Methods("POST")
+	publicrouter.HandleFunc("/robustirc/v1/{sessionid:0x[0-9a-f]+}/messages", handleGetMessages).Methods("GET")
 
 	a := auth.NewBasicAuthenticator("robustirc", func(user, realm string) string {
 		if user == "robustirc" {
@@ -407,7 +407,7 @@ func main() {
 		return ""
 	})
 
-	http.Handle("/fancyirc/", publicrouter)
+	http.Handle("/robustirc/", publicrouter)
 
 	http.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if username := a.CheckAuth(r); username == "" {

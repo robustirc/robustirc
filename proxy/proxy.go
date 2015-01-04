@@ -17,7 +17,6 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"strings"
 	"sync"
@@ -43,10 +42,10 @@ var (
 )
 
 const (
-	pathCreateSession = "/fancyirc/v1/session"
-	pathDeleteSession = "/fancyirc/v1/%s"
-	pathPostMessage   = "/fancyirc/v1/%s/message"
-	pathGetMessages   = "/fancyirc/v1/%s/messages?lastseen=%s"
+	pathCreateSession = "/robustirc/v1/session"
+	pathDeleteSession = "/robustirc/v1/%s"
+	pathPostMessage   = "/robustirc/v1/%s/message"
+	pathGetMessages   = "/robustirc/v1/%s/messages?lastseen=%s"
 )
 
 // TODO(secure): persistent state:
@@ -61,7 +60,7 @@ func servers() []string {
 	return append([]string{currentMaster}, allServers...)
 }
 
-func sendFancyMessage(logPrefix string, httpClient http.Client, method string, targets []string, path string, data []byte) (*http.Response, error) {
+func sendFancyMessage(logPrefix, sessionauth, method string, targets []string, path string, data []byte) (*http.Response, error) {
 	var (
 		resp   *http.Response
 		target string
@@ -84,8 +83,9 @@ func sendFancyMessage(logPrefix string, httpClient http.Client, method string, t
 		if err != nil {
 			return nil, err
 		}
+		req.Header.Set("X-Session-Auth", sessionauth)
 		req.Header.Set("Content-Type", "application/json")
-		resp, err = httpClient.Do(req)
+		resp, err = http.DefaultClient.Do(req)
 
 		if err != nil {
 			log.Printf("%s %v\n", logPrefix, err)
@@ -143,17 +143,18 @@ func sendIRCMessage(logPrefix string, ircConn *irc.Conn, msg irc.Message) {
 	log.Printf("%s ->irc: %q\n", logPrefix, msg.Bytes())
 }
 
-func createFancySession(logPrefix string, httpClient http.Client) (session string, prefix irc.Prefix, err error) {
+func createFancySession(logPrefix string) (session string, sessionauth string, prefix irc.Prefix, err error) {
 	var resp *http.Response
-	resp, err = sendFancyMessage(logPrefix, httpClient, "POST", servers(), pathCreateSession, []byte{})
+	resp, err = sendFancyMessage(logPrefix, "", "POST", servers(), pathCreateSession, []byte{})
 	if err != nil {
 		return
 	}
 	defer resp.Body.Close()
 
 	type createSessionReply struct {
-		Sessionid string
-		Prefix    string
+		Sessionid   string
+		Sessionauth string
+		Prefix      string
 	}
 
 	var createreply createSessionReply
@@ -163,11 +164,12 @@ func createFancySession(logPrefix string, httpClient http.Client) (session strin
 	}
 
 	session = createreply.Sessionid
+	sessionauth = createreply.Sessionauth
 	prefix = irc.Prefix{Name: createreply.Prefix}
 	return
 }
 
-func deleteFancySession(logPrefix string, httpClient http.Client, session string, quitmsg string) error {
+func deleteFancySession(logPrefix, sessionauth, session string, quitmsg string) error {
 	type deleteSessionRequest struct {
 		Quitmessage string
 	}
@@ -175,7 +177,7 @@ func deleteFancySession(logPrefix string, httpClient http.Client, session string
 	if err != nil {
 		return err
 	}
-	resp, err := sendFancyMessage(logPrefix, httpClient, "DELETE", servers(), fmt.Sprintf(pathDeleteSession, session), b)
+	resp, err := sendFancyMessage(logPrefix, sessionauth, "DELETE", servers(), fmt.Sprintf(pathDeleteSession, session), b)
 	if err != nil {
 		return err
 	}
@@ -195,28 +197,21 @@ func handleIRC(conn net.Conn) {
 		fancyMessages   = make(chan string)
 		stopGetMessages = make(chan bool)
 
-		ircPrefix  irc.Prefix
-		httpClient http.Client
-		session    string
-		quitmsg    string
-		done       bool
-		pingSent   bool
-		err        error
+		ircPrefix   irc.Prefix
+		session     string
+		sessionauth string
+		quitmsg     string
+		done        bool
+		pingSent    bool
+		err         error
 	)
 
-	jar, err := cookiejar.New(nil)
+	session, sessionauth, ircPrefix, err = createFancySession(logPrefix)
 	if err != nil {
-		log.Fatal(err)
-	}
-
-	httpClient = http.Client{Jar: jar}
-
-	session, ircPrefix, err = createFancySession(logPrefix, httpClient)
-	if err != nil {
-		log.Printf("%s Could not create fancyirc session: %v\n", logPrefix, err)
+		log.Printf("%s Could not create RobustIRC session: %v\n", logPrefix, err)
 		sendIRCMessage(logPrefix, ircConn, irc.Message{
 			Command:  "ERROR",
-			Trailing: fmt.Sprintf("Could not create fancyirc session: %v", err),
+			Trailing: fmt.Sprintf("Could not create RobustIRC session: %v", err),
 		})
 
 		ircConn.Close()
@@ -239,7 +234,7 @@ func handleIRC(conn net.Conn) {
 		var lastSeen types.FancyId
 
 		for !done {
-			host, resp := getMessages(logPrefix, httpClient, session, lastSeen)
+			host, resp := getMessages(logPrefix, sessionauth, session, lastSeen)
 
 			// We set the host as currentMaster, not because the host is the
 			// master, but because it is reachable. When sending messages, we will
@@ -308,7 +303,7 @@ func handleIRC(conn net.Conn) {
 		for _ = range fancyMessages {
 		}
 
-		if err := deleteFancySession(logPrefix, httpClient, session, quitmsg); err != nil {
+		if err := deleteFancySession(logPrefix, sessionauth, session, quitmsg); err != nil {
 			log.Printf("%s Could not delete session: %v\n", logPrefix, err)
 		}
 	}()
@@ -327,7 +322,7 @@ func handleIRC(conn net.Conn) {
 				sendIRCMessage(logPrefix, ircConn, irc.Message{
 					Prefix:  &ircPrefix,
 					Command: irc.PING,
-					Params:  []string{"fancyirc.proxy"},
+					Params:  []string{"robustirc.proxy"},
 				})
 			}
 
@@ -356,7 +351,7 @@ func handleIRC(conn net.Conn) {
 				quitmsg = message.Trailing
 				ircConn.Close()
 			default:
-				resp, err := sendFancyMessage(logPrefix, httpClient, "POST", servers(), fmt.Sprintf(pathPostMessage, session), message.Bytes())
+				resp, err := sendFancyMessage(logPrefix, sessionauth, "POST", servers(), fmt.Sprintf(pathPostMessage, session), message.Bytes())
 				if err != nil {
 					// TODO(secure): what should we do here?
 					log.Printf("message could not be sent: %v\n", err)
@@ -384,7 +379,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Printf("fancyirc proxy listening on %q\n", *listen)
+	log.Printf("RobustIRC IRC bridge listening on %q\n", *listen)
 
 	for {
 		conn, err := ln.Accept()

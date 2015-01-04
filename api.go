@@ -60,11 +60,11 @@ func sessionForRequest(r *http.Request) (types.FancyId, error) {
 		return types.FancyId{}, fmt.Errorf("No such session")
 	}
 
-	cookie, err := r.Cookie("SessionAuth")
-	if err != nil {
+	cookie := r.Header.Get("X-Session-Auth")
+	if cookie == "" {
 		return types.FancyId{}, fmt.Errorf("No SessionAuth cookie set")
 	}
-	if cookie.Value != s.Auth {
+	if cookie != s.Auth {
 		return types.FancyId{}, fmt.Errorf("Invalid SessionAuth cookie")
 	}
 
@@ -249,23 +249,14 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	sessionid := fmt.Sprintf("0x%x", msg.Id.Id)
 
 	w.Header().Set("Content-Type", "application/json")
-	http.SetCookie(w, &http.Cookie{
-		Name:  "SessionAuth",
-		Value: sessionauth,
-		Path:  "/",
-		// TODO(secure): make this configurable? we also need to make sure we use DNS names instead of ip:port pairs
-		Domain:   "twice-irc.de",
-		Expires:  time.Now().Add(50 * 365 * 24 * time.Hour),
-		Secure:   true,
-		HttpOnly: true,
-	})
 
 	type createSessionReply struct {
-		Sessionid string
-		Prefix    string
+		Sessionid   string
+		Sessionauth string
+		Prefix      string
 	}
 
-	if err := json.NewEncoder(w).Encode(createSessionReply{sessionid, *network}); err != nil {
+	if err := json.NewEncoder(w).Encode(createSessionReply{sessionid, sessionauth, *network}); err != nil {
 		log.Printf("Could not send /session reply: %v\n", err)
 	}
 }
