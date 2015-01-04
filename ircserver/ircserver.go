@@ -2,7 +2,6 @@
 package ircserver
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -15,14 +14,13 @@ import (
 )
 
 var (
-	Sessions = make(map[types.FancyId]*Session)
+	Sessions     = make(map[types.FancyId]*Session)
+	ServerPrefix *irc.Prefix
 
 	ircOutputMu sync.Mutex
 	ircOutput   []types.FancyMessage
 	idToIdx     map[types.FancyId]int
 	newMessage  = sync.NewCond(&sync.Mutex{})
-
-	network = flag.String("network", "fancy.twice-irc.de", "Name of the network. Ideally also a DNS name pointing to one or more servers.")
 )
 
 type Session struct {
@@ -54,9 +52,8 @@ func (s *Session) InterestedIn(msg *types.FancyMessage) bool {
 		return true
 	}
 	ircmsg := irc.ParseMessage(msg.Data)
-	serverPrefix := irc.Prefix{Name: *network}
 
-	if *ircmsg.Prefix == serverPrefix && msg.Session == s.Id {
+	if *ircmsg.Prefix == *ServerPrefix && msg.Session == s.Id {
 		return true
 	}
 
@@ -124,7 +121,7 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 		oldPrefix := s.ircPrefix()
 		if len(message.Params) < 1 {
 			replies = append(replies, irc.Message{
-				Prefix:   &irc.Prefix{Name: *network},
+				Prefix:   ServerPrefix,
 				Command:  irc.ERR_NONICKNAMEGIVEN,
 				Trailing: "No nickname given",
 			})
@@ -139,7 +136,7 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 		}
 		if inuse {
 			replies = append(replies, irc.Message{
-				Prefix:   &irc.Prefix{Name: *network},
+				Prefix:   ServerPrefix,
 				Command:  irc.ERR_NICKNAMEINUSE,
 				Params:   []string{"*", message.Params[0]},
 				Trailing: "Nickname is already in use.",
@@ -158,7 +155,7 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 
 		// TODO(secure): send 002, 003, 004, 005, 251, 252, 254, 255, 265, 266, [motd = 375, 372, 376]
 		replies = append(replies, irc.Message{
-			Prefix:   &irc.Prefix{Name: *network},
+			Prefix:   ServerPrefix,
 			Command:  irc.RPL_WELCOME,
 			Params:   []string{s.Nick},
 			Trailing: "Welcome to fancyirc :)",
@@ -192,13 +189,13 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 		//})
 		// TODO(secure): why the = param?
 		replies = append(replies, irc.Message{
-			Prefix:   &irc.Prefix{Name: *network},
+			Prefix:   ServerPrefix,
 			Command:  irc.RPL_NAMREPLY,
 			Params:   []string{s.Nick, "=", channel},
 			Trailing: strings.Join(nicks, " "),
 		})
 		replies = append(replies, irc.Message{
-			Prefix:   &irc.Prefix{Name: *network},
+			Prefix:   ServerPrefix,
 			Command:  irc.RPL_ENDOFNAMES,
 			Params:   []string{s.Nick, channel},
 			Trailing: "End of /NAMES list.",
@@ -235,14 +232,14 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 		if s.Channels[channel] {
 			if len(message.Params) > 1 && message.Params[1] == "b" {
 				replies = append(replies, irc.Message{
-					Prefix:   &irc.Prefix{Name: *network},
+					Prefix:   ServerPrefix,
 					Command:  irc.RPL_ENDOFBANLIST,
 					Params:   []string{s.Nick, channel},
 					Trailing: "End of Channel Ban List",
 				})
 			} else {
 				replies = append(replies, irc.Message{
-					Prefix:  &irc.Prefix{Name: *network},
+					Prefix:  ServerPrefix,
 					Command: irc.RPL_CHANNELMODEIS,
 					Params:  []string{s.Nick, channel, "+"},
 				})
@@ -257,7 +254,7 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 				})
 			} else {
 				replies = append(replies, irc.Message{
-					Prefix:   &irc.Prefix{Name: *network},
+					Prefix:   ServerPrefix,
 					Command:  irc.ERR_NOTONCHANNEL,
 					Params:   []string{s.Nick, channel},
 					Trailing: "You're not on that channel",
@@ -274,15 +271,15 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 			}
 			prefix := session.ircPrefix()
 			replies = append(replies, irc.Message{
-				Prefix:   &irc.Prefix{Name: *network},
+				Prefix:   ServerPrefix,
 				Command:  irc.RPL_WHOREPLY,
-				Params:   []string{s.Nick, channel, prefix.User, prefix.Host, *network, prefix.Name, "H"},
+				Params:   []string{s.Nick, channel, prefix.User, prefix.Host, ServerPrefix.Name, prefix.Name, "H"},
 				Trailing: "0 Unknown",
 			})
 		}
 
 		replies = append(replies, irc.Message{
-			Prefix:   &irc.Prefix{Name: *network},
+			Prefix:   ServerPrefix,
 			Command:  irc.RPL_ENDOFWHO,
 			Params:   []string{s.Nick, channel},
 			Trailing: "End of /WHO list",
@@ -353,8 +350,4 @@ func GetMessage(lastseen types.FancyId) *types.FancyMessage {
 func GetSession(id types.FancyId) (*Session, bool) {
 	s, ok := Sessions[id]
 	return s, ok
-}
-
-func GetPrefix() string {
-	return *network
 }

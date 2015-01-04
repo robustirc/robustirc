@@ -265,7 +265,7 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		Prefix    string
 	}
 
-	if err := json.NewEncoder(w).Encode(createSessionReply{sessionid, ircserver.GetPrefix()}); err != nil {
+	if err := json.NewEncoder(w).Encode(createSessionReply{sessionid, *network}); err != nil {
 		log.Printf("Could not send /session reply: %v\n", err)
 	}
 }

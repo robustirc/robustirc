@@ -29,16 +29,37 @@ import (
 	"github.com/sorcix/irc"
 )
 
+// XXX: when introducing a new flag, you must add it to the flag.Usage function in main().
 var (
-	raftDir         = flag.String("raftdir", "/tmp/r", "")
-	singleNode      = flag.Bool("singlenode", false, "set to true iff starting the first node for the first time")
-	listen          = flag.String("listen", ":8000", "")
-	join            = flag.String("join", "", "raft master to join")
-	tlsCertPath     = flag.String("tls_cert_path", "", "Path to a .pem file containing the public key.")
-	tlsKeyPath      = flag.String("tls_key_path", "", "Path to a .pem file containing the private key.")
+	raftDir = flag.String("raftdir",
+		"/var/lib/robustirc",
+		"Directory in which raft state is stored. If this directory is empty, you need to specify -join.")
+	listen = flag.String("listen",
+		":443",
+		"[host]:port to listen on. Set to a port in the dynamic port range (49152 to 65535) and use DNS SRV records.")
+
+	singleNode = flag.Bool("singlenode",
+		false,
+		"Become a raft leader without any followers. Set to true if and only if starting the first node for the first time.")
+	join = flag.String("join",
+		"",
+		"host:port of an existing raft node in the network that should be joined. Will also be loaded from -raftdir.")
+
+	network = flag.String("network_name",
+		"",
+		`Name of the network (e.g. "robustirc.net") to use in IRC messages. Ideally also a DNS name pointing to one or more servers.`)
+	peerAddr = flag.String("peer_addr",
+		"",
+		`host:port of this raft node (e.g. "fastbox.robustirc.net:60667"). Must be publically reachable.`)
+	tlsCertPath = flag.String("tls_cert_path",
+		"",
+		"Path to a .pem file containing the TLS certificate.")
+	tlsKeyPath = flag.String("tls_key_path",
+		"",
+		"Path to a .pem file containing the TLS private key.")
 	networkPassword = flag.String("network_password",
 		"",
-		"A (secure) password to protect the communication between raft nodes.")
+		"A secure password to protect the communication between raft nodes. Use pwgen(1) or similar.")
 
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
@@ -209,7 +230,7 @@ func joinMaster(addr string, peerStore *raft.JSONPeers) []net.Addr {
 		Addr string
 	}
 	var buf *bytes.Buffer
-	if data, err := json.Marshal(joinRequest{*listen}); err != nil {
+	if data, err := json.Marshal(joinRequest{*peerAddr}); err != nil {
 		log.Fatal("Could not marshal join request:", err)
 	} else {
 		buf = bytes.NewBuffer(data)
@@ -271,20 +292,62 @@ func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
 	return tc, nil
 }
 
+func printDefault(f *flag.Flag) {
+	format := "  -%s=%s: %s\n"
+	if getter, ok := f.Value.(flag.Getter); ok {
+		if _, ok := getter.Get().(string); ok {
+			// put quotes on the value
+			format = "  -%s=%q: %s\n"
+		}
+	}
+	fmt.Fprintf(os.Stderr, format, f.Name, f.DefValue, f.Usage)
+}
+
 func main() {
+	flag.Usage = func() {
+		// It is unfortunate that we need to re-implement flag.PrintDefaults(),
+		// but I cannot see any other way to achieve the grouping of flags.
+		fmt.Fprintf(os.Stderr, "RobustIRC server (= node)\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "The following flags are REQUIRED:\n")
+		printDefault(flag.Lookup("network_name"))
+		printDefault(flag.Lookup("network_password"))
+		printDefault(flag.Lookup("peer_addr"))
+		printDefault(flag.Lookup("tls_cert_path"))
+		printDefault(flag.Lookup("tls_key_path"))
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "The following flags are only relevant when bootstrapping the network (once):\n")
+		printDefault(flag.Lookup("join"))
+		printDefault(flag.Lookup("singlenode"))
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "The following flags are optional:\n")
+		printDefault(flag.Lookup("listen"))
+		printDefault(flag.Lookup("raftdir"))
+	}
 	flag.Parse()
+
 	log.Printf("Initializing RobustIRC…\n")
 
 	if *networkPassword == "" {
-		log.Fatalf("-network_password flag not specified. You MUST protect your network.")
+		log.Fatalf("-network_password not set. You MUST protect your network.\n")
 	}
 	digest := sha1.New()
 	digest.Write([]byte(*networkPassword))
 	passwordHash := "{SHA}" + base64.StdEncoding.EncodeToString(digest.Sum(nil))
 
+	if *network == "" {
+		log.Fatalf("-network_name not set, but required.\n")
+	}
+	ircserver.ServerPrefix = &irc.Prefix{Name: *network}
+
+	if *peerAddr == "" {
+		log.Printf("-peer_addr not set, initializing to %q. Make sure %q is a host:port string that other raft nodes can connect to!\n", *listen, *listen)
+		*peerAddr = *listen
+	}
+
 	ircserver.ClearState()
 
-	transport := NewTransport(&dnsAddr{*listen}, *networkPassword)
+	transport := NewTransport(&dnsAddr{*peerAddr}, *networkPassword)
 
 	peerStore = raft.NewJSONPeers(*raftDir, transport)
 
@@ -377,8 +440,8 @@ func main() {
 	go srv.Serve(tlsListener)
 
 	log.Printf("RobustIRC listening on %q. For status, see %s\n",
-		*listen,
-		fmt.Sprintf("https://robustirc:%s@%s/", *networkPassword, *listen))
+		*peerAddr,
+		fmt.Sprintf("https://robustirc:%s@%s/", *networkPassword, *peerAddr))
 
 	if *join != "" {
 		p = joinMaster(*join, peerStore)

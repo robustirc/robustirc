@@ -227,7 +227,7 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		Sessions           map[types.FancyId]*ircserver.Session
 		GetMessageRequests map[string]GetMessageStats
 	}{
-		*listen,
+		*peerAddr,
 		node.State(),
 		node.Leader(),
 		p,
