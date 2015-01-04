@@ -128,3 +128,36 @@ func TestInvalidNickPlumbing(t *testing.T) {
 		t.Fatalf("session.Nick: got %q, want %q", s.Nick, "")
 	}
 }
+
+func TestInvalidChannelPlumbing(t *testing.T) {
+	id := types.FancyId{Id: time.Now().UnixNano()}
+
+	CreateSession(id, "authbytes")
+
+	s, ok := GetSession(id)
+	if !ok {
+		t.Fatalf("GetSession(%v) did not return a session", id)
+	}
+
+	ProcessMessage(id, irc.ParseMessage("NICK secure"))
+
+	got := ProcessMessage(id, irc.ParseMessage("JOIN #foobar"))
+	want := []irc.Message{
+		irc.Message{
+			Prefix:   s.ircPrefix(),
+			Command:  irc.JOIN,
+			Trailing: "#foobar",
+		},
+		*irc.ParseMessage(":robustirc.net 353 secure = #foobar :secure"),
+		*irc.ParseMessage(":robustirc.net 366 secure #foobar :End of /NAMES list."),
+	}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	got = ProcessMessage(id, irc.ParseMessage("JOIN foobar"))
+	want = []irc.Message{*irc.ParseMessage(":robustirc.net 403 secure foobar :No such channel")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}

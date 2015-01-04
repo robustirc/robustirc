@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	maxNickLen = "30"
+	maxNickLen    = "30"
+	maxChannelLen = "32"
 
 	// Message format according to RFC2812, section 2.3.1
 	// A-Z / a-z
@@ -24,10 +25,14 @@ const (
 	digit = `\x30-\x39`
 	// "[", "]", "\", "`", "_", "^", "{", "|", "}"
 	special = `\x5B-\x60\x7B-\x7D`
+
+	// any octet except NUL, BELL, CR, LF, " ", "," and ":"
+	chanstring = `\x01-\x06\x08-\x09\x0B-\x0C\x0E-\x1F\x21-\x2B\x2D-\x39\x3B-\xFF`
 )
 
 var (
-	validNickRe = regexp.MustCompile(`^[` + letter + special + `][` + letter + digit + special + `-]{0,` + maxNickLen + `}$`)
+	validNickRe    = regexp.MustCompile(`^[` + letter + special + `][` + letter + digit + special + `-]{0,` + maxNickLen + `}$`)
+	validChannelRe = regexp.MustCompile(`^#[` + chanstring + `]{0,` + maxChannelLen + `}$`)
 )
 
 var (
@@ -127,6 +132,10 @@ func IsValidNickname(nick string) bool {
 	return validNickRe.MatchString(nick)
 }
 
+func IsValidChannel(channel string) bool {
+	return validChannelRe.MatchString(channel)
+}
+
 // NickToLower converts a nickname to lower case, following RFC2812:
 //
 // Because of IRC's scandanavian origin, the characters {}| are
@@ -211,6 +220,23 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 
 	case irc.JOIN:
 		// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
+		if len(message.Params) < 1 {
+			replies = append(replies, irc.Message{
+				Prefix:   ServerPrefix,
+				Command:  irc.ERR_NEEDMOREPARAMS,
+				Trailing: "Not enough parameters",
+			})
+			break
+		}
+		if !IsValidChannel(message.Params[0]) {
+			replies = append(replies, irc.Message{
+				Prefix:   ServerPrefix,
+				Command:  irc.ERR_NOSUCHCHANNEL,
+				Params:   []string{s.Nick, message.Params[0]},
+				Trailing: "No such channel",
+			})
+			break
+		}
 		channel := message.Params[0]
 		s.Channels[channel] = true
 		var nicks []string
