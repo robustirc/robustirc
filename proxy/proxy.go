@@ -155,6 +155,9 @@ func createFancySession(logPrefix string) (session string, sessionauth string, p
 		return
 	}
 	defer resp.Body.Close()
+	// We need to read the entire body, otherwise net/http will not re-use this
+	// connection.
+	defer ioutil.ReadAll(resp.Body)
 
 	type createSessionReply struct {
 		Sessionid   string
@@ -187,6 +190,9 @@ func deleteFancySession(logPrefix, sessionauth, session string, quitmsg string) 
 		return err
 	}
 	defer resp.Body.Close()
+	// We need to read the entire body, otherwise net/http will not re-use this
+	// connection.
+	defer ioutil.ReadAll(resp.Body)
 
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("got %v, expected 200", resp.Status)
@@ -381,6 +387,9 @@ func handleIRC(conn net.Conn) {
 					// TODO(secure): what should we do here?
 					log.Printf("message could not be sent: %v\n", err)
 				}
+				// We need to read the entire body, otherwise net/http will not
+				// re-use this connection.
+				ioutil.ReadAll(resp.Body)
 				resp.Body.Close()
 			}
 		}
