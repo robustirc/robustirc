@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"sync"
 	"time"
 
 	"fancyirc/types"
@@ -12,6 +13,9 @@ import (
 
 var (
 	state = make(map[string]*backoffState)
+	// TODO(mero): It is intolerable that we need to lock a mutex to log. Find
+	// a better alternative
+	stateMu sync.RWMutex
 )
 
 type backoffState struct {
@@ -23,6 +27,8 @@ type backoffState struct {
 // time to sleep until a candidate will become available, at which point
 // nextCandidate should be called again.
 func nextCandidate(servers []string) (string, time.Duration) {
+	stateMu.RLock()
+	defer stateMu.RUnlock()
 	soonest := time.Duration(math.MaxInt64)
 	for _, host := range servers {
 		b, ok := state[host]
@@ -42,6 +48,8 @@ func nextCandidate(servers []string) (string, time.Duration) {
 }
 
 func serverFailed(host string) {
+	stateMu.Lock()
+	defer stateMu.Unlock()
 	if s, ok := state[host]; ok {
 		if s.exp < 6 {
 			s.exp++
@@ -66,8 +74,10 @@ func (p *proxy) getMessages(logPrefix, sessionauth, session string, lastSeen typ
 		for candidate == "" {
 			candidate, soonest = nextCandidate(p.servers)
 
+			stateMu.RLock()
 			log.Printf("%s [DEBUG] candidate = %s, soonest = %v, state = %+v, servers = %v\n",
 				logPrefix, candidate, soonest, state, p.servers)
+			stateMu.RUnlock()
 
 			if candidate == "" {
 				log.Printf("%s Waiting %v for back-off time to expire…\n", logPrefix, soonest)
@@ -90,11 +100,15 @@ func (p *proxy) getMessages(logPrefix, sessionauth, session string, lastSeen typ
 
 		if err != nil || resp.StatusCode != 200 {
 			serverFailed(candidate)
+			stateMu.RLock()
 			log.Printf("%s [DEBUG] backoffState = %v\n", logPrefix, state[candidate])
+			stateMu.RUnlock()
 			continue
 		}
 
+		stateMu.Lock()
 		delete(state, candidate)
+		stateMu.Unlock()
 
 		return candidate, resp
 	}
