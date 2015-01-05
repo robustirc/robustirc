@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -75,12 +74,11 @@ func (t *Transport) LocalAddr() net.Addr {
 }
 
 func (t *Transport) AppendEntriesPipeline(target net.Addr) (raft.AppendPipeline, error) {
-	// TODO(secure): patch hashicorp/raft so that we can return an error which
-	// will lead to pipelining not being tried again (because otherwise stderr
-	// will be flooded). net/http itself is good enough — in a scenario where
-	// the servers are not in the same datacenter, we won’t get any latency
-	// advantage out of pipelining.
-	return nil, errors.New("not supported by transport")
+	// This transport does not support pipelining in the hashicorp/raft sense.
+	// The underlying net/http reuses connections (keep-alive) and that is good
+	// enough. We are talking about differences in the microsecond range, which
+	// becomes irrelevant as soon as the raft nodes run on different computers.
+	return nil, raft.ErrPipelineReplicationNotSupported
 }
 
 func (t *Transport) AppendEntries(target net.Addr, args *raft.AppendEntriesRequest, resp *raft.AppendEntriesResponse) error {
