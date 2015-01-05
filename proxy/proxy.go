@@ -41,6 +41,8 @@ var (
 	listen = flag.String("listen",
 		"localhost:6667",
 		"host:port to listen on for IRC connections")
+
+	socks = flag.String("socks", "", "host:port to listen on for SOCKS5 connections")
 )
 
 const (
@@ -448,6 +450,14 @@ func main() {
 	flag.Parse()
 
 	rand.Seed(time.Now().Unix())
+
+	if *socks != "" {
+		go func() {
+			if err := listenAndServeSocks(*socks); err != nil {
+				log.Fatal(err)
+			}
+		}()
+	}
 
 	if *network == "" && *serversList == "" {
 		log.Fatal("You must specify either -network or -servers.")
