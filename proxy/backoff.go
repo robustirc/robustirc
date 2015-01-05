@@ -57,17 +57,17 @@ func serverFailed(host string) {
 
 // getMessages (blockingly) tries to connect to a server until it gets a
 // successful GetMessages response.
-func getMessages(logPrefix, sessionauth, session string, lastSeen types.FancyId) (string, *http.Response) {
+func (p *proxy) getMessages(logPrefix, sessionauth, session string, lastSeen types.FancyId) (string, *http.Response) {
 	for {
 		var (
 			candidate string
 			soonest   time.Duration
 		)
 		for candidate == "" {
-			candidate, soonest = nextCandidate(allServers)
+			candidate, soonest = nextCandidate(p.servers)
 
-			log.Printf("%s [DEBUG] candidate = %s, soonest = %v, state = %+v, allServers = %v\n",
-				logPrefix, candidate, soonest, state, allServers)
+			log.Printf("%s [DEBUG] candidate = %s, soonest = %v, state = %+v, servers = %v\n",
+				logPrefix, candidate, soonest, state, p.servers)
 
 			if candidate == "" {
 				log.Printf("%s Waiting %v for back-off time to expire…\n", logPrefix, soonest)

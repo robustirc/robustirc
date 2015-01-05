@@ -10,6 +10,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -40,10 +41,6 @@ var (
 	listen = flag.String("listen",
 		"localhost:6667",
 		"host:port to listen on for IRC connections")
-
-	serversMu     sync.RWMutex
-	currentMaster string
-	allServers    []string
 )
 
 const (
@@ -58,14 +55,66 @@ const (
 // - for resuming sessions (later): the last seen message id, perhaps setup messages (JOINs, MODEs, …)
 // for hosted mode, this state is stored per-nickname, ideally encrypted with password
 
-// servers returns all configured servers, with the last-known master prepended.
-func servers() []string {
-	serversMu.RLock()
-	defer serversMu.RUnlock()
-	return append([]string{currentMaster}, allServers...)
+type proxy struct {
+	network       string
+	servers       []string
+	currentMaster string
+	mu            sync.RWMutex
 }
 
-func sendFancyMessage(logPrefix, sessionauth, method string, targets []string, path string, data []byte) (*http.Response, error) {
+func newProxy(network string, servers []string) (*proxy, error) {
+	p := &proxy{
+		network: network,
+	}
+
+	if network != "" {
+		// Try to resolve the DNS name up to 5 times. This is to be nice to
+		// people in environments with flaky network connections at boot, who,
+		// for some reason, don’t run this program under systemd with
+		// Restart=on-failure.
+		try := 0
+		for {
+			_, addrs, err := net.LookupSRV("robustirc", "tcp", network)
+			if err != nil {
+				log.Println(err)
+				if try < 4 {
+					time.Sleep(time.Duration(int64(math.Pow(2, float64(try)))) * time.Second)
+				} else {
+					log.Fatalf("DNS lookup failed 5 times, exiting\n")
+				}
+				try++
+				continue
+			}
+			for _, addr := range addrs {
+				target := addr.Target
+				if target[len(target)-1] == '.' {
+					target = target[:len(target)-1]
+				}
+				p.servers = append(p.servers, fmt.Sprintf("%s:%d", target, addr.Port))
+			}
+			break
+		}
+	}
+
+	p.servers = append(p.servers, servers...)
+
+	if len(p.servers) == 0 {
+		return nil, errors.New("connect without network and servers")
+	}
+
+	p.currentMaster = p.servers[0]
+
+	return p, nil
+}
+
+// servers returns all configured servers, with the last-known master prepended.
+func (p *proxy) getServers() []string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return append([]string{p.currentMaster}, p.servers...)
+}
+
+func (p *proxy) sendFancyMessage(logPrefix, sessionauth, method string, targets []string, path string, data []byte) (*http.Response, error) {
 	var (
 		resp   *http.Response
 		target string
@@ -132,13 +181,13 @@ func sendFancyMessage(logPrefix, sessionauth, method string, targets []string, p
 	}
 	log.Printf("%s ->fancy: %q\n", logPrefix, string(data))
 
-	serversMu.Lock()
-	currentMaster = target
-	serversMu.Unlock()
+	p.mu.Lock()
+	p.currentMaster = target
+	p.mu.Unlock()
 	return resp, nil
 }
 
-func sendIRCMessage(logPrefix string, ircConn *irc.Conn, msg irc.Message) {
+func (p *proxy) sendIRCMessage(logPrefix string, ircConn *irc.Conn, msg irc.Message) {
 	if err := ircConn.Encode(&msg); err != nil {
 		log.Printf("%s Error sending IRC message %q: %v. Closing connection.\n", logPrefix, msg.Bytes(), err)
 		// This leads to an error in .Decode(), terminating the handleIRC goroutine.
@@ -148,9 +197,9 @@ func sendIRCMessage(logPrefix string, ircConn *irc.Conn, msg irc.Message) {
 	log.Printf("%s ->irc: %q\n", logPrefix, msg.Bytes())
 }
 
-func createFancySession(logPrefix string) (session string, sessionauth string, prefix irc.Prefix, err error) {
+func (p *proxy) createFancySession(logPrefix string) (session string, sessionauth string, prefix irc.Prefix, err error) {
 	var resp *http.Response
-	resp, err = sendFancyMessage(logPrefix, "", "POST", servers(), pathCreateSession, []byte{})
+	resp, err = p.sendFancyMessage(logPrefix, "", "POST", p.getServers(), pathCreateSession, []byte{})
 	if err != nil {
 		return
 	}
@@ -159,33 +208,33 @@ func createFancySession(logPrefix string) (session string, sessionauth string, p
 	// connection.
 	defer ioutil.ReadAll(resp.Body)
 
-	type createSessionReply struct {
+	var createSessionReply struct {
 		Sessionid   string
 		Sessionauth string
 		Prefix      string
 	}
 
-	var createreply createSessionReply
-
-	if err = json.NewDecoder(resp.Body).Decode(&createreply); err != nil {
+	if err = json.NewDecoder(resp.Body).Decode(&createSessionReply); err != nil {
 		return
 	}
 
-	session = createreply.Sessionid
-	sessionauth = createreply.Sessionauth
-	prefix = irc.Prefix{Name: createreply.Prefix}
+	session = createSessionReply.Sessionid
+	sessionauth = createSessionReply.Sessionauth
+	prefix = irc.Prefix{Name: createSessionReply.Prefix}
 	return
 }
 
-func deleteFancySession(logPrefix, sessionauth, session string, quitmsg string) error {
-	type deleteSessionRequest struct {
+func (p *proxy) deleteFancySession(logPrefix, sessionauth, session string, quitmsg string) error {
+	deleteSessionRequest := struct {
 		Quitmessage string
+	}{
+		quitmsg,
 	}
-	b, err := json.Marshal(deleteSessionRequest{Quitmessage: quitmsg})
+	b, err := json.Marshal(deleteSessionRequest)
 	if err != nil {
 		return err
 	}
-	resp, err := sendFancyMessage(logPrefix, sessionauth, "DELETE", servers(), fmt.Sprintf(pathDeleteSession, session), b)
+	resp, err := p.sendFancyMessage(logPrefix, sessionauth, "DELETE", p.getServers(), fmt.Sprintf(pathDeleteSession, session), b)
 	if err != nil {
 		return err
 	}
@@ -203,7 +252,7 @@ func deleteFancySession(logPrefix, sessionauth, session string, quitmsg string) 
 	return nil
 }
 
-func handleIRC(conn net.Conn) {
+func (p *proxy) handleIRC(conn net.Conn) {
 	var (
 		logPrefix       = conn.RemoteAddr().String()
 		ircConn         = irc.NewConn(conn)
@@ -221,10 +270,10 @@ func handleIRC(conn net.Conn) {
 		err         error
 	)
 
-	session, sessionauth, ircPrefix, err = createFancySession(logPrefix)
+	session, sessionauth, ircPrefix, err = p.createFancySession(logPrefix)
 	if err != nil {
 		log.Printf("%s Could not create RobustIRC session: %v\n", logPrefix, err)
-		sendIRCMessage(logPrefix, ircConn, irc.Message{
+		p.sendIRCMessage(logPrefix, ircConn, irc.Message{
 			Command:  "ERROR",
 			Trailing: fmt.Sprintf("Could not create RobustIRC session: %v", err),
 		})
@@ -249,15 +298,15 @@ func handleIRC(conn net.Conn) {
 		var lastSeen types.FancyId
 
 		for !done {
-			host, resp := getMessages(logPrefix, sessionauth, session, lastSeen)
+			host, resp := p.getMessages(logPrefix, sessionauth, session, lastSeen)
 
 			// We set the host as currentMaster, not because the host is the
 			// master, but because it is reachable. When sending messages, we will
 			// either reach the master by chance or get redirected, at which point
 			// we update currentMaster.
-			serversMu.Lock()
-			currentMaster = host
-			serversMu.Unlock()
+			p.mu.Lock()
+			p.currentMaster = host
+			p.mu.Unlock()
 
 			dec := json.NewDecoder(resp.Body)
 			msgchan := make(chan types.FancyMessage)
@@ -293,11 +342,11 @@ func handleIRC(conn net.Conn) {
 
 				case msg := <-msgchan:
 					if msg.Type == types.FancyPing {
-						serversMu.Lock()
-						allServers = msg.Servers
-						currentMaster = msg.Currentmaster
-						serversMu.Unlock()
-						log.Printf("received ping (%+v). Servers are now %v\n", msg, servers())
+						p.mu.Lock()
+						p.servers = msg.Servers
+						p.currentMaster = msg.Currentmaster
+						p.mu.Unlock()
+						log.Printf("received ping (%+v). Servers are now %v\n", msg, p.getServers())
 					} else if msg.Type == types.FancyIRCToClient {
 						log.Printf("%s <-fancy: %q\n", logPrefix, msg.Data)
 						fancyMessages <- msg.Data
@@ -318,7 +367,7 @@ func handleIRC(conn net.Conn) {
 		for _ = range fancyMessages {
 		}
 
-		if err := deleteFancySession(logPrefix, sessionauth, session, quitmsg); err != nil {
+		if err := p.deleteFancySession(logPrefix, sessionauth, session, quitmsg); err != nil {
 			log.Printf("%s Could not delete session: %v\n", logPrefix, err)
 		}
 	}()
@@ -334,7 +383,7 @@ func handleIRC(conn net.Conn) {
 				quitmsg = "ping timeout"
 				ircConn.Close()
 			} else {
-				sendIRCMessage(logPrefix, ircConn, irc.Message{
+				p.sendIRCMessage(logPrefix, ircConn, irc.Message{
 					Prefix:  &ircPrefix,
 					Command: irc.PING,
 					Params:  []string{"robustirc.proxy"},
@@ -357,7 +406,7 @@ func handleIRC(conn net.Conn) {
 				log.Printf("%s received PONG reply.\n", logPrefix)
 				pingSent = false
 			case irc.PING:
-				sendIRCMessage(logPrefix, ircConn, irc.Message{
+				p.sendIRCMessage(logPrefix, ircConn, irc.Message{
 					Prefix:  &ircPrefix,
 					Command: irc.PONG,
 					Params:  message.Params,
@@ -373,7 +422,7 @@ func handleIRC(conn net.Conn) {
 				b, err := json.Marshal(postMessageRequest{Data: string(message.Bytes())})
 				if err != nil {
 					log.Printf("Message could not be encoded as JSON: %v\n", err)
-					sendIRCMessage(logPrefix, ircConn, irc.Message{
+					p.sendIRCMessage(logPrefix, ircConn, irc.Message{
 						Prefix:   &ircPrefix,
 						Command:  irc.ERROR,
 						Trailing: fmt.Sprintf("Message could not be encoded as JSON: %v", err),
@@ -382,7 +431,7 @@ func handleIRC(conn net.Conn) {
 					break
 				}
 
-				resp, err := sendFancyMessage(logPrefix, sessionauth, "POST", servers(), fmt.Sprintf(pathPostMessage, session), b)
+				resp, err := p.sendFancyMessage(logPrefix, sessionauth, "POST", p.getServers(), fmt.Sprintf(pathPostMessage, session), b)
 				if err != nil {
 					// TODO(secure): what should we do here?
 					log.Printf("message could not be sent: %v\n", err)
@@ -395,7 +444,6 @@ func handleIRC(conn net.Conn) {
 		}
 	}
 }
-
 func main() {
 	flag.Parse()
 
@@ -405,44 +453,19 @@ func main() {
 		log.Fatal("You must specify either -network or -servers.")
 	}
 
-	if *network != "" {
-		// Try to resolve the DNS name up to 5 times. This is to be nice to
-		// people in environments with flaky network connections at boot, who,
-		// for some reason, don’t run this program under systemd with
-		// Restart=on-failure.
-		try := 0
-		for {
-			_, addrs, err := net.LookupSRV("robustirc", "tcp", *network)
-			if err != nil {
-				log.Println(err)
-				if try < 4 {
-					time.Sleep(time.Duration(int64(math.Pow(2, float64(try)))) * time.Second)
-				} else {
-					log.Fatalf("DNS lookup failed 5 times, exiting\n")
-				}
-				try++
-				continue
-			}
-			for _, addr := range addrs {
-				target := addr.Target
-				if target[len(target)-1] == '.' {
-					target = target[:len(target)-1]
-				}
-				allServers = append(allServers, fmt.Sprintf("%s:%d", target, addr.Port))
-			}
-			break
-		}
-	}
-
+	var servers []string
 	if *serversList != "" {
 		// Start with any server. Will be overwritten later.
-		allServers = append(allServers, strings.Split(*serversList, ",")...)
-		if len(allServers) == 0 {
+		servers = strings.Split(*serversList, ",")
+		if len(servers) == 0 {
 			log.Fatalf("Invalid -servers value (%q). Need at least one server.\n", *serversList)
 		}
 	}
 
-	currentMaster = allServers[0]
+	p, err := newProxy(*network, servers)
+	if err != nil {
+		log.Fatalf("Could not create proxy: %v\n", err)
+	}
 
 	ln, err := net.Listen("tcp", *listen)
 	if err != nil {
@@ -457,6 +480,6 @@ func main() {
 			log.Printf("Could not accept IRC client connection: %v\n", err)
 			continue
 		}
-		go handleIRC(conn)
+		go p.handleIRC(conn)
 	}
 }
