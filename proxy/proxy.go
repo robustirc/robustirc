@@ -123,7 +123,7 @@ func sendFancyMessage(logPrefix, sessionauth, method string, targets []string, p
 		if resp.StatusCode != 200 {
 			data, _ := ioutil.ReadAll(resp.Body)
 			resp.Body.Close()
-			log.Printf("%s sendFancyMessage(%q) failed with %v: %s", logPrefix, path, resp.Status, string(data))
+			log.Printf("%s sendFancyMessage(%q) failed with %v: %q", logPrefix, path, resp.Status, string(data))
 			serverFailed(target)
 			continue
 		}
