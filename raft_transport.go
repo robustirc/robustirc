@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"path"
+	"time"
 
 	"github.com/hashicorp/raft"
 )
@@ -35,6 +36,7 @@ type installSnapshotRequest struct {
 }
 
 func (t *Transport) send(url string, in, out interface{}) error {
+	started := time.Now()
 	buf, err := json.Marshal(in)
 	if err != nil {
 		return fmt.Errorf("could not serialize request: %v", err)
@@ -60,6 +62,7 @@ func (t *Transport) send(url string, in, out interface{}) error {
 	if err = json.Unmarshal(buf, out); err != nil {
 		return fmt.Errorf("could not unmarshal InstallShnapshotResponse: %v", err)
 	}
+	log.Printf("send(%q) took %v\n", url, time.Since(started))
 	return nil
 }
 
@@ -72,7 +75,11 @@ func (t *Transport) LocalAddr() net.Addr {
 }
 
 func (t *Transport) AppendEntriesPipeline(target net.Addr) (raft.AppendPipeline, error) {
-	// TODO(mero): Support Pipelines
+	// TODO(secure): patch hashicorp/raft so that we can return an error which
+	// will lead to pipelining not being tried again (because otherwise stderr
+	// will be flooded). net/http itself is good enough — in a scenario where
+	// the servers are not in the same datacenter, we won’t get any latency
+	// advantage out of pipelining.
 	return nil, errors.New("not supported by transport")
 }
 
@@ -117,13 +124,10 @@ func (t *Transport) handle(res http.ResponseWriter, req *http.Request, rpc raft.
 	respChan := make(chan raft.RPCResponse)
 	rpc.RespChan = respChan
 
-	log.Println("Calling RPC")
 	// TODO(mero): Is the consumer channel guaranteed to be read? With one or
 	// more than one reader? And are all channels returned by Consume()
 	// guaranteed to be read? I hate channel-APIs…
 	t.consumer <- rpc
-
-	log.Println("Waiting for RPC response")
 
 	resp := <-respChan
 
@@ -148,7 +152,6 @@ func (t *Transport) handle(res http.ResponseWriter, req *http.Request, rpc raft.
 }
 
 func (t *Transport) ServeHTTP(res http.ResponseWriter, req *http.Request) {
-	log.Println("RPC request on", req.URL.Path)
 	cmd := path.Base(req.URL.Path)
 
 	var rpc raft.RPC
