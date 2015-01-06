@@ -399,7 +399,9 @@ func (p *proxy) handleIRC(conn net.Conn) {
 
 		case msg := <-fancyMessages:
 			if _, err := fmt.Fprintf(conn, "%s\n", msg); err != nil {
-				log.Fatal(err)
+				log.Printf("Error sending to IRC client: %v\n", err)
+				done = true
+				return
 			}
 
 		case message := <-ircMessages:
