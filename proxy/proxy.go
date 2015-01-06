@@ -272,6 +272,10 @@ func (p *proxy) handleIRC(conn net.Conn) {
 		err         error
 	)
 
+	type postMessageRequest struct {
+		Data string
+	}
+
 	session, sessionauth, ircPrefix, err = p.createFancySession(logPrefix)
 	if err != nil {
 		log.Printf("%s Could not create RobustIRC session: %v\n", logPrefix, err)
@@ -374,12 +378,13 @@ func (p *proxy) handleIRC(conn net.Conn) {
 		}
 	}()
 
+	keepaliveTimer := time.After(1 * time.Minute)
 	for {
 		select {
 		case <-time.After(1 * time.Minute):
 			// After no traffic in either direction for 1 minute, we send a PING
 			// message. If a PING message was already sent, this means that we did
-			// not receive a PONG message, so we close the connection with at
+			// not receive a PONG message, so we close the connection with a
 			// timeout.
 			if pingSent {
 				quitmsg = "ping timeout"
@@ -392,12 +397,32 @@ func (p *proxy) handleIRC(conn net.Conn) {
 				})
 			}
 
+		case <-keepaliveTimer:
+			keepaliveTimer = time.After(1 * time.Minute)
+
+			// Cannot fail, no user input.
+			b, _ := json.Marshal(postMessageRequest{Data: "PING keepalive"})
+			resp, err := p.sendFancyMessage(logPrefix, sessionauth, "POST", p.getServers(), fmt.Sprintf(pathPostMessage, session), b)
+			if err != nil {
+				log.Printf("keepalive ping could not be sent: %v\n", err)
+				break
+			}
+			// We need to read the entire body, otherwise net/http will not
+			// re-use this connection.
+			ioutil.ReadAll(resp.Body)
+			resp.Body.Close()
+
 		case err := <-ircErrors:
 			log.Printf("Error in IRC client connection: %v\n", err)
 			done = true
 			return
 
 		case msg := <-fancyMessages:
+			ircmsg := irc.ParseMessage(msg)
+			if ircmsg.Command == irc.PONG && len(ircmsg.Params) > 0 && ircmsg.Params[0] == "keepalive" {
+				log.Printf("Swallowing keepalive PONG from server to avoid confusing the IRC client.\n")
+				break
+			}
 			if _, err := fmt.Fprintf(conn, "%s\n", msg); err != nil {
 				log.Printf("Error sending to IRC client: %v\n", err)
 				done = true
@@ -419,10 +444,6 @@ func (p *proxy) handleIRC(conn net.Conn) {
 				quitmsg = message.Trailing
 				ircConn.Close()
 			default:
-				type postMessageRequest struct {
-					Data string
-				}
-
 				b, err := json.Marshal(postMessageRequest{Data: string(message.Bytes())})
 				if err != nil {
 					log.Printf("Message could not be encoded as JSON: %v\n", err)
@@ -444,6 +465,7 @@ func (p *proxy) handleIRC(conn net.Conn) {
 				// re-use this connection.
 				ioutil.ReadAll(resp.Body)
 				resp.Body.Close()
+				keepaliveTimer = time.After(1 * time.Minute)
 			}
 		}
 	}

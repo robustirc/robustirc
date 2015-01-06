@@ -48,10 +48,11 @@ var (
 )
 
 type Session struct {
-	Id       types.FancyId
-	Auth     string
-	Nick     string
-	Channels map[string]bool
+	Id           types.FancyId
+	Auth         string
+	Nick         string
+	Channels     map[string]bool
+	LastActivity time.Time
 
 	// The current IRC message id at the time when the session was started.
 	// This is used in handleGetMessages to skip uninteresting messages.
@@ -116,10 +117,11 @@ func CreateSession(id types.FancyId, auth string) {
 		lastSeen = ircOutput[len(ircOutput)-1].Id
 	}
 	Sessions[id] = &Session{
-		Id:       id,
-		Auth:     auth,
-		StartId:  lastSeen,
-		Channels: make(map[string]bool),
+		Id:           id,
+		Auth:         auth,
+		StartId:      lastSeen,
+		Channels:     make(map[string]bool),
+		LastActivity: time.Unix(0, id.Id),
 	}
 }
 
@@ -255,6 +257,16 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 	case irc.USER:
 		// We don’t need any information from the USER message.
 		break
+
+	case irc.PING:
+		if len(message.Params) < 1 {
+			break
+		}
+		replies = append(replies, irc.Message{
+			Prefix:  ServerPrefix,
+			Command: irc.PONG,
+			Params:  []string{message.Params[0]},
+		})
 
 	case irc.JOIN:
 		// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.

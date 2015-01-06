@@ -29,6 +29,11 @@ import (
 	"github.com/sorcix/irc"
 )
 
+const (
+	pingInterval           = 30 * time.Second
+	expireSessionsInterval = 10 * time.Second
+)
+
 // XXX: when introducing a new flag, you must add it to the flag.Usage function in main().
 var (
 	raftDir = flag.String("raftdir",
@@ -37,6 +42,9 @@ var (
 	listen = flag.String("listen",
 		":443",
 		"[host]:port to listen on. Set to a port in the dynamic port range (49152 to 65535) and use DNS SRV records.")
+	sessionExpiration = flag.Duration("session_expiration",
+		30*time.Minute,
+		"Time interval after which a session without any activity is terminated by the server. The client should send a PING every minute.")
 
 	singleNode = flag.Bool("singlenode",
 		false,
@@ -117,6 +125,7 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 	case types.FancyIRCFromClient:
 		replies := ircserver.ProcessMessage(msg.Session, irc.ParseMessage(string(msg.Data)))
 		ircserver.SendMessages(replies, msg.Session, msg.Id.Id)
+		ircserver.Sessions[msg.Session].LastActivity = time.Unix(0, msg.Id.Id)
 	}
 
 	return nil
@@ -451,18 +460,53 @@ func main() {
 
 	if *join != "" {
 		p = joinMaster(*join, peerStore)
+		// TODO(secure): properly handle joins on the server-side where the joining node is already in the network.
 	}
 
 	if len(p) > 0 {
 		node.SetPeers(p)
 	}
 
+	pingTimer := time.After(pingInterval)
+	expireSessionsTimer := time.After(expireSessionsInterval)
 	for {
-		time.Sleep(30 * time.Second)
-		peers, err := peerStore.Peers()
-		if err != nil {
-			log.Fatalf("Could not get peers: %v (Peer file corrupted on disk?)\n", err)
+		select {
+		case <-pingTimer:
+			pingTimer = time.After(pingInterval)
+			peers, err := peerStore.Peers()
+			if err != nil {
+				log.Fatalf("Could not get peers: %v (Peer file corrupted on disk?)\n", err)
+			}
+			ircserver.SendPing(node.Leader(), peers)
+
+		case <-expireSessionsTimer:
+			expireSessionsTimer = time.After(expireSessionsInterval)
+
+			// Race conditions (a node becoming a leader or ceasing to be the
+			// leader shortly before/after this runs) are okay, since the timer
+			// is triggered often enough on every node so that it will
+			// eventually run on the leader.
+			if node.State() != raft.Leader {
+				continue
+			}
+
+			for id, s := range ircserver.Sessions {
+				if time.Since(s.LastActivity) <= *sessionExpiration {
+					continue
+				}
+
+				log.Printf("Expiring session %v\n", id)
+
+				msg := types.NewFancyMessage(types.FancyDeleteSession, id, fmt.Sprintf("Ping timeout (%v)", *sessionExpiration))
+				// Cannot fail, no user input.
+				msgbytes, _ := json.Marshal(msg)
+
+				f := node.Apply(msgbytes, 10*time.Second)
+				if err := f.Error(); err != nil {
+					log.Printf("Apply(): %v\n", err)
+					break
+				}
+			}
 		}
-		ircserver.SendPing(node.Leader(), peers)
 	}
 }

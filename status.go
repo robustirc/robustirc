@@ -95,6 +95,7 @@ var statusTpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
 						<tr>
 							<th></th>
 							<th>Session ID</th>
+							<th>Last Activity</th>
 							<th>Nick</th>
 							<th>Channels</th>
 						</tr>
@@ -104,6 +105,7 @@ var statusTpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
 						<tr>
 							<td class="col-sm-1" style="text-align: center"><a href="/irclog?sessionid={{ .Id.Id | printf "0x%x" }}"><span class="glyphicon glyphicon-list"></span></a></td>
 							<td class="col-sm-2"><code>{{ .Id.Id | printf "0x%x" }}</code></td>
+							<td class="col-sm-2">{{ .LastActivity }}</code></td>
 							<td class="col-sm-2">{{ .Nick }}</td>
 							<td class="col-sm-7">
 							{{ range $key, $val := .Channels }}
