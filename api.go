@@ -77,7 +77,7 @@ func sessionForRequest(r *http.Request) (*ircserver.Session, types.FancyId, erro
 func handlePostMessage(w http.ResponseWriter, r *http.Request) {
 	_, session, err := sessionForRequest(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
@@ -154,7 +154,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 	s, session, err := sessionForRequest(r)
 	if err != nil {
 		log.Printf("invalid session: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
@@ -266,7 +266,7 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 func handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	_, session, err := sessionForRequest(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
