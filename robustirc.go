@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	pingInterval           = 30 * time.Second
+	pingInterval           = 20 * time.Second
 	expireSessionsInterval = 10 * time.Second
 )
 
