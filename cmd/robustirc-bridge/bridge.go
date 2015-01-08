@@ -1,9 +1,9 @@
-// proxy bridges between IRC clients (RFC1459) and fancyirc servers.
+// bridge bridges between IRC clients (RFC1459) and fancyirc servers.
 //
-// Proxy instances are supposed to be long-running, and ideally as close to the
+// Bridge instances are supposed to be long-running, and ideally as close to the
 // IRC client as possible, e.g. on the same machine. When running on the same
 // machine, there should not be any network problems between the IRC client and
-// the proxy. Network problems between the proxy and a fancyirc network are
+// the bridge. Network problems between the bridge and a fancyirc network are
 // handled transparently.
 package main
 
@@ -15,7 +15,7 @@ import (
 	"net"
 	"time"
 
-	"fancyirc/proxy/robustsession"
+	"fancyirc/cmd/robustirc-bridge/robustsession"
 
 	"github.com/sorcix/irc"
 )
@@ -37,12 +37,12 @@ var (
 // - for resuming sessions (later): the last seen message id, perhaps setup messages (JOINs, MODEs, …)
 // for hosted mode, this state is stored per-nickname, ideally encrypted with password
 
-type proxy struct {
+type bridge struct {
 	network string
 }
 
-func newProxy(network string) *proxy {
-	return &proxy{
+func newBridge(network string) *bridge {
+	return &bridge{
 		network: network,
 	}
 }
@@ -96,7 +96,7 @@ func (s *ircsession) getMessages() {
 	}
 }
 
-func (p *proxy) handleIRC(conn net.Conn) {
+func (p *bridge) handleIRC(conn net.Conn) {
 	var quitmsg, killmsg string
 	var waitingForPingReply bool
 
@@ -231,7 +231,7 @@ func main() {
 
 	// IRC
 	if *network != "" {
-		p := newProxy(*network)
+		p := newBridge(*network)
 
 		ln, err := net.Listen("tcp", *listen)
 		if err != nil {

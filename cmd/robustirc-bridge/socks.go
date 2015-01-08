@@ -111,7 +111,7 @@ func (s *socksServer) handleConn() (err error) {
 	}
 
 	// First byte of address is the length
-	p := newProxy(string(req.Addr[1:]))
+	p := newBridge(string(req.Addr[1:]))
 
 	req.Command = socksStatusGranted
 	if err := s.sendResponse(req); err != nil {
