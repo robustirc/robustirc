@@ -75,14 +75,15 @@ func sessionForRequest(r *http.Request) (*ircserver.Session, types.FancyId, erro
 // posted. The handler blocks until either the data was written or an error
 // occurred. If successful, it returns the unique id of the message.
 func handlePostMessage(w http.ResponseWriter, r *http.Request) {
-	_, session, err := sessionForRequest(r)
+	s, session, err := sessionForRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
 	type postMessageRequest struct {
-		Data string
+		Data            string
+		ClientMessageId int
 	}
 
 	var req postMessageRequest
@@ -95,7 +96,15 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// If we have already seen this message, we just reply with a canned response.
+	if req.ClientMessageId == s.LastClientMessageId && s.LastPostMessageReply != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(s.LastPostMessageReply)
+		return
+	}
+
 	msg := types.NewFancyMessage(types.FancyIRCFromClient, session, req.Data)
+	msg.ClientMessageId = req.ClientMessageId
 	msgbytes, err := json.Marshal(msg)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Could not store message, cannot encode it as JSON: %v", err),
@@ -113,6 +122,8 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.LastPostMessageReply = msgbytes
+	s.LastClientMessageId = req.ClientMessageId
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(msgbytes)
 }

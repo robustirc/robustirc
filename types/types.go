@@ -39,6 +39,9 @@ type FancyMessage struct {
 
 	// Current master, as a hint for the proxy (may save one redirect).
 	Currentmaster string `json:",omitempty"`
+
+	// ClientMessageId sent by client. Only present when Type == FancyIRCFromClient
+	ClientMessageId int `json:",omitempty"`
 }
 
 func (m *FancyMessage) Timestamp() string {

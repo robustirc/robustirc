@@ -61,6 +61,7 @@ type proxy struct {
 	network       string
 	servers       []string
 	currentMaster string
+	currentId     int
 	mu            sync.RWMutex
 }
 
@@ -273,7 +274,8 @@ func (p *proxy) handleIRC(conn net.Conn) {
 	)
 
 	type postMessageRequest struct {
-		Data string
+		Data            string
+		ClientMessageId int
 	}
 
 	session, sessionauth, ircPrefix, err = p.createFancySession(logPrefix)
@@ -401,12 +403,14 @@ func (p *proxy) handleIRC(conn net.Conn) {
 			keepaliveTimer = time.After(1 * time.Minute)
 
 			// Cannot fail, no user input.
-			b, _ := json.Marshal(postMessageRequest{Data: "PING keepalive"})
+			b, _ := json.Marshal(postMessageRequest{Data: "PING keepalive", ClientMessageId: p.currentId})
 			resp, err := p.sendFancyMessage(logPrefix, sessionauth, "POST", p.getServers(), fmt.Sprintf(pathPostMessage, session), b)
 			if err != nil {
 				log.Printf("keepalive ping could not be sent: %v\n", err)
 				break
 			}
+			p.currentId++
+
 			// We need to read the entire body, otherwise net/http will not
 			// re-use this connection.
 			ioutil.ReadAll(resp.Body)
@@ -444,7 +448,7 @@ func (p *proxy) handleIRC(conn net.Conn) {
 				quitmsg = message.Trailing
 				ircConn.Close()
 			default:
-				b, err := json.Marshal(postMessageRequest{Data: string(message.Bytes())})
+				b, err := json.Marshal(postMessageRequest{Data: string(message.Bytes()), ClientMessageId: p.currentId})
 				if err != nil {
 					log.Printf("Message could not be encoded as JSON: %v\n", err)
 					p.sendIRCMessage(logPrefix, ircConn, irc.Message{
@@ -461,6 +465,8 @@ func (p *proxy) handleIRC(conn net.Conn) {
 					// TODO(secure): what should we do here?
 					log.Printf("message could not be sent: %v\n", err)
 				}
+				p.currentId++
+
 				// We need to read the entire body, otherwise net/http will not
 				// re-use this connection.
 				ioutil.ReadAll(resp.Body)

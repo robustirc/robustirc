@@ -57,6 +57,10 @@ type Session struct {
 	// The current IRC message id at the time when the session was started.
 	// This is used in handleGetMessages to skip uninteresting messages.
 	StartId types.FancyId
+
+	// The last ClientMessageId we got (or -1 for none)
+	LastClientMessageId  int
+	LastPostMessageReply []byte
 }
 
 func (s *Session) loggedIn() bool {

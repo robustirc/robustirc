@@ -126,6 +126,8 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		replies := ircserver.ProcessMessage(msg.Session, irc.ParseMessage(string(msg.Data)))
 		ircserver.SendMessages(replies, msg.Session, msg.Id.Id)
 		ircserver.Sessions[msg.Session].LastActivity = time.Unix(0, msg.Id.Id)
+		ircserver.Sessions[msg.Session].LastClientMessageId = msg.ClientMessageId
+		ircserver.Sessions[msg.Session].LastPostMessageReply = l.Data
 	}
 
 	return nil
