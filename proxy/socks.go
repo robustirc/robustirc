@@ -111,13 +111,7 @@ func (s *socksServer) handleConn() (err error) {
 	}
 
 	// First byte of address is the length
-	p, err := newProxy(string(req.Addr[1:]), nil)
-	if err != nil {
-		// In case of an error, we could not resolve the address
-		req.Command = socksStatusHostUnreachable
-		s.sendResponse(req)
-		return err
-	}
+	p := newProxy(string(req.Addr[1:]))
 
 	req.Command = socksStatusGranted
 	if err := s.sendResponse(req); err != nil {
