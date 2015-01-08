@@ -168,3 +168,7 @@ func (t *Transport) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 
 	t.handle(res, req, rpc)
 }
+
+func (t *Transport) SetHeartbeatHandler(cb func(rpc raft.RPC)) {
+	// Not supported
+}
