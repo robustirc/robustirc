@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -33,18 +36,30 @@ func (stats GetMessageStats) StartedAndRelative() string {
 		time.Now().Round(time.Second).Sub(stats.Started.Round(time.Second)).String() + " ago)"
 }
 
-func redirectToLeader(w http.ResponseWriter, r *http.Request) {
+type nopCloser struct {
+	io.Reader
+}
+
+func (nopCloser) Close() error {
+	return nil
+}
+
+func maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body io.ReadCloser) {
 	leader := node.Leader()
 	if leader == nil {
 		http.Error(w, fmt.Sprintf("No leader known. Please try another server."),
 			http.StatusInternalServerError)
 		return
 	}
-
-	target := r.URL
-	target.Scheme = "http"
-	target.Host = leader.String()
-	http.Redirect(w, r, target.String(), http.StatusTemporaryRedirect)
+	u, err := url.Parse("https://" + leader.String())
+	if err != nil {
+		http.Error(w, fmt.Sprintf("url.Parse(): %v", err), http.StatusInternalServerError)
+		return
+	}
+	log.Printf("Proxying request to leader %q\n", leader.String())
+	p := httputil.NewSingleHostReverseProxy(u)
+	r.Body = body
+	p.ServeHTTP(w, r)
 }
 
 func sessionForRequest(r *http.Request) (*ircserver.Session, types.FancyId, error) {
@@ -91,7 +106,11 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request) {
 	// We limit the amount of bytes read to 1024 to prevent reading overly long
 	// requests in the first place. The IRC line length limit is 512 bytes, so
 	// with 1024 bytes we have plenty of headroom to encode 512 bytes in JSON.
-	if err := json.NewDecoder(&io.LimitedReader{r.Body, 1024}).Decode(&req); err != nil {
+	//
+	// We save a copy of the request in case we need to proxy it to the leader.
+	var body bytes.Buffer
+	rd := io.TeeReader(&io.LimitedReader{r.Body, 1024}, &body)
+	if err := json.NewDecoder(rd).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -115,7 +134,7 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request) {
 	f := node.Apply(msgbytes, 10*time.Second)
 	if err := f.Error(); err != nil {
 		if err == raft.ErrNotLeader {
-			redirectToLeader(w, r)
+			maybeProxyToLeader(w, r, nopCloser{&body})
 			return
 		}
 		http.Error(w, fmt.Sprintf("Apply(): %v", err), http.StatusInternalServerError)
@@ -131,7 +150,7 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request) {
 func handleJoin(w http.ResponseWriter, r *http.Request) {
 	log.Println("Join request from", r.RemoteAddr)
 	if node.State() != raft.Leader {
-		redirectToLeader(w, r)
+		maybeProxyToLeader(w, r, r.Body)
 		return
 	}
 
@@ -252,7 +271,7 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	f := node.Apply(msgbytes, 10*time.Second)
 	if err := f.Error(); err != nil {
 		if err == raft.ErrNotLeader {
-			redirectToLeader(w, r)
+			maybeProxyToLeader(w, r, nopCloser{bytes.NewBuffer(nil)})
 			return
 		}
 		http.Error(w, fmt.Sprintf("Apply(): %v", err), http.StatusInternalServerError)
@@ -286,8 +305,9 @@ func handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req deleteSessionRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	var body bytes.Buffer
+	rd := io.TeeReader(r.Body, &body)
+	if err := json.NewDecoder(rd).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Could not decode request: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -299,7 +319,8 @@ func handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	f := node.Apply(msgbytes, 10*time.Second)
 	if err := f.Error(); err != nil {
 		if err == raft.ErrNotLeader {
-			redirectToLeader(w, r)
+			maybeProxyToLeader(w, r, nopCloser{&body})
+			return
 		}
 		http.Error(w, fmt.Sprintf("Apply(): %v", err), http.StatusInternalServerError)
 		return
