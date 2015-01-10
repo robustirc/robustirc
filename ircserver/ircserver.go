@@ -58,8 +58,8 @@ type Session struct {
 	// This is used in handleGetMessages to skip uninteresting messages.
 	StartId types.RobustId
 
-	// The last ClientMessageId we got (or -1 for none)
-	LastClientMessageId  int
+	// The last ClientMessageId we got.
+	LastClientMessageId  uint64
 	LastPostMessageReply []byte
 }
 

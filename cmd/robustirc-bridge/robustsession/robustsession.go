@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io/ioutil"
 	"log"
 	"math"
@@ -166,7 +167,6 @@ type RobustSession struct {
 	deleted     bool
 	done        chan bool
 	network     *network
-	msgcounter  int
 }
 
 func (s *RobustSession) sendRequest(method, path string, data []byte) (string, *http.Response, error) {
@@ -322,14 +322,23 @@ func (s *RobustSession) getMessages() {
 func (s *RobustSession) PostMessage(message string) error {
 	type postMessageRequest struct {
 		Data            string
-		ClientMessageId int
+		ClientMessageId uint64
 	}
 
-	s.msgcounter++
+	h := fnv.New32()
+	h.Write([]byte(message))
+	// The message id should be unique across separate instances of the bridge,
+	// even if they were attached to the same session. A collision in this case
+	// means one bridge instance (with the same session) is unable to send a
+	// message because the message id is equal to the one the other bridge
+	// instance just sent. With the hash of the message itself, such a
+	// collision can only occur when both instances try to send exactly the
+	// same message _and_ the random value is the same for both instances.
+	msgid := (uint64(h.Sum32()) << 32) | uint64(rand.Int31n(math.MaxInt32))
 
 	b, err := json.Marshal(postMessageRequest{
 		Data:            message,
-		ClientMessageId: s.msgcounter,
+		ClientMessageId: msgid,
 	})
 	if err != nil {
 		return fmt.Errorf("Message could not be encoded as JSON: %v\n", err)

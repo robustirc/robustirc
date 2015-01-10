@@ -41,7 +41,7 @@ type RobustMessage struct {
 	Currentmaster string `json:",omitempty"`
 
 	// ClientMessageId sent by client. Only present when Type == RobustIRCFromClient
-	ClientMessageId int `json:",omitempty"`
+	ClientMessageId uint64 `json:",omitempty"`
 }
 
 func (m *RobustMessage) Timestamp() string {
