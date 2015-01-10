@@ -91,6 +91,10 @@ func (s *ircsession) getMessages() {
 			s.Errors <- err
 			return
 		}
+		// Skip invalid lines (to prevent nil pointer dereferences).
+		if ircmsg == nil {
+			continue
+		}
 		log.Printf("<-irc: %q\n", ircmsg.Bytes())
 		s.Messages <- *ircmsg
 	}
