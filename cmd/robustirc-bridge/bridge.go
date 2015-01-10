@@ -91,7 +91,7 @@ func (s *ircsession) getMessages() {
 			s.Errors <- err
 			return
 		}
-		// Skip empty lines (to prevent nil pointer dereferences).
+		// Skip invalid lines (to prevent nil pointer dereferences).
 		if ircmsg == nil {
 			continue
 		}
