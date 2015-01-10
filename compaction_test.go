@@ -13,6 +13,7 @@ import (
 	"github.com/robustirc/robustirc/types"
 
 	"github.com/hashicorp/raft"
+	"github.com/sorcix/irc"
 )
 
 func appendLog(logs []*raft.Log, msg string) []*raft.Log {
@@ -42,6 +43,7 @@ func verifyEndState(t *testing.T) {
 
 func TestCompaction(t *testing.T) {
 	ircserver.ClearState()
+	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
 
 	tempdir, err := ioutil.TempDir("", "robust-test-")
 	if err != nil {
