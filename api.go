@@ -57,6 +57,9 @@ func maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body io.ReadClos
 		return
 	}
 	log.Printf("Proxying request to leader %q\n", leader.String())
+	location := *r.URL
+	location.Host = leader.String()
+	w.Header().Set("Content-Location", location.String())
 	p := httputil.NewSingleHostReverseProxy(u)
 	r.Body = body
 	p.ServeHTTP(w, r)

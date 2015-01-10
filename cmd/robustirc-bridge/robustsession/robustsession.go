@@ -12,6 +12,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -120,6 +121,16 @@ func (n *network) setServers(servers []string) {
 	n.servers = servers
 }
 
+// prefer adds the specified server to the front of the servers list, thereby
+// trying to prefer it over other servers for the next request. Note that
+// exponential backoff overrides this, so this is only a hint, not a guarantee.
+func (n *network) prefer(server string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	n.servers = append([]string{server}, n.servers...)
+}
+
 func (n *network) failed(server string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -208,10 +219,10 @@ func Create(network string) (*RobustSession, error) {
 	networksMu.Unlock()
 
 	s := &RobustSession{
-		Messages:   make(chan string),
-		Errors:     make(chan error),
-		done:       make(chan bool, 1),
-		network:    n,
+		Messages: make(chan string),
+		Errors:   make(chan error),
+		done:     make(chan bool, 1),
+		network:  n,
 	}
 
 	_, resp, err := s.sendRequest("POST", pathCreateSession, nil)
@@ -228,6 +239,13 @@ func Create(network string) (*RobustSession, error) {
 
 	if err := json.NewDecoder(resp.Body).Decode(&createSessionReply); err != nil {
 		return nil, err
+	}
+
+	if cl := resp.Header.Get("Content-Location"); cl != "" {
+		if location, err := url.Parse(cl); err == nil {
+			log.Printf("Preferring %q (current leader)\n", location.Host)
+			s.network.prefer(location.Host)
+		}
 	}
 
 	s.sessionId = createSessionReply.Sessionid
