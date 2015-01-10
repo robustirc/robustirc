@@ -121,6 +121,9 @@ func (n *network) setServers(servers []string) {
 	n.servers = servers
 }
 
+// prefer adds the specified server to the front of the servers list, thereby
+// trying to prefer it over other servers for the next request. Note that
+// exponential backoff overrides this, so this is only a hint, not a guarantee.
 func (n *network) prefer(server string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
