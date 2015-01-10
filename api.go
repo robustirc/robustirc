@@ -89,7 +89,7 @@ func sessionForRequest(r *http.Request) (*ircserver.Session, types.RobustId, err
 	return s, session, nil
 }
 
-// handlePostMessage is called by the robustproxy whenever a message should be
+// handlePostMessage is called by the robustirc-brigde whenever a message should be
 // posted. The handler blocks until either the data was written or an error
 // occurred. If successful, it returns the unique id of the message.
 func handlePostMessage(w http.ResponseWriter, r *http.Request) {
