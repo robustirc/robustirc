@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -309,6 +310,11 @@ func (s *RobustSession) getMessages() {
 			}
 		}
 		resp.Body.Close()
+
+		// Delay reconnecting for somewhere in between [250, 500) ms to avoid
+		// overloading the remaining servers from many clients at once when one
+		// server fails.
+		time.Sleep(time.Duration(250+rand.Int63n(250)) * time.Millisecond)
 	}
 }
 
