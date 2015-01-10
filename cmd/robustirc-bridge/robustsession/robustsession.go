@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"fancyirc/types"
+	"github.com/robustirc/robustirc/types"
 
 	"github.com/sorcix/irc"
 )
@@ -258,7 +258,7 @@ func Create(network string) (*RobustSession, error) {
 }
 
 func (s *RobustSession) getMessages() {
-	var lastseen types.FancyId
+	var lastseen types.RobustId
 
 	for !s.deleted {
 		target, resp, err := s.sendRequest("GET", fmt.Sprintf(pathGetMessages, s.sessionId, lastseen.String()), nil)
@@ -267,12 +267,12 @@ func (s *RobustSession) getMessages() {
 			return
 		}
 
-		msgchan := make(chan types.FancyMessage, 1)
+		msgchan := make(chan types.RobustMessage, 1)
 		errchan := make(chan error)
 		go func() {
 			dec := json.NewDecoder(resp.Body)
 			for {
-				var msg types.FancyMessage
+				var msg types.RobustMessage
 				if err := dec.Decode(&msg); err != nil {
 					errchan <- err
 					return
@@ -285,9 +285,9 @@ func (s *RobustSession) getMessages() {
 		for !s.deleted {
 			select {
 			case msg := <-msgchan:
-				if msg.Type == types.FancyPing {
+				if msg.Type == types.RobustPing {
 					s.network.setServers(msg.Servers)
-				} else if msg.Type == types.FancyIRCToClient {
+				} else if msg.Type == types.RobustIRCToClient {
 					// TODO: remove/debug
 					log.Printf("<-robustirc: %q\n", msg.Data)
 					s.Messages <- msg.Data

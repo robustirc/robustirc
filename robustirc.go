@@ -19,9 +19,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"fancyirc/ircserver"
-	"fancyirc/raft_logstore"
-	"fancyirc/types"
+	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/raft_logstore"
+	"github.com/robustirc/robustirc/types"
 
 	auth "github.com/abbot/go-http-auth"
 	"github.com/gorilla/mux"
@@ -71,15 +71,15 @@ var (
 
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
-	logStore  *raft_logstore.FancyLogStore
+	logStore  *raft_logstore.RobustLogStore
 )
 
-type fancySnapshot struct {
+type robustSnapshot struct {
 	indexes []uint64
-	store   *raft_logstore.FancyLogStore
+	store   *raft_logstore.RobustLogStore
 }
 
-func (s *fancySnapshot) Persist(sink raft.SnapshotSink) error {
+func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 	log.Printf("Persisting indexes %v\n", s.indexes)
 	encoder := gob.NewEncoder(sink)
 	var entry raft.Log
@@ -97,11 +97,11 @@ func (s *fancySnapshot) Persist(sink raft.SnapshotSink) error {
 	return nil
 }
 
-func (s *fancySnapshot) Release() {
+func (s *robustSnapshot) Release() {
 }
 
 type FSM struct {
-	store *raft_logstore.FancyLogStore
+	store *raft_logstore.RobustLogStore
 }
 
 func (fsm *FSM) Apply(l *raft.Log) interface{} {
@@ -110,19 +110,19 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		return nil
 	}
 
-	msg := types.NewFancyMessageFromBytes(l.Data)
+	msg := types.NewRobustMessageFromBytes(l.Data)
 	log.Printf("Apply(fmsg.Type=%d)\n", msg.Type)
 
 	switch msg.Type {
-	case types.FancyCreateSession:
+	case types.RobustCreateSession:
 		ircserver.CreateSession(msg.Id, msg.Data)
 
-	case types.FancyDeleteSession:
+	case types.RobustDeleteSession:
 		replies := ircserver.ProcessMessage(msg.Session, irc.ParseMessage("QUIT :"+string(msg.Data)))
 		ircserver.SendMessages(replies, msg.Session, msg.Id.Id)
 		ircserver.DeleteSession(msg.Session)
 
-	case types.FancyIRCFromClient:
+	case types.RobustIRCFromClient:
 		replies := ircserver.ProcessMessage(msg.Session, irc.ParseMessage(string(msg.Data)))
 		ircserver.SendMessages(replies, msg.Session, msg.Id.Id)
 		ircserver.Sessions[msg.Session].LastActivity = time.Unix(0, msg.Id.Id)
@@ -154,9 +154,9 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 		}
 
 		if elog.Type == raft.LogCommand {
-			msg := types.NewFancyMessageFromBytes(elog.Data)
+			msg := types.NewRobustMessageFromBytes(elog.Data)
 			if time.Since(time.Unix(0, msg.Id.Id)) > 7*24*time.Hour &&
-				msg.Type == types.FancyIRCFromClient {
+				msg.Type == types.RobustIRCFromClient {
 				ircmsg := irc.ParseMessage(msg.Data)
 				// TODO: MODE (tricky)
 				// Delete messages which don’t modify state.
@@ -192,7 +192,7 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 		filtered = append([]uint64{indexes[i]}, filtered...)
 	}
 
-	return &fancySnapshot{filtered, fsm.store}, err
+	return &robustSnapshot{filtered, fsm.store}, err
 }
 
 func (fsm *FSM) Restore(snap io.ReadCloser) error {
@@ -225,7 +225,7 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 		}
 	}
 
-	if err := os.RemoveAll(filepath.Join(*raftDir, "fancylogs-obsolete")); err != nil {
+	if err := os.RemoveAll(filepath.Join(*raftDir, "robustlogs-obsolete")); err != nil {
 		return err
 	}
 
@@ -280,7 +280,7 @@ func joinMaster(addr string, peerStore *raft.JSONPeers) []net.Addr {
 	return p
 }
 
-// dnsAddr contains a DNS name (e.g. fancy1.twice-irc.de) and fulfills the
+// dnsAddr contains a DNS name (e.g. robust1.twice-irc.de) and fulfills the
 // net.Addr interface, so that it can be used with our raft library.
 type dnsAddr struct {
 	name string
@@ -385,11 +385,11 @@ func main() {
 	config.SnapshotThreshold = 2
 	config.SnapshotInterval = 1 * time.Second
 
-	logStore, err = raft_logstore.NewFancyLogStore(*raftDir)
+	logStore, err = raft_logstore.NewRobustLogStore(*raftDir)
 	if err != nil {
 		log.Fatal(err)
 	}
-	stablestore, err := NewFancyStableStore(*raftDir)
+	stablestore, err := NewRobustStableStore(*raftDir)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -499,7 +499,7 @@ func main() {
 
 				log.Printf("Expiring session %v\n", id)
 
-				msg := types.NewFancyMessage(types.FancyDeleteSession, id, fmt.Sprintf("Ping timeout (%v)", *sessionExpiration))
+				msg := types.NewRobustMessage(types.RobustDeleteSession, id, fmt.Sprintf("Ping timeout (%v)", *sessionExpiration))
 				// Cannot fail, no user input.
 				msgbytes, _ := json.Marshal(msg)
 
