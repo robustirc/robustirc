@@ -170,7 +170,7 @@ func handleJoin(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Adding peer %q to the network.\n", req.Addr)
 
-	if err := node.AddPeer(&dnsAddr{req.Addr}).Error(); err != nil {
+	if err := node.AddPeer(&dnsAddr{req.Addr}).Error(); err != nil && err != raft.ErrKnownPeer {
 		log.Println("Could not add peer:", err)
 		http.Error(w, "Could not add peer", 500)
 		return
