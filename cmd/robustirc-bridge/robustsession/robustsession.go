@@ -73,7 +73,11 @@ func newNetwork(networkname string) (*network, error) {
 				try++
 				continue
 			}
-			// TODO(secure): random shuffle
+			// Randomly shuffle the addresses.
+			for i := range addrs {
+				j := rand.Intn(i + 1)
+				addrs[i], addrs[j] = addrs[j], addrs[i]
+			}
 			for _, addr := range addrs {
 				target := addr.Target
 				if target[len(target)-1] == '.' {
