@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"fancyirc/types"
+	"github.com/robustirc/robustirc/types"
 
 	"github.com/sorcix/irc"
 )
 
 func TestSessionInitialization(t *testing.T) {
-	id := types.FancyId{Id: time.Now().UnixNano()}
+	id := types.RobustId{Id: time.Now().UnixNano()}
 
 	CreateSession(id, "authbytes")
 	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
@@ -38,8 +38,8 @@ func TestNickCollision(t *testing.T) {
 	ClearState()
 	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
 
-	idSecure := types.FancyId{Id: 1420228218166687917}
-	idMero := types.FancyId{Id: 1420228218166687918}
+	idSecure := types.RobustId{Id: 1420228218166687917}
+	idMero := types.RobustId{Id: 1420228218166687918}
 
 	CreateSession(idSecure, "auth-secure")
 	CreateSession(idMero, "auth-mero")
@@ -106,7 +106,7 @@ func TestInvalidNick(t *testing.T) {
 }
 
 func TestInvalidNickPlumbing(t *testing.T) {
-	id := types.FancyId{Id: time.Now().UnixNano()}
+	id := types.RobustId{Id: time.Now().UnixNano()}
 
 	ClearState()
 	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
@@ -133,7 +133,7 @@ func TestInvalidNickPlumbing(t *testing.T) {
 }
 
 func TestInvalidChannelPlumbing(t *testing.T) {
-	id := types.FancyId{Id: time.Now().UnixNano()}
+	id := types.RobustId{Id: time.Now().UnixNano()}
 
 	ClearState()
 	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}

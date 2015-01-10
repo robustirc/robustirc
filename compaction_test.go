@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"fancyirc/ircserver"
-	"fancyirc/raft_logstore"
-	"fancyirc/types"
+	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/raft_logstore"
+	"github.com/robustirc/robustirc/types"
 
 	"github.com/hashicorp/raft"
 )
@@ -24,7 +24,7 @@ func appendLog(logs []*raft.Log, msg string) []*raft.Log {
 }
 
 func verifyEndState(t *testing.T) {
-	s, ok := ircserver.GetSession(types.FancyId{Id: 1})
+	s, ok := ircserver.GetSession(types.RobustId{Id: 1})
 	if !ok {
 		t.Fatalf("No session found after applying log messages")
 	}
@@ -43,15 +43,15 @@ func verifyEndState(t *testing.T) {
 func TestCompaction(t *testing.T) {
 	ircserver.ClearState()
 
-	tempdir, err := ioutil.TempDir("", "fancy-test-")
+	tempdir, err := ioutil.TempDir("", "robust-test-")
 	if err != nil {
 		t.Fatalf("ioutil.TempDir: %v", err)
 	}
 	defer os.RemoveAll(tempdir)
 
-	store, err := raft_logstore.NewFancyLogStore(tempdir)
+	store, err := raft_logstore.NewRobustLogStore(tempdir)
 	if err != nil {
-		t.Fatalf("Unexpected error in NewFancyLogStore: %v", err)
+		t.Fatalf("Unexpected error in NewRobustLogStore: %v", err)
 	}
 	fsm := FSM{store}
 
@@ -85,12 +85,12 @@ func TestCompaction(t *testing.T) {
 		t.Fatalf("Unexpected error in fsm.Snapshot(): %v", err)
 	}
 
-	fancysnap, ok := snapshot.(*fancySnapshot)
+	robustsnap, ok := snapshot.(*robustSnapshot)
 	if !ok {
-		t.Fatalf("fsm.Snapshot() return value is not a fancySnapshot")
+		t.Fatalf("fsm.Snapshot() return value is not a robustSnapshot")
 	}
-	if fancysnap.indexes[len(fancysnap.indexes)-1] != uint64(len(logs)-1) ||
-		fancysnap.indexes[len(fancysnap.indexes)-2] != uint64(len(logs)-2) {
+	if robustsnap.indexes[len(robustsnap.indexes)-1] != uint64(len(logs)-1) ||
+		robustsnap.indexes[len(robustsnap.indexes)-2] != uint64(len(logs)-2) {
 		t.Fatalf("snapshot does not retain the last two (recent) messages")
 	}
 

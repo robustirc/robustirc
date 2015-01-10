@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"fancyirc/ircserver"
-	"fancyirc/types"
+	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/types"
 
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/raft"
@@ -26,7 +26,7 @@ var (
 )
 
 type GetMessageStats struct {
-	Session types.FancyId
+	Session types.RobustId
 	Nick    string
 	Started time.Time
 }
@@ -65,31 +65,31 @@ func maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body io.ReadClos
 	p.ServeHTTP(w, r)
 }
 
-func sessionForRequest(r *http.Request) (*ircserver.Session, types.FancyId, error) {
+func sessionForRequest(r *http.Request) (*ircserver.Session, types.RobustId, error) {
 	idstr := mux.Vars(r)["sessionid"]
 	id, err := strconv.ParseInt(idstr, 0, 64)
 	if err != nil {
-		return nil, types.FancyId{}, fmt.Errorf("Invalid session: %v", err)
+		return nil, types.RobustId{}, fmt.Errorf("Invalid session: %v", err)
 	}
 
-	session := types.FancyId{Id: id}
+	session := types.RobustId{Id: id}
 	s, ok := ircserver.GetSession(session)
 	if !ok {
-		return nil, types.FancyId{}, fmt.Errorf("No such session")
+		return nil, types.RobustId{}, fmt.Errorf("No such session")
 	}
 
 	cookie := r.Header.Get("X-Session-Auth")
 	if cookie == "" {
-		return nil, types.FancyId{}, fmt.Errorf("No SessionAuth cookie set")
+		return nil, types.RobustId{}, fmt.Errorf("No SessionAuth cookie set")
 	}
 	if cookie != s.Auth {
-		return nil, types.FancyId{}, fmt.Errorf("Invalid SessionAuth cookie")
+		return nil, types.RobustId{}, fmt.Errorf("Invalid SessionAuth cookie")
 	}
 
 	return s, session, nil
 }
 
-// handlePostMessage is called by the fancyproxy whenever a message should be
+// handlePostMessage is called by the robustirc-brigde whenever a message should be
 // posted. The handler blocks until either the data was written or an error
 // occurred. If successful, it returns the unique id of the message.
 func handlePostMessage(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +125,7 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg := types.NewFancyMessage(types.FancyIRCFromClient, session, req.Data)
+	msg := types.NewRobustMessage(types.RobustIRCFromClient, session, req.Data)
 	msg.ClientMessageId = req.ClientMessageId
 	msgbytes, err := json.Marshal(msg)
 	if err != nil {
@@ -225,7 +225,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 				http.StatusInternalServerError)
 			return
 		}
-		lastSeen = types.FancyId{
+		lastSeen = types.RobustId{
 			Id:    first,
 			Reply: last,
 		}
@@ -267,7 +267,7 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sessionauth := fmt.Sprintf("%x", b)
-	msg := types.NewFancyMessage(types.FancyCreateSession, types.FancyId{}, sessionauth)
+	msg := types.NewRobustMessage(types.RobustCreateSession, types.RobustId{}, sessionauth)
 	// Cannot fail, no user input.
 	msgbytes, _ := json.Marshal(msg)
 
@@ -315,7 +315,7 @@ func handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg := types.NewFancyMessage(types.FancyDeleteSession, session, req.Quitmessage)
+	msg := types.NewRobustMessage(types.RobustDeleteSession, session, req.Quitmessage)
 	// Cannot fail, no user input.
 	msgbytes, _ := json.Marshal(msg)
 

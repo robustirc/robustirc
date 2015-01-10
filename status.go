@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"fancyirc/ircserver"
-	"fancyirc/types"
+	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/types"
 
 	"github.com/hashicorp/raft"
 )
@@ -226,7 +226,7 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		Last               uint64
 		Entries            []*raft.Log
 		Stats              map[string]string
-		Sessions           map[types.FancyId]*ircserver.Session
+		Sessions           map[types.RobustId]*ircserver.Session
 		GetMessageRequests map[string]GetMessageStats
 	}{
 		*peerAddr,
@@ -251,7 +251,7 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session := types.FancyId{Id: id}
+	session := types.RobustId{Id: id}
 
 	s, ok := ircserver.GetSession(session)
 	if !ok {
@@ -262,7 +262,7 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 	// TODO(secure): pagination
 
 	lastSeen := s.StartId
-	var messages []*types.FancyMessage
+	var messages []*types.RobustMessage
 	// TODO(secure): input messages (i.e. raft log entries) which don’t result
 	// in an output message in the current session (e.g. PRIVMSGs) don’t show
 	// up in here at all.
@@ -271,7 +271,7 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 	// them to the messages slice in the second loop. We should come up with a
 	// better way that is lighter on resources. Perhaps store the processed
 	// indexes in the session?
-	inputs := make(map[types.FancyId]*types.FancyMessage)
+	inputs := make(map[types.RobustId]*types.RobustMessage)
 	first, _ := logStore.FirstIndex()
 	last, _ := logStore.LastIndex()
 	for idx := first; idx <= last; idx++ {
@@ -284,7 +284,7 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 		if elog.Type != raft.LogCommand {
 			continue
 		}
-		msg := types.NewFancyMessageFromBytes(elog.Data)
+		msg := types.NewRobustMessageFromBytes(elog.Data)
 		if msg.Session.Id != session.Id {
 			continue
 		}
@@ -293,9 +293,9 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		if msg := ircserver.GetMessageNonBlocking(lastSeen); msg != nil {
-			if msg.Type == types.FancyIRCToClient && s.InterestedIn(msg) {
+			if msg.Type == types.RobustIRCToClient && s.InterestedIn(msg) {
 				if msg.Id.Reply == 1 {
-					if inputmsg, ok := inputs[types.FancyId{Id: msg.Id.Id}]; ok {
+					if inputmsg, ok := inputs[types.RobustId{Id: msg.Id.Id}]; ok {
 						messages = append(messages, inputmsg)
 					}
 				}
@@ -308,8 +308,8 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	args := struct {
-		Session  types.FancyId
-		Messages []*types.FancyMessage
+		Session  types.RobustId
+		Messages []*types.RobustMessage
 	}{
 		session,
 		messages,

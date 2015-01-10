@@ -1,9 +1,9 @@
-// bridge bridges between IRC clients (RFC1459) and fancyirc servers.
+// bridge bridges between IRC clients (RFC1459) and RobustIRC servers.
 //
 // Bridge instances are supposed to be long-running, and ideally as close to the
 // IRC client as possible, e.g. on the same machine. When running on the same
 // machine, there should not be any network problems between the IRC client and
-// the bridge. Network problems between the bridge and a fancyirc network are
+// the bridge. Network problems between the bridge and a RobustIRC network are
 // handled transparently.
 package main
 
@@ -15,7 +15,7 @@ import (
 	"net"
 	"time"
 
-	"fancyirc/cmd/robustirc-bridge/robustsession"
+	"github.com/robustirc/robustirc/cmd/robustirc-bridge/robustsession"
 
 	"github.com/sorcix/irc"
 )

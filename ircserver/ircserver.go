@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"fancyirc/types"
+	"github.com/robustirc/robustirc/types"
 
 	"github.com/sorcix/irc"
 )
@@ -38,17 +38,17 @@ var (
 
 var (
 	serverCreation = time.Now()
-	Sessions       = make(map[types.FancyId]*Session)
+	Sessions       = make(map[types.RobustId]*Session)
 	ServerPrefix   *irc.Prefix
 
 	ircOutputMu sync.Mutex
-	ircOutput   []types.FancyMessage
-	idToIdx     map[types.FancyId]int
+	ircOutput   []types.RobustMessage
+	idToIdx     map[types.RobustId]int
 	newMessage  = sync.NewCond(&sync.Mutex{})
 )
 
 type Session struct {
-	Id           types.FancyId
+	Id           types.RobustId
 	Auth         string
 	Nick         string
 	Channels     map[string]bool
@@ -56,7 +56,7 @@ type Session struct {
 
 	// The current IRC message id at the time when the session was started.
 	// This is used in handleGetMessages to skip uninteresting messages.
-	StartId types.FancyId
+	StartId types.RobustId
 
 	// The last ClientMessageId we got (or -1 for none)
 	LastClientMessageId  int
@@ -71,13 +71,13 @@ func (s *Session) ircPrefix() *irc.Prefix {
 	// TODO(secure): Is there a better value for User?
 	return &irc.Prefix{
 		Name: s.Nick,
-		User: "fancy",
-		Host: fmt.Sprintf("fancy/0x%x", s.Id.Id),
+		User: "robust",
+		Host: fmt.Sprintf("robust/0x%x", s.Id.Id),
 	}
 }
 
-func (s *Session) InterestedIn(msg *types.FancyMessage) bool {
-	if msg.Type == types.FancyPing {
+func (s *Session) InterestedIn(msg *types.RobustMessage) bool {
+	if msg.Type == types.RobustPing {
 		return true
 	}
 	ircmsg := irc.ParseMessage(msg.Data)
@@ -109,14 +109,14 @@ func (s *Session) InterestedIn(msg *types.FancyMessage) bool {
 }
 
 func ClearState() {
-	Sessions = make(map[types.FancyId]*Session)
-	idToIdx = make(map[types.FancyId]int)
-	idToIdx[types.FancyId{}] = -1
+	Sessions = make(map[types.RobustId]*Session)
+	idToIdx = make(map[types.RobustId]int)
+	idToIdx[types.RobustId{}] = -1
 }
 
 // CreateSession creates a new session (equivalent to an IRC connection).
-func CreateSession(id types.FancyId, auth string) {
-	var lastSeen types.FancyId
+func CreateSession(id types.RobustId, auth string) {
+	var lastSeen types.RobustId
 	if len(ircOutput) > 0 {
 		lastSeen = ircOutput[len(ircOutput)-1].Id
 	}
@@ -129,7 +129,7 @@ func CreateSession(id types.FancyId, auth string) {
 	}
 }
 
-func DeleteSession(id types.FancyId) {
+func DeleteSession(id types.RobustId) {
 	delete(Sessions, id)
 }
 
@@ -157,7 +157,7 @@ func NickToLower(nick string) string {
 
 // ProcessMessage modifies state in response to 'message' and returns zero or
 // more IRC messages in response to 'message'.
-func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
+func ProcessMessage(session types.RobustId, message *irc.Message) []irc.Message {
 	var replies []irc.Message
 
 	// alias for convenience
@@ -413,19 +413,19 @@ func ProcessMessage(session types.FancyId, message *irc.Message) []irc.Message {
 	return replies
 }
 
-func SendMessages(replies []irc.Message, session types.FancyId, id int64) {
+func SendMessages(replies []irc.Message, session types.RobustId, id int64) {
 	ircOutputMu.Lock()
 	defer ircOutputMu.Unlock()
 	for idx, reply := range replies {
-		fancymsg := types.NewFancyMessage(types.FancyIRCToClient, session, string(reply.Bytes()))
+		robustmsg := types.NewRobustMessage(types.RobustIRCToClient, session, string(reply.Bytes()))
 		// The IDs must be the same across servers.
-		fancymsg.Id = types.FancyId{
+		robustmsg.Id = types.RobustId{
 			Id:    id,
 			Reply: int64(idx + 1),
 		}
-		idToIdx[fancymsg.Id] = len(ircOutput)
-		log.Printf("Writing id %v as idx %d: %v\n", fancymsg.Id, len(ircOutput), fancymsg)
-		ircOutput = append(ircOutput, *fancymsg)
+		idToIdx[robustmsg.Id] = len(ircOutput)
+		log.Printf("Writing id %v as idx %d: %v\n", robustmsg.Id, len(ircOutput), robustmsg)
+		ircOutput = append(ircOutput, *robustmsg)
 	}
 
 	if len(replies) > 0 {
@@ -436,7 +436,7 @@ func SendMessages(replies []irc.Message, session types.FancyId, id int64) {
 func SendPing(master net.Addr, peers []net.Addr) {
 	ircOutputMu.Lock()
 	defer ircOutputMu.Unlock()
-	pingmsg := types.NewFancyMessage(types.FancyPing, types.FancyId{}, "")
+	pingmsg := types.NewRobustMessage(types.RobustPing, types.RobustId{}, "")
 	for _, peer := range peers {
 		pingmsg.Servers = append(pingmsg.Servers, peer.String())
 	}
@@ -448,7 +448,7 @@ func SendPing(master net.Addr, peers []net.Addr) {
 	newMessage.Broadcast()
 }
 
-func GetMessageNonBlocking(lastseen types.FancyId) *types.FancyMessage {
+func GetMessageNonBlocking(lastseen types.RobustId) *types.RobustMessage {
 	idx, _ := idToIdx[lastseen]
 	if idx+1 >= len(ircOutput) {
 		return nil
@@ -458,7 +458,7 @@ func GetMessageNonBlocking(lastseen types.FancyId) *types.FancyMessage {
 
 // GetMessage returns the IRC message with index 'idx', possibly blocking until
 // that message appears.
-func GetMessage(lastseen types.FancyId) *types.FancyMessage {
+func GetMessage(lastseen types.RobustId) *types.RobustMessage {
 	newMessage.L.Lock()
 	idx, ok := idToIdx[lastseen]
 	log.Printf("lastseen = %v, idx = %v, ok = %v\n", lastseen, idx, ok)
@@ -471,7 +471,7 @@ func GetMessage(lastseen types.FancyId) *types.FancyMessage {
 	return &ircOutput[idToIdx[lastseen]+1]
 }
 
-func GetSession(id types.FancyId) (*Session, bool) {
+func GetSession(id types.RobustId) (*Session, bool) {
 	s, ok := Sessions[id]
 	return s, ok
 }
