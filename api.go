@@ -65,37 +65,47 @@ func maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body io.ReadClos
 	p.ServeHTTP(w, r)
 }
 
-func sessionForRequest(r *http.Request) (*ircserver.Session, types.RobustId, error) {
+func sessionOrProxy(w http.ResponseWriter, r *http.Request) (session *ircserver.Session, sessionid types.RobustId, err error) {
 	idstr := mux.Vars(r)["sessionid"]
-	id, err := strconv.ParseInt(idstr, 0, 64)
+	var id int64
+	id, err = strconv.ParseInt(idstr, 0, 64)
 	if err != nil {
-		return nil, types.RobustId{}, fmt.Errorf("Invalid session: %v", err)
+		err = fmt.Errorf("Invalid session: %v", err)
+		return
 	}
 
-	session := types.RobustId{Id: id}
-	s, ok := ircserver.GetSession(session)
-	if !ok {
-		return nil, types.RobustId{}, fmt.Errorf("No such session")
+	var s *ircserver.Session
+	s, err = ircserver.GetSession(types.RobustId{Id: id})
+	if err != nil {
+		if err == ircserver.ErrSessionNotYetSeen {
+			// The session might exist on the leader, so we must proxy.
+			maybeProxyToLeader(w, r, r.Body)
+		}
+		return
 	}
 
-	cookie := r.Header.Get("X-Session-Auth")
-	if cookie == "" {
-		return nil, types.RobustId{}, fmt.Errorf("No SessionAuth cookie set")
+	header := r.Header.Get("X-Session-Auth")
+	if header == "" {
+		err = fmt.Errorf("No X-Session-Auth header set")
+		return
 	}
-	if cookie != s.Auth {
-		return nil, types.RobustId{}, fmt.Errorf("Invalid SessionAuth cookie")
+	if header != s.Auth {
+		err = fmt.Errorf("Invalid X-Session-Auth header")
+		return
 	}
 
-	return s, session, nil
+	session = s
+	sessionid = types.RobustId{Id: id}
+	err = nil
+	return
 }
 
 // handlePostMessage is called by the robustirc-brigde whenever a message should be
 // posted. The handler blocks until either the data was written or an error
 // occurred. If successful, it returns the unique id of the message.
 func handlePostMessage(w http.ResponseWriter, r *http.Request) {
-	s, session, err := sessionForRequest(r)
+	s, session, err := sessionOrProxy(w, r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
@@ -184,10 +194,8 @@ func handleSnapshot(res http.ResponseWriter, req *http.Request) {
 }
 
 func handleGetMessages(w http.ResponseWriter, r *http.Request) {
-	s, session, err := sessionForRequest(r)
+	s, session, err := sessionOrProxy(w, r)
 	if err != nil {
-		log.Printf("invalid session: %v", err)
-		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
@@ -235,8 +243,8 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 	enc := json.NewEncoder(w)
 	for {
 		msg := ircserver.GetMessage(lastSeen)
-		s, ok := ircserver.GetSession(session)
-		if !ok {
+		s, err := ircserver.GetSession(session)
+		if err != nil {
 			// Session was deleted in the meanwhile.
 			break
 		}
@@ -303,9 +311,8 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleDeleteSession(w http.ResponseWriter, r *http.Request) {
-	_, session, err := sessionForRequest(r)
+	_, session, err := sessionOrProxy(w, r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 

@@ -2,6 +2,7 @@
 package ircserver
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -34,6 +35,13 @@ const (
 var (
 	validNickRe    = regexp.MustCompile(`^[` + letter + special + `][` + letter + digit + special + `-]{0,` + maxNickLen + `}$`)
 	validChannelRe = regexp.MustCompile(`^#[` + chanstring + `]{0,` + maxChannelLen + `}$`)
+
+	// The session was not (yet?) seen on this follower. We cannot say with
+	// confidence that it does not exist.
+	ErrSessionNotYetSeen = errors.New("Session not yet seen")
+
+	// The session definitely does not exist.
+	ErrNoSuchSession = errors.New("No such session")
 )
 
 var (
@@ -45,6 +53,8 @@ var (
 	ircOutput   []types.RobustMessage
 	idToIdx     map[types.RobustId]int
 	newMessage  = sync.NewCond(&sync.Mutex{})
+
+	lastProcessed types.RobustId
 )
 
 type Session struct {
@@ -416,6 +426,7 @@ func ProcessMessage(session types.RobustId, message *irc.Message) []irc.Message 
 func SendMessages(replies []irc.Message, session types.RobustId, id int64) {
 	ircOutputMu.Lock()
 	defer ircOutputMu.Unlock()
+	lastProcessed = types.RobustId{Id: id}
 	for idx, reply := range replies {
 		robustmsg := types.NewRobustMessage(types.RobustIRCToClient, session, string(reply.Bytes()))
 		// The IDs must be the same across servers.
@@ -471,7 +482,16 @@ func GetMessage(lastseen types.RobustId) *types.RobustMessage {
 	return &ircOutput[idToIdx[lastseen]+1]
 }
 
-func GetSession(id types.RobustId) (*Session, bool) {
+func GetSession(id types.RobustId) (*Session, error) {
 	s, ok := Sessions[id]
-	return s, ok
+	if !ok {
+		if time.Unix(0, lastProcessed.Id).Sub(time.Unix(0, id.Id)) > 0 {
+			// We processed a newer message than that session identifier, so
+			// the session definitely does not exist.
+			return nil, ErrNoSuchSession
+		} else {
+			return nil, ErrSessionNotYetSeen
+		}
+	}
+	return s, nil
 }

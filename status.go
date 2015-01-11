@@ -253,8 +253,8 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 
 	session := types.RobustId{Id: id}
 
-	s, ok := ircserver.GetSession(session)
-	if !ok {
+	s, err := ircserver.GetSession(session)
+	if err != nil {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
