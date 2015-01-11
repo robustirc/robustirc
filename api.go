@@ -335,3 +335,9 @@ func handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func handleLeader(w http.ResponseWriter, r *http.Request) {
+	if leader := node.Leader(); leader != nil {
+		w.Write([]byte(leader.String()))
+	}
+}

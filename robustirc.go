@@ -410,6 +410,7 @@ func main() {
 	privaterouter.PathPrefix("/raft/").Handler(transport)
 	privaterouter.HandleFunc("/join", handleJoin)
 	privaterouter.HandleFunc("/snapshot", handleSnapshot)
+	privaterouter.HandleFunc("/leader", handleLeader)
 
 	publicrouter := mux.NewRouter()
 	publicrouter.HandleFunc("/robustirc/v1/session", handleCreateSession).Methods("POST")
