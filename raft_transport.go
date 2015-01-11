@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,13 +21,34 @@ type Transport struct {
 	consumer chan raft.RPC
 	addr     net.Addr
 	password string
+	client   *http.Client
 }
 
-func NewTransport(addr net.Addr, password string) *Transport {
+func NewTransport(addr net.Addr, password string, tlsCAFile string) *Transport {
+	var client *http.Client
+	if tlsCAFile != "" {
+		roots := x509.NewCertPool()
+		contents, err := ioutil.ReadFile(tlsCAFile)
+		if err != nil {
+			log.Fatalf("Could not read cert.pem: %v", err)
+		}
+		if !roots.AppendCertsFromPEM(contents) {
+			log.Fatalf("Could not parse %q, try deleting it", tlsCAFile)
+		}
+		client = &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{RootCAs: roots},
+			},
+		}
+	} else {
+		client = http.DefaultClient
+	}
+
 	return &Transport{
 		consumer: make(chan raft.RPC),
 		addr:     addr,
 		password: password,
+		client:   client,
 	}
 }
 
@@ -46,7 +69,7 @@ func (t *Transport) send(url string, in, out interface{}) error {
 		return err
 	}
 	req.SetBasicAuth("robustirc", t.password)
-	res, err := http.DefaultClient.Do(req)
+	res, err := t.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("could not send request: %v", err)
 	}

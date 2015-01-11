@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/gob"
 	"encoding/json"
@@ -65,6 +66,9 @@ var (
 	tlsKeyPath = flag.String("tls_key_path",
 		"",
 		"Path to a .pem file containing the TLS private key.")
+	tlsCAFile = flag.String("tls_ca_file",
+		"",
+		"Use the specified file as trusted CA instead of the system CAs. Useful for testing.")
 	networkPassword = flag.String("network_password",
 		"",
 		"A secure password to protect the communication between raft nodes. Use pwgen(1) or similar.")
@@ -246,13 +250,35 @@ func joinMaster(addr string, peerStore *raft.JSONPeers) []net.Addr {
 	} else {
 		buf = bytes.NewBuffer(data)
 	}
+
+	// TODO(secure): refactor this so that there is no duplication with raft_transport.go
+	var client *http.Client
+	if *tlsCAFile != "" {
+		roots := x509.NewCertPool()
+		contents, err := ioutil.ReadFile(*tlsCAFile)
+		if err != nil {
+			log.Fatalf("Could not read cert.pem: %v", err)
+		}
+		if !roots.AppendCertsFromPEM(contents) {
+			log.Fatalf("Could not parse %q, try deleting it", *tlsCAFile)
+		}
+
+		client = &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{RootCAs: roots},
+			},
+		}
+	} else {
+		client = http.DefaultClient
+	}
+
 	req, err := http.NewRequest("POST", fmt.Sprintf("https://%s/join", addr), buf)
 	if err != nil {
 		log.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.SetBasicAuth("robustirc", *networkPassword)
-	if res, err := http.DefaultClient.Do(req); err != nil {
+	if res, err := client.Do(req); err != nil {
 		log.Fatal("Could not send join request:", err)
 	} else if res.StatusCode > 399 {
 		data, _ := ioutil.ReadAll(res.Body)
@@ -340,6 +366,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "The following flags are optional:\n")
 		printDefault(flag.Lookup("listen"))
 		printDefault(flag.Lookup("raftdir"))
+		printDefault(flag.Lookup("tls_ca_file"))
 	}
 	flag.Parse()
 
@@ -364,7 +391,7 @@ func main() {
 
 	ircserver.ClearState()
 
-	transport := NewTransport(&dnsAddr{*peerAddr}, *networkPassword)
+	transport := NewTransport(&dnsAddr{*peerAddr}, *networkPassword, *tlsCAFile)
 
 	peerStore = raft.NewJSONPeers(*raftDir, transport)
 
