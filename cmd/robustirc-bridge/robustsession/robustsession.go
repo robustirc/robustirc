@@ -4,6 +4,8 @@ package robustsession
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -171,6 +173,7 @@ type RobustSession struct {
 	deleted     bool
 	done        chan bool
 	network     *network
+	client      *http.Client
 }
 
 func (s *RobustSession) sendRequest(method, path string, data []byte) (string, *http.Response, error) {
@@ -182,7 +185,7 @@ func (s *RobustSession) sendRequest(method, path string, data []byte) (string, *
 		}
 		req.Header.Set("X-Session-Auth", s.sessionAuth)
 		req.Header.Set("Content-Type", "application/json")
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := s.client.Do(req)
 		if err != nil {
 			s.network.failed(target)
 			log.Printf("sendRequest(%q) failed: %v\n", path, err)
@@ -210,7 +213,7 @@ func (s *RobustSession) sendRequest(method, path string, data []byte) (string, *
 //
 // When err == nil, the caller MUST read the RobustSession.Messages and
 // RobustSession.Errors channels.
-func Create(network string) (*RobustSession, error) {
+func Create(network string, tlsCAFile string) (*RobustSession, error) {
 	networksMu.Lock()
 	n, ok := networks[network]
 	if !ok {
@@ -223,11 +226,33 @@ func Create(network string) (*RobustSession, error) {
 	}
 	networksMu.Unlock()
 
+	var client *http.Client
+
+	if tlsCAFile != "" {
+		roots := x509.NewCertPool()
+		contents, err := ioutil.ReadFile(tlsCAFile)
+		if err != nil {
+			log.Fatalf("Could not read cert.pem: %v", err)
+		}
+		if !roots.AppendCertsFromPEM(contents) {
+			log.Fatalf("Could not parse %q", tlsCAFile)
+		}
+
+		client = &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{RootCAs: roots},
+			},
+		}
+	} else {
+		client = http.DefaultClient
+	}
+
 	s := &RobustSession{
 		Messages: make(chan string),
 		Errors:   make(chan error),
 		done:     make(chan bool, 1),
 		network:  n,
+		client:   client,
 	}
 
 	_, resp, err := s.sendRequest("POST", pathCreateSession, nil)
