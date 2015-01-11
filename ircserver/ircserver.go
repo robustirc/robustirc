@@ -484,14 +484,15 @@ func GetMessage(lastseen types.RobustId) *types.RobustMessage {
 
 func GetSession(id types.RobustId) (*Session, error) {
 	s, ok := Sessions[id]
-	if !ok {
-		if time.Unix(0, lastProcessed.Id).Sub(time.Unix(0, id.Id)) > 0 {
-			// We processed a newer message than that session identifier, so
-			// the session definitely does not exist.
-			return nil, ErrNoSuchSession
-		} else {
-			return nil, ErrSessionNotYetSeen
-		}
+	if ok {
+		return s, nil
 	}
-	return s, nil
+
+	if time.Unix(0, lastProcessed.Id).Sub(time.Unix(0, id.Id)) > 0 {
+		// We processed a newer message than that session identifier, so
+		// the session definitely does not exist.
+		return nil, ErrNoSuchSession
+	} else {
+		return nil, ErrSessionNotYetSeen
+	}
 }
