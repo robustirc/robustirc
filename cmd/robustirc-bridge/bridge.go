@@ -30,6 +30,10 @@ var (
 		"host:port to listen on for IRC connections")
 
 	socks = flag.String("socks", "", "host:port to listen on for SOCKS5 connections")
+
+	tlsCAFile = flag.String("tls_ca_file",
+		"",
+		"Use the specified file as trusted CA instead of the system CAs. Useful for testing.")
 )
 
 // TODO(secure): persistent state:
@@ -112,7 +116,7 @@ func (p *bridge) handleIRC(conn net.Conn) {
 		}
 	}()
 
-	robustSession, err := robustsession.Create(p.network)
+	robustSession, err := robustsession.Create(p.network, *tlsCAFile)
 	if err != nil {
 		killmsg = fmt.Sprintf("Could not create RobustIRC session: %v", err)
 		return
