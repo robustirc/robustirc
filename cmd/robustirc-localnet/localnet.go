@@ -121,7 +121,16 @@ func startircserver(singlenode bool) {
 
 	log.Printf("Starting %q\n", "robustirc "+strings.Join(args, " "))
 	cmd := exec.Command("robustirc", args...)
-	// TODO(secure): set up stdout and stderr to go to files in their tempdir
+	stdout, err := os.Create(filepath.Join(tempdir, "stdout.txt"))
+	if err != nil {
+		log.Panic(err)
+	}
+	stderr, err := os.Create(filepath.Join(tempdir, "stderr.txt"))
+	if err != nil {
+		log.Panic(err)
+	}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	// Put the robustirc servers into a separate process group, so that they
 	// survive when robustirc-localnet terminates.
 	cmd.SysProcAttr = &syscall.SysProcAttr{
