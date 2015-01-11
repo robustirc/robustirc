@@ -32,6 +32,7 @@ import (
 const (
 	pingInterval           = 20 * time.Second
 	expireSessionsInterval = 10 * time.Second
+	raftTimeout            = 2 * time.Second
 )
 
 // XXX: when introducing a new flag, you must add it to the flag.Usage function in main().
