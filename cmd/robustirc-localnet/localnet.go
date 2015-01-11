@@ -158,9 +158,7 @@ func startircserver(singlenode bool) {
 	randomPort++
 
 	if singlenode {
-		try := 0
-		for try < 10 {
-			try++
+		for try := 0; try < 10; try++ {
 			leader, err := leader(ports[0])
 			if err != nil || leader == "" {
 				time.Sleep(1 * time.Second)
