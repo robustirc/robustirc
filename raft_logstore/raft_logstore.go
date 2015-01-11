@@ -147,6 +147,7 @@ func (s *RobustLogStore) DeleteRange(min, max uint64) error {
 			return err
 		}
 	}
+	s.lowIndex = max + 1
 	return nil
 }
 
