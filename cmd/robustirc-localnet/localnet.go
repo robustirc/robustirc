@@ -52,7 +52,7 @@ func help(binary string) error {
 	if exiterr, ok := err.(*exec.ExitError); ok {
 		status, ok := exiterr.Sys().(syscall.WaitStatus)
 		if !ok {
-			log.Fatalf("cannot run on this platform: exec.ExitError.Sys() does not return syscall.WaitStatus")
+			log.Panicf("cannot run on this platform: exec.ExitError.Sys() does not return syscall.WaitStatus")
 		}
 		// -help results in exit status 2, so that’s expected.
 		if status.ExitStatus() == 2 {
@@ -110,7 +110,7 @@ func startircserver(singlenode bool) {
 	}
 	args = append(args, "-raftdir="+tempdir)
 	if err := recordResource("tempdir", tempdir); err != nil {
-		log.Fatalf("Could not record tempdir: %v", err)
+		log.Panicf("Could not record tempdir: %v", err)
 	}
 
 	if singlenode {
@@ -128,10 +128,10 @@ func startircserver(singlenode bool) {
 		Setpgid: true,
 	}
 	if err := cmd.Start(); err != nil {
-		log.Fatalf("Could not start robustirc: %v", err)
+		log.Panicf("Could not start robustirc: %v", err)
 	}
 	if err := recordResource("pid", strconv.Itoa(cmd.Process.Pid)); err != nil {
-		log.Fatalf("Could not record pid: %v", err)
+		log.Panicf("Could not record pid: %v", err)
 	}
 
 	// Poll the configured listening port to see if the server started up successfully.
@@ -190,22 +190,22 @@ func startbridge() {
 		Setpgid: true,
 	}
 	if err := cmd.Start(); err != nil {
-		log.Fatalf("Could not start robustirc-bridge: %v", err)
+		log.Panicf("Could not start robustirc-bridge: %v", err)
 	}
 	if err := recordResource("pid", strconv.Itoa(cmd.Process.Pid)); err != nil {
-		log.Fatalf("Could not record pid: %v", err)
+		log.Panicf("Could not record pid: %v", err)
 	}
 }
 
 func kill() {
 	pidsFile := filepath.Join(*localnetDir, "pids")
 	if _, err := os.Stat(pidsFile); os.IsNotExist(err) {
-		log.Fatalf("-stop specified, but no localnet instance found in -localnet_dir=%q", *localnetDir)
+		log.Panicf("-stop specified, but no localnet instance found in -localnet_dir=%q", *localnetDir)
 	}
 
 	pidsBytes, err := ioutil.ReadFile(pidsFile)
 	if err != nil {
-		log.Fatalf("Could not read %q: %v", pidsFile, err)
+		log.Panicf("Could not read %q: %v", pidsFile, err)
 	}
 	pids := strings.Split(string(pidsBytes), "\n")
 	for _, pidline := range pids {
@@ -214,7 +214,7 @@ func kill() {
 		}
 		pid, err := strconv.Atoi(pidline)
 		if err != nil {
-			log.Fatalf("Invalid line in %q: %v", pidsFile, err)
+			log.Panicf("Invalid line in %q: %v", pidsFile, err)
 		}
 
 		process, err := os.FindProcess(pid)
@@ -230,7 +230,7 @@ func kill() {
 	tempdirsFile := filepath.Join(*localnetDir, "tempdirs")
 	tempdirsBytes, err := ioutil.ReadFile(tempdirsFile)
 	if err != nil {
-		log.Fatalf("Could not read %q: %v", tempdirsFile, err)
+		log.Panicf("Could not read %q: %v", tempdirsFile, err)
 	}
 	tempdirs := strings.Split(string(tempdirsBytes), "\n")
 	for _, tempdir := range tempdirs {
@@ -264,7 +264,7 @@ func main() {
 	if (*localnetDir)[:2] == "~/" {
 		usr, err := user.Current()
 		if err != nil {
-			log.Fatalf("Cannot expand -localnet_dir: %v", err)
+			log.Panicf("Cannot expand -localnet_dir: %v", err)
 		}
 		*localnetDir = strings.Replace(*localnetDir, "~/", usr.HomeDir+"/", 1)
 	}
@@ -279,7 +279,7 @@ func main() {
 	}
 
 	if _, err := os.Stat(filepath.Join(*localnetDir, "pids")); !os.IsNotExist(err) {
-		log.Fatalf("There already is a localnet instance running. Either use -stop or specify a different -localnet_dir")
+		log.Panicf("There already is a localnet instance running. Either use -stop or specify a different -localnet_dir")
 	}
 
 	success := false
@@ -293,11 +293,11 @@ func main() {
 	}()
 
 	if err := help("robustirc"); err != nil {
-		log.Fatalf("Could not run %q: %v", "robustirc -help", err)
+		log.Panicf("Could not run %q: %v", "robustirc -help", err)
 	}
 
 	if err := help("robustirc-bridge"); err != nil {
-		log.Fatalf("Could not run %q: %v", "robustirc-bridge -help", err)
+		log.Panicf("Could not run %q: %v", "robustirc-bridge -help", err)
 	}
 
 	if _, err := os.Stat(filepath.Join(*localnetDir, "key.pem")); os.IsNotExist(err) {
@@ -307,10 +307,10 @@ func main() {
 	roots := x509.NewCertPool()
 	contents, err := ioutil.ReadFile(filepath.Join(*localnetDir, "cert.pem"))
 	if err != nil {
-		log.Fatalf("Could not read cert.pem: %v", err)
+		log.Panicf("Could not read cert.pem: %v", err)
 	}
 	if !roots.AppendCertsFromPEM(contents) {
-		log.Fatalf("Could not parse %q, try deleting it", filepath.Join(*localnetDir, "cert.pem"))
+		log.Panicf("Could not parse %q, try deleting it", filepath.Join(*localnetDir, "cert.pem"))
 	}
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{RootCAs: roots},

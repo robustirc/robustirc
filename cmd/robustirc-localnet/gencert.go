@@ -18,7 +18,7 @@ import (
 func generatecert() {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		log.Fatalf("failed to generate private key: %s", err)
+		log.Panicf("failed to generate private key: %s", err)
 	}
 
 	notBefore := time.Now()
@@ -27,7 +27,7 @@ func generatecert() {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		log.Fatalf("failed to generate serial number: %s", err)
+		log.Panicf("failed to generate serial number: %s", err)
 	}
 
 	template := x509.Certificate{
@@ -47,12 +47,12 @@ func generatecert() {
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
 	if err != nil {
-		log.Fatalf("Failed to create certificate: %s", err)
+		log.Panicf("Failed to create certificate: %s", err)
 	}
 
 	certOut, err := os.Create(filepath.Join(*localnetDir, "cert.pem"))
 	if err != nil {
-		log.Fatalf("failed to open cert.pem for writing: %s", err)
+		log.Panicf("failed to open cert.pem for writing: %s", err)
 	}
 	pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
 	certOut.Close()
