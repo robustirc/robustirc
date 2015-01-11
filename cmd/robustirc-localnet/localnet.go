@@ -316,20 +316,12 @@ func main() {
 
 		leaders := make([]string, len(ports))
 		for idx, port := range ports {
-			url := fmt.Sprintf("https://robustirc:%s@localhost:%d/leader", networkPassword, port)
-			resp, err := httpclient.Get(url)
+			l, err := leader(port)
 			if err != nil {
 				log.Printf("%v\n", err)
+				continue
 			}
-			if resp.StatusCode != 200 {
-				log.Printf("%q: got HTTP %v, expected 200\n", url, resp.Status)
-			}
-			defer resp.Body.Close()
-			body, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				log.Printf("Could not read response: %v\n", err)
-			}
-			leaders[idx] = string(body)
+			leaders[idx] = l
 		}
 
 		if leaders[0] == "" {
