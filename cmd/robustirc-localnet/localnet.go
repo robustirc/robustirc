@@ -199,6 +199,57 @@ func startbridge() {
 	}
 }
 
+func kill() {
+	pidsFile := filepath.Join(*localnetDir, "pids")
+	if _, err := os.Stat(pidsFile); os.IsNotExist(err) {
+		log.Fatalf("-stop specified, but no localnet instance found in -localnet_dir=%q", *localnetDir)
+	}
+
+	pidsBytes, err := ioutil.ReadFile(pidsFile)
+	if err != nil {
+		log.Fatalf("Could not read %q: %v", pidsFile, err)
+	}
+	pids := strings.Split(string(pidsBytes), "\n")
+	for _, pidline := range pids {
+		if pidline == "" {
+			continue
+		}
+		pid, err := strconv.Atoi(pidline)
+		if err != nil {
+			log.Fatalf("Invalid line in %q: %v", pidsFile, err)
+		}
+
+		process, err := os.FindProcess(pid)
+		if err != nil {
+			log.Printf("Could not find process %d: %v", pid, err)
+			continue
+		}
+		if err := process.Kill(); err != nil {
+			log.Printf("Could not kill process %d: %v", pid, err)
+		}
+	}
+
+	tempdirsFile := filepath.Join(*localnetDir, "tempdirs")
+	tempdirsBytes, err := ioutil.ReadFile(tempdirsFile)
+	if err != nil {
+		log.Fatalf("Could not read %q: %v", tempdirsFile, err)
+	}
+	tempdirs := strings.Split(string(tempdirsBytes), "\n")
+	for _, tempdir := range tempdirs {
+		if tempdir == "" {
+			continue
+		}
+
+		if err := os.RemoveAll(tempdir); err != nil {
+			log.Printf("Could not remove %q: %v", tempdir, err)
+		}
+	}
+
+	os.Remove(pidsFile)
+	os.Remove(tempdirsFile)
+
+}
+
 func main() {
 	flag.Parse()
 
@@ -225,60 +276,23 @@ func main() {
 	}
 
 	if *stop {
-		pidsFile := filepath.Join(*localnetDir, "pids")
-		if _, err := os.Stat(pidsFile); os.IsNotExist(err) {
-			log.Fatalf("-stop specified, but no localnet instance found in -localnet_dir=%q", *localnetDir)
-		}
-
-		pidsBytes, err := ioutil.ReadFile(pidsFile)
-		if err != nil {
-			log.Fatalf("Could not read %q: %v", pidsFile, err)
-		}
-		pids := strings.Split(string(pidsBytes), "\n")
-		for _, pidline := range pids {
-			if pidline == "" {
-				continue
-			}
-			pid, err := strconv.Atoi(pidline)
-			if err != nil {
-				log.Fatalf("Invalid line in %q: %v", pidsFile, err)
-			}
-
-			process, err := os.FindProcess(pid)
-			if err != nil {
-				log.Printf("Could not find process %d: %v", pid, err)
-				continue
-			}
-			if err := process.Kill(); err != nil {
-				log.Printf("Could not kill process %d: %v", pid, err)
-			}
-		}
-
-		tempdirsFile := filepath.Join(*localnetDir, "tempdirs")
-		tempdirsBytes, err := ioutil.ReadFile(tempdirsFile)
-		if err != nil {
-			log.Fatalf("Could not read %q: %v", tempdirsFile, err)
-		}
-		tempdirs := strings.Split(string(tempdirsBytes), "\n")
-		for _, tempdir := range tempdirs {
-			if tempdir == "" {
-				continue
-			}
-
-			if err := os.RemoveAll(tempdir); err != nil {
-				log.Printf("Could not remove %q: %v", tempdir, err)
-			}
-		}
-
-		os.Remove(pidsFile)
-		os.Remove(tempdirsFile)
-
+		kill()
 		return
 	}
 
 	if _, err := os.Stat(filepath.Join(*localnetDir, "pids")); !os.IsNotExist(err) {
 		log.Fatalf("There already is a localnet instance running. Either use -stop or specify a different -localnet_dir")
 	}
+
+	success := false
+
+	defer func() {
+		if success {
+			return
+		}
+		log.Printf("Could not successfully set up localnet, cleaning up.\n")
+		kill()
+	}()
 
 	if err := help("robustirc"); err != nil {
 		log.Fatalf("Could not run %q: %v", "robustirc -help", err)
@@ -338,6 +352,7 @@ func main() {
 
 		if strings.HasPrefix(leaders[0], "localhost:") {
 			log.Printf("All nodes agree on %q as the leader.\n", leaders[0])
+			success = true
 			break
 		}
 	}
