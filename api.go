@@ -65,39 +65,35 @@ func maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body io.ReadClos
 	p.ServeHTTP(w, r)
 }
 
-func sessionOrProxy(w http.ResponseWriter, r *http.Request) (session *ircserver.Session, sessionid types.RobustId, err error) {
+func sessionOrProxy(w http.ResponseWriter, r *http.Request) (*ircserver.Session, types.RobustId, error) {
+	var sessionid types.RobustId
+
 	idstr := mux.Vars(r)["sessionid"]
-	var id int64
-	id, err = strconv.ParseInt(idstr, 0, 64)
+	id, err := strconv.ParseInt(idstr, 0, 64)
 	if err != nil {
-		err = fmt.Errorf("Invalid session: %v", err)
-		return
+		return nil, sessionid, fmt.Errorf("Invalid session: %v", err)
 	}
 
-	var s *ircserver.Session
-	s, err = ircserver.GetSession(types.RobustId{Id: id})
+	session, err := ircserver.GetSession(types.RobustId{Id: id})
 	if err != nil {
 		if err == ircserver.ErrSessionNotYetSeen {
 			// The session might exist on the leader, so we must proxy.
 			maybeProxyToLeader(w, r, r.Body)
 		}
-		return
+		return session, sessionid, err
 	}
 
 	header := r.Header.Get("X-Session-Auth")
 	if header == "" {
-		err = fmt.Errorf("No X-Session-Auth header set")
-		return
+		return nil, sessionid, fmt.Errorf("No X-Session-Auth header set")
 	}
-	if header != s.Auth {
-		err = fmt.Errorf("Invalid X-Session-Auth header")
-		return
+	if header != session.Auth {
+		return nil, sessionid, fmt.Errorf("Invalid X-Session-Auth header")
 	}
 
-	session = s
-	sessionid = types.RobustId{Id: id}
-	err = nil
-	return
+	sessionid.Id = id
+
+	return session, sessionid, nil
 }
 
 // handlePostMessage is called by the robustirc-brigde whenever a message should be
