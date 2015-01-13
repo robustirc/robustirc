@@ -1,7 +1,7 @@
 package raft_logstore
 
 import (
-	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -102,7 +102,7 @@ func (s *RobustLogStore) GetLog(index uint64, rlog *raft.Log) error {
 	defer f.Close()
 
 	var elog raft.Log
-	if err := gob.NewDecoder(f).Decode(&elog); err != nil {
+	if err := json.NewDecoder(f).Decode(&elog); err != nil {
 		return err
 	}
 	*rlog = elog
@@ -124,7 +124,7 @@ func (s *RobustLogStore) StoreLogs(logs []*raft.Log) error {
 			return err
 		}
 		defer f.Close()
-		if err := gob.NewEncoder(f).Encode(entry); err != nil {
+		if err := json.NewEncoder(f).Encode(entry); err != nil {
 			return err
 		}
 		if entry.Index < s.lowIndex || s.lowIndex == 0 {
