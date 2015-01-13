@@ -34,6 +34,10 @@ var (
 	stop = flag.Bool("stop",
 		false,
 		"Whether to stop the currently running localnet instead of starting a new one")
+
+	delete_tempdirs = flag.Bool("delete_tempdirs",
+		true,
+		"If false, temporary directories are left behind for manual inspection")
 )
 
 var (
@@ -236,6 +240,12 @@ func kill() {
 		}
 	}
 
+	os.Remove(pidsFile)
+
+	if !*delete_tempdirs {
+		return
+	}
+
 	tempdirsFile := filepath.Join(*localnetDir, "tempdirs")
 	tempdirsBytes, err := ioutil.ReadFile(tempdirsFile)
 	if err != nil {
@@ -252,9 +262,7 @@ func kill() {
 		}
 	}
 
-	os.Remove(pidsFile)
 	os.Remove(tempdirsFile)
-
 }
 
 func main() {
