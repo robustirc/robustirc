@@ -35,9 +35,9 @@ var (
 		false,
 		"Whether to stop the currently running localnet instead of starting a new one")
 
-	cleanup = flag.Bool("cleanup",
+	cleanup = flag.Bool("delete_tempdir",
 		true,
-		"Whether to delete the temporary directories created for the RobustIRC servers")
+		"If false, temporary directories are left behind for manual inspection")
 )
 
 var (
