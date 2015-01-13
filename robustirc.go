@@ -47,6 +47,9 @@ var (
 	sessionExpiration = flag.Duration("session_expiration",
 		30*time.Minute,
 		"Time interval after which a session without any activity is terminated by the server. The client should send a PING every minute.")
+	postMessageCooloff = flag.Duration("post_message_cooloff",
+		500*time.Millisecond,
+		"Enforced cooloff between two messages sent by a user")
 
 	singleNode = flag.Bool("singlenode",
 		false,
