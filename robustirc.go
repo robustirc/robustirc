@@ -178,7 +178,7 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 				}
 				// TODO: even better for JOIN/NICK: only retain the most recent one
 				if ircmsg.Command == irc.JOIN {
-					if s, ok := ircserver.GetSession(msg.Session); ok {
+					if s, err := ircserver.GetSession(msg.Session); err == nil {
 						// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
 						if _, ok := s.Channels[ircmsg.Params[0]]; !ok {
 							continue
@@ -186,7 +186,7 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 					}
 				}
 				if ircmsg.Command == irc.NICK {
-					if s, ok := ircserver.GetSession(msg.Session); ok {
+					if s, err := ircserver.GetSession(msg.Session); err == nil {
 						if s.Nick != ircmsg.Params[0] {
 							continue
 						}
