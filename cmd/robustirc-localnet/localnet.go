@@ -31,6 +31,10 @@ var (
 		"~/.config/robustirc-localnet",
 		"Directory in which to keep state for robustirc-localnet (SSL certificates, PID files, etc.)")
 
+	tmpDir = flag.String("tmpdir",
+		"",
+		"Where to create the temporary directories for the RobustIRC servers. Default is the system default.")
+
 	stop = flag.Bool("stop",
 		false,
 		"Whether to stop the currently running localnet instead of starting a new one")
@@ -108,7 +112,7 @@ func startircserver(singlenode bool) {
 	args = append(args, fmt.Sprintf("-listen=localhost:%d", randomPort))
 
 	// TODO(secure): support -persistent
-	tempdir, err := ioutil.TempDir("", "robustirc-localnet-")
+	tempdir, err := ioutil.TempDir(*tmpDir, "robustirc-localnet-")
 	if err != nil {
 		log.Fatal(err)
 	}
