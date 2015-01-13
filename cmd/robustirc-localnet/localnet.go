@@ -34,6 +34,10 @@ var (
 	stop = flag.Bool("stop",
 		false,
 		"Whether to stop the currently running localnet instead of starting a new one")
+
+	cleanup = flag.Bool("cleanup",
+		true,
+		"Whether to delete the temporary directories created for the RobustIRC servers")
 )
 
 var (
@@ -236,6 +240,12 @@ func kill() {
 		}
 	}
 
+	os.Remove(pidsFile)
+
+	if !*cleanup {
+		return
+	}
+
 	tempdirsFile := filepath.Join(*localnetDir, "tempdirs")
 	tempdirsBytes, err := ioutil.ReadFile(tempdirsFile)
 	if err != nil {
@@ -252,9 +262,7 @@ func kill() {
 		}
 	}
 
-	os.Remove(pidsFile)
 	os.Remove(tempdirsFile)
-
 }
 
 func main() {
