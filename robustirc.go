@@ -28,7 +28,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/raft"
 	"github.com/sorcix/irc"
-	
+
 	_ "net/http/pprof"
 )
 
