@@ -16,8 +16,8 @@ func TestSessionInitialization(t *testing.T) {
 	CreateSession(id, "authbytes")
 	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
 
-	s, ok := GetSession(id)
-	if !ok {
+	s, err := GetSession(id)
+	if err != nil {
 		t.Fatalf("GetSession(%v) did not return a session", id)
 	}
 
@@ -112,8 +112,8 @@ func TestInvalidNickPlumbing(t *testing.T) {
 	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
 	CreateSession(id, "authbytes")
 
-	s, ok := GetSession(id)
-	if !ok {
+	s, err := GetSession(id)
+	if err != nil {
 		t.Fatalf("GetSession(%v) did not return a session", id)
 	}
 
@@ -139,8 +139,8 @@ func TestInvalidChannelPlumbing(t *testing.T) {
 	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
 	CreateSession(id, "authbytes")
 
-	s, ok := GetSession(id)
-	if !ok {
+	s, err := GetSession(id)
+	if err != nil {
 		t.Fatalf("GetSession(%v) did not return a session", id)
 	}
 
