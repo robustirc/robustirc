@@ -410,10 +410,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// TODO(secure): remove this, it’s only for forcing many snapshots right now.
-	config.SnapshotThreshold = 2
-	config.SnapshotInterval = 1 * time.Second
-
 	logStore, err = raft_logstore.NewRobustLogStore(*raftDir)
 	if err != nil {
 		log.Fatal(err)
