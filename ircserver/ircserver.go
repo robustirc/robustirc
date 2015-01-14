@@ -353,6 +353,24 @@ func ProcessMessage(session types.RobustId, message *irc.Message) []irc.Message 
 		})
 
 	case irc.PRIVMSG:
+		if len(message.Params) < 1 {
+			replies = append(replies, irc.Message{
+				Prefix:   ServerPrefix,
+				Command:  irc.ERR_NORECIPIENT,
+				Params:   []string{s.Nick},
+				Trailing: "No recipient given (PRIVMSG)",
+			})
+			break
+		}
+		if message.Trailing == "" {
+			replies = append(replies, irc.Message{
+				Prefix:   ServerPrefix,
+				Command:  irc.ERR_NOTEXTTOSEND,
+				Params:   []string{s.Nick},
+				Trailing: "No text to send",
+			})
+			break
+		}
 		replies = append(replies, irc.Message{
 			Prefix:   s.ircPrefix(),
 			Command:  irc.PRIVMSG,

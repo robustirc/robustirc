@@ -25,8 +25,8 @@ func appendLog(logs []*raft.Log, msg string) []*raft.Log {
 }
 
 func verifyEndState(t *testing.T) {
-	s, ok := ircserver.GetSession(types.RobustId{Id: 1})
-	if !ok {
+	s, err := ircserver.GetSession(types.RobustId{Id: 1})
+	if err != nil {
 		t.Fatalf("No session found after applying log messages")
 	}
 	if s.Nick != "secure_" {

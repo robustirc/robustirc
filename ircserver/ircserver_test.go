@@ -16,8 +16,8 @@ func TestSessionInitialization(t *testing.T) {
 	CreateSession(id, "authbytes")
 	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
 
-	s, ok := GetSession(id)
-	if !ok {
+	s, err := GetSession(id)
+	if err != nil {
 		t.Fatalf("GetSession(%v) did not return a session", id)
 	}
 
@@ -112,8 +112,8 @@ func TestInvalidNickPlumbing(t *testing.T) {
 	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
 	CreateSession(id, "authbytes")
 
-	s, ok := GetSession(id)
-	if !ok {
+	s, err := GetSession(id)
+	if err != nil {
 		t.Fatalf("GetSession(%v) did not return a session", id)
 	}
 
@@ -139,8 +139,8 @@ func TestInvalidChannelPlumbing(t *testing.T) {
 	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
 	CreateSession(id, "authbytes")
 
-	s, ok := GetSession(id)
-	if !ok {
+	s, err := GetSession(id)
+	if err != nil {
 		t.Fatalf("GetSession(%v) did not return a session", id)
 	}
 
@@ -162,6 +162,34 @@ func TestInvalidChannelPlumbing(t *testing.T) {
 
 	got = ProcessMessage(id, irc.ParseMessage("JOIN foobar"))
 	want = []irc.Message{*irc.ParseMessage(":robustirc.net 403 secure foobar :No such channel")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestInvalidPrivmsg(t *testing.T) {
+	id := types.RobustId{Id: time.Now().UnixNano()}
+
+	ClearState()
+	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
+	CreateSession(id, "authbytes")
+
+	ProcessMessage(id, irc.ParseMessage("NICK secure"))
+	ProcessMessage(id, irc.ParseMessage("JOIN #test"))
+	got := ProcessMessage(id, irc.ParseMessage("PRIVMSG #test"))
+	want := []irc.Message{*irc.ParseMessage(":robustirc.net 412 secure :No text to send")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	got = ProcessMessage(id, irc.ParseMessage("PRIVMSG #test foo"))
+	want = []irc.Message{*irc.ParseMessage(":robustirc.net 412 secure :No text to send")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	got = ProcessMessage(id, irc.ParseMessage("PRIVMSG"))
+	want = []irc.Message{*irc.ParseMessage(":robustirc.net 411 secure :No recipient given (PRIVMSG)")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
