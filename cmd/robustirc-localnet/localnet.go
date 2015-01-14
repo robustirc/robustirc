@@ -194,9 +194,27 @@ func startbridge() {
 		"-network=" + strings.Join(servers, ","),
 	}
 
+	tempdir, err := ioutil.TempDir("", "robustirc-bridge-")
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := recordResource("tempdir", tempdir); err != nil {
+		log.Panicf("Could not record tempdir: %v", err)
+	}
+
 	log.Printf("Starting %q\n", "robustirc-bridge "+strings.Join(args, " "))
 	cmd := exec.Command("robustirc-bridge", args...)
-	// TODO(secure): set up stdout and stderr to go to files in their tempdir
+
+	stdout, err := os.Create(filepath.Join(tempdir, "stdout.txt"))
+	if err != nil {
+		log.Panic(err)
+	}
+	stderr, err := os.Create(filepath.Join(tempdir, "stderr.txt"))
+	if err != nil {
+		log.Panic(err)
+	}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	// Put the robustirc bridge into a separate process group, so that it
 	// survives when robustirc-localnet terminates.
 	cmd.SysProcAttr = &syscall.SysProcAttr{
