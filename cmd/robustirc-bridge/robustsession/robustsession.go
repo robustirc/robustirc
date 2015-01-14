@@ -192,8 +192,16 @@ func (s *RobustSession) sendRequest(method, path string, data []byte) (string, *
 			continue
 		}
 		if resp.StatusCode == http.StatusNotFound {
+			s.network.failed(target)
 			return "", nil, NoSuchSession
 		}
+		// Server errors, temporary.
+		if resp.StatusCode >= 500 && resp.StatusCode < 600 {
+			s.network.failed(target)
+			log.Printf("sendRequest(%q) failed with %v (retrying)\n", path, resp.Status)
+			continue
+		}
+		// Client errors and anything unexpected.
 		if resp.StatusCode != http.StatusOK {
 			message, _ := ioutil.ReadAll(resp.Body)
 			resp.Body.Close()
