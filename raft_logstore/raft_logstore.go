@@ -118,13 +118,14 @@ func (s *RobustLogStore) StoreLogs(logs []*raft.Log) error {
 	defer s.l.Unlock()
 
 	for _, entry := range logs {
-		log.Printf("writing index %d to file (%v)\n", entry.Index, entry)
-		f, err := os.Create(filepath.Join(s.dir, fmt.Sprintf("robustlogs/entry.%d", entry.Index)))
+		log.Printf("writing index %d to file\n", entry.Index)
+		suffix := strconv.FormatUint(entry.Index, 10)
+		f, err := os.Create(filepath.Join(s.dir, "robustlogs/incomplete."+suffix))
 		if err != nil {
 			return err
 		}
-		defer f.Close()
 		if err := json.NewEncoder(f).Encode(entry); err != nil {
+			f.Close()
 			return err
 		}
 		if entry.Index < s.lowIndex || s.lowIndex == 0 {
@@ -132,6 +133,12 @@ func (s *RobustLogStore) StoreLogs(logs []*raft.Log) error {
 		}
 		if entry.Index > s.highIndex {
 			s.highIndex = entry.Index
+		}
+		f.Close()
+		if err := os.Rename(
+			filepath.Join(s.dir, "robustlogs/incomplete."+suffix),
+			filepath.Join(s.dir, "robustlogs/entry."+suffix)); err != nil {
+			return err
 		}
 	}
 
