@@ -120,7 +120,7 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request) {
 	var body bytes.Buffer
 	rd := io.TeeReader(&io.LimitedReader{r.Body, 1024}, &body)
 	if err := json.NewDecoder(rd).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -136,7 +136,7 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request) {
 	msgbytes, err := json.Marshal(msg)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Could not store message, cannot encode it as JSON: %v", err),
-			http.StatusInternalServerError)
+			http.StatusBadRequest)
 		return
 	}
 
