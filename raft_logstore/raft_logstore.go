@@ -100,13 +100,7 @@ func (s *RobustLogStore) GetLog(index uint64, rlog *raft.Log) error {
 		return err
 	}
 	defer f.Close()
-
-	var elog raft.Log
-	if err := json.NewDecoder(f).Decode(&elog); err != nil {
-		return err
-	}
-	*rlog = elog
-	return nil
+	return json.NewDecoder(f).Decode(rlog)
 }
 
 func (s *RobustLogStore) StoreLog(log *raft.Log) error {
