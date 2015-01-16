@@ -191,25 +191,22 @@ func (s *RobustSession) sendRequest(method, path string, data []byte) (string, *
 			log.Printf("sendRequest(%q) failed: %v\n", path, err)
 			continue
 		}
+		if resp.StatusCode == http.StatusOK {
+			return target, resp, nil
+		}
+		message, _ := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+		s.network.failed(target)
 		if resp.StatusCode == http.StatusNotFound {
-			s.network.failed(target)
 			return "", nil, NoSuchSession
 		}
 		// Server errors, temporary.
 		if resp.StatusCode >= 500 && resp.StatusCode < 600 {
-			s.network.failed(target)
-			log.Printf("sendRequest(%q) failed with %v (retrying)\n", path, resp.Status)
+			log.Printf("sendRequest(%q) failed with %v: %q (retrying)\n", path, resp.Status, message)
 			continue
 		}
-		// Client errors and anything unexpected.
-		if resp.StatusCode != http.StatusOK {
-			message, _ := ioutil.ReadAll(resp.Body)
-			resp.Body.Close()
-			s.network.failed(target)
-			log.Printf("sendRequest(%q) failed with %v: %q\n", path, resp.Status, message)
-			continue
-		}
-		return target, resp, nil
+		// Client errors and anything unexpected, assumed to be permanent.
+		return "", nil, fmt.Errorf("sendRequest(%q) failed with %v: %q\n", path, resp.Status, message)
 	}
 
 	return "", nil, NoSuchSession
