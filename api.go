@@ -237,6 +237,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	enc := json.NewEncoder(w)
+	var msgcopy types.RobustMessage
 	for {
 		msg := ircserver.GetMessage(lastSeen)
 		s, err := ircserver.GetSession(session)
@@ -256,7 +257,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 		// Remove the ClientMessageId before sending, just in case it contains
 		// sensitive information (e.g. the random values leaking state of the
 		// PRNG).
-		msgcopy := *msg
+		msgcopy = *msg
 		msgcopy.ClientMessageId = 0
 
 		if err := enc.Encode(&msgcopy); err != nil {
