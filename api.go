@@ -248,9 +248,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 
 		lastSeen = msg.Id
 
-		interested := s.InterestedIn(msg)
-		log.Printf("[DEBUG] Checking whether %+v is interested in %+v --> %v\n", s, msg, interested)
-		if !interested {
+		if !s.InterestedIn(msg) {
 			continue
 		}
 
