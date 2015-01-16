@@ -71,15 +71,18 @@ type Session struct {
 	// The last ClientMessageId we got.
 	LastClientMessageId  uint64
 	LastPostMessageReply []byte
+
+	ircPrefix irc.Prefix
 }
 
 func (s *Session) loggedIn() bool {
 	return s.Nick != ""
 }
 
-func (s *Session) ircPrefix() *irc.Prefix {
+// updateIrcPrefix MUST be called whenever the Nick field changes.
+func (s *Session) updateIrcPrefix() {
 	// TODO(secure): Is there a better value for User?
-	return &irc.Prefix{
+	s.ircPrefix = irc.Prefix{
 		Name: s.Nick,
 		User: "robust",
 		Host: fmt.Sprintf("robust/0x%x", s.Id.Id),
@@ -108,9 +111,9 @@ func (s *Session) InterestedIn(msg *types.RobustMessage) bool {
 	case irc.JOIN:
 		return s.Channels[ircmsg.Trailing]
 	case irc.PART:
-		return *s.ircPrefix() == *ircmsg.Prefix || s.Channels[ircmsg.Params[0]]
+		return s.ircPrefix == *ircmsg.Prefix || s.Channels[ircmsg.Params[0]]
 	case irc.PRIVMSG:
-		return *s.ircPrefix() != *ircmsg.Prefix && (s.Channels[ircmsg.Params[0]] || ircmsg.Params[0] == s.Nick)
+		return s.ircPrefix != *ircmsg.Prefix && (s.Channels[ircmsg.Params[0]] || ircmsg.Params[0] == s.Nick)
 	case irc.MODE:
 		return ircmsg.Params[0] == s.Nick || s.Channels[ircmsg.Params[0]]
 	default:
@@ -180,7 +183,7 @@ func ProcessMessage(session types.RobustId, message *irc.Message) []irc.Message 
 
 	switch message.Command {
 	case irc.NICK:
-		oldPrefix := s.ircPrefix()
+		oldPrefix := s.ircPrefix
 		if len(message.Params) < 1 {
 			replies = append(replies, irc.Message{
 				Prefix:   ServerPrefix,
@@ -215,10 +218,11 @@ func ProcessMessage(session types.RobustId, message *irc.Message) []irc.Message 
 			break
 		}
 		s.Nick = message.Params[0]
+		s.updateIrcPrefix()
 		log.Printf("nickname now: %+v\n", s)
-		if !strings.HasPrefix(oldPrefix.String(), "!") {
+		if oldPrefix.String() != "" {
 			replies = append(replies, irc.Message{
-				Prefix:   oldPrefix,
+				Prefix:   &oldPrefix,
 				Command:  irc.NICK,
 				Trailing: message.Params[0],
 			})
@@ -312,7 +316,7 @@ func ProcessMessage(session types.RobustId, message *irc.Message) []irc.Message 
 			nicks = append(nicks, session.Nick)
 		}
 		replies = append(replies, irc.Message{
-			Prefix:   s.ircPrefix(),
+			Prefix:   &s.ircPrefix,
 			Command:  irc.JOIN,
 			Trailing: channel,
 		})
@@ -340,14 +344,14 @@ func ProcessMessage(session types.RobustId, message *irc.Message) []irc.Message 
 		channel := message.Params[0]
 		delete(s.Channels, channel)
 		replies = append(replies, irc.Message{
-			Prefix:  s.ircPrefix(),
+			Prefix:  &s.ircPrefix,
 			Command: irc.PART,
 			Params:  []string{channel},
 		})
 
 	case irc.QUIT:
 		replies = append(replies, irc.Message{
-			Prefix:   s.ircPrefix(),
+			Prefix:   &s.ircPrefix,
 			Command:  irc.QUIT,
 			Trailing: message.Trailing,
 		})
@@ -372,7 +376,7 @@ func ProcessMessage(session types.RobustId, message *irc.Message) []irc.Message 
 			break
 		}
 		replies = append(replies, irc.Message{
-			Prefix:   s.ircPrefix(),
+			Prefix:   &s.ircPrefix,
 			Command:  irc.PRIVMSG,
 			Params:   []string{message.Params[0]},
 			Trailing: message.Trailing,
@@ -399,7 +403,7 @@ func ProcessMessage(session types.RobustId, message *irc.Message) []irc.Message 
 		} else {
 			if channel == s.Nick {
 				replies = append(replies, irc.Message{
-					Prefix:   s.ircPrefix(),
+					Prefix:   &s.ircPrefix,
 					Command:  irc.MODE,
 					Params:   []string{s.Nick},
 					Trailing: "+",
@@ -421,7 +425,7 @@ func ProcessMessage(session types.RobustId, message *irc.Message) []irc.Message 
 			if !session.Channels[channel] {
 				continue
 			}
-			prefix := session.ircPrefix()
+			prefix := session.ircPrefix
 			replies = append(replies, irc.Message{
 				Prefix:   ServerPrefix,
 				Command:  irc.RPL_WHOREPLY,
