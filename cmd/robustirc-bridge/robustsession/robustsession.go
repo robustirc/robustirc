@@ -263,7 +263,7 @@ func Create(network string, tlsCAFile string) (*RobustSession, error) {
 	s := &RobustSession{
 		Messages: make(chan string),
 		Errors:   make(chan error),
-		done:     make(chan bool, 1),
+		done:     make(chan bool),
 		network:  n,
 		client:   client,
 	}
@@ -303,6 +303,11 @@ func Create(network string, tlsCAFile string) (*RobustSession, error) {
 func (s *RobustSession) getMessages() {
 	var lastseen types.RobustId
 
+	defer func() {
+		for _ = range s.done {
+		}
+	}()
+
 	for !s.deleted {
 		target, resp, err := s.sendRequest("GET", fmt.Sprintf(pathGetMessages, s.sessionId, lastseen.String()), nil)
 		if err != nil {
@@ -310,11 +315,14 @@ func (s *RobustSession) getMessages() {
 			return
 		}
 
-		msgchan := make(chan types.RobustMessage, 1)
+		msgchan := make(chan types.RobustMessage)
 		errchan := make(chan error)
+		done := false
 		go func() {
+			defer close(msgchan)
+			defer close(errchan)
 			dec := json.NewDecoder(resp.Body)
-			for {
+			for !done {
 				var msg types.RobustMessage
 				if err := dec.Decode(&msg); err != nil {
 					errchan <- err
@@ -351,6 +359,16 @@ func (s *RobustSession) getMessages() {
 				break ReadLoop
 			}
 		}
+		done = true
+		go func() {
+			for _ = range msgchan {
+			}
+		}()
+		go func() {
+			for _ = range errchan {
+			}
+		}()
+		// Cannot use discardResponse() because the response never completes.
 		resp.Body.Close()
 
 		// Delay reconnecting for somewhere in between [250, 500) ms to avoid
@@ -403,7 +421,25 @@ func (s *RobustSession) PostMessage(message string) error {
 func (s *RobustSession) Delete(quitmessage string) error {
 	defer func() {
 		s.deleted = true
+
+		// Make sure nobody is blocked on sending to the channel by closing them
+		// and reading all remaining values.
+		go func() {
+			for _ = range s.Messages {
+			}
+		}()
+		go func() {
+			for _ = range s.Errors {
+			}
+		}()
+
+		// This will be read by getMessages(), which will not send on the
+		// channels after reading it, so we can safely close them.
 		s.done <- true
+		close(s.done)
+
+		close(s.Messages)
+		close(s.Errors)
 	}()
 
 	b, err := json.Marshal(struct{ Quitmessage string }{quitmessage})
