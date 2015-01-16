@@ -488,16 +488,17 @@ func GetMessageNonBlocking(lastseen types.RobustId) *types.RobustMessage {
 // GetMessage returns the IRC message with index 'idx', possibly blocking until
 // that message appears.
 func GetMessage(lastseen types.RobustId) *types.RobustMessage {
+	var idx int
 	newMessage.L.Lock()
-	idx, ok := idToIdx[lastseen]
-	log.Printf("lastseen = %v, idx = %v, ok = %v\n", lastseen, idx, ok)
+	defer newMessage.L.Unlock()
 	// Sleep until processMessage() wakes us up for a new message.
-	for idToIdx[lastseen]+1 >= len(ircOutput) {
+	for {
+		idx = idToIdx[lastseen] + 1
+		if idx < len(ircOutput) {
+			return &ircOutput[idx]
+		}
 		newMessage.Wait()
 	}
-	newMessage.L.Unlock()
-
-	return &ircOutput[idToIdx[lastseen]+1]
 }
 
 func GetSession(id types.RobustId) (*Session, error) {
