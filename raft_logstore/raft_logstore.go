@@ -6,9 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/hashicorp/raft"
@@ -23,12 +21,6 @@ type RobustLogStore struct {
 	dir       string
 }
 
-type uint64Slice []uint64
-
-func (p uint64Slice) Len() int           { return len(p) }
-func (p uint64Slice) Less(i, j int) bool { return p[i] < p[j] }
-func (p uint64Slice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
-
 func NewRobustLogStore(dir string) (*RobustLogStore, error) {
 	if err := os.MkdirAll(filepath.Join(dir, "robustlogs"), 0700); err != nil {
 		return nil, err
@@ -37,44 +29,6 @@ func NewRobustLogStore(dir string) (*RobustLogStore, error) {
 	return &RobustLogStore{
 		dir: dir,
 	}, nil
-}
-
-// GetAll returns all indexes that are currently present in the log store. This
-// is NOT part of the raft.LogStore interface — we use it when snapshotting.
-func (s *RobustLogStore) GetAll() ([]uint64, error) {
-	var indexes []uint64
-	dir, err := os.Open(filepath.Join(s.dir, "robustlogs"))
-	if err != nil {
-		return indexes, err
-	}
-	defer dir.Close()
-
-	names, err := dir.Readdirnames(-1)
-	if err != nil {
-		return indexes, err
-	}
-
-	for _, name := range names {
-		if !strings.HasPrefix(name, "entry.") {
-			continue
-		}
-
-		dot := strings.LastIndex(name, ".")
-		if dot == -1 {
-			continue
-		}
-
-		index, err := strconv.ParseInt(name[dot+1:], 0, 64)
-		if err != nil {
-			return indexes, fmt.Errorf("Unexpected filename, does not confirm to entry.%%d: %q. Parse error: %v", name, err)
-		}
-
-		indexes = append(indexes, uint64(index))
-	}
-
-	sort.Sort(uint64Slice(indexes))
-
-	return indexes, nil
 }
 
 func (s *RobustLogStore) FirstIndex() (uint64, error) {

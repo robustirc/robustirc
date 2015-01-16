@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/gob"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -81,24 +80,64 @@ var (
 )
 
 type robustSnapshot struct {
-	indexes []uint64
-	store   *raft_logstore.RobustLogStore
+	firstIndex uint64
+	lastIndex  uint64
+	store      *raft_logstore.RobustLogStore
 }
 
 func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
-	log.Printf("Persisting indexes %v\n", s.indexes)
-	encoder := gob.NewEncoder(sink)
-	var entry raft.Log
-	for _, index := range s.indexes {
-		if err := s.store.GetLog(index, &entry); err != nil {
-			sink.Cancel()
+	log.Printf("Filtering and writing %d indexes\n", s.lastIndex-s.firstIndex)
+
+	encoder := json.NewEncoder(sink)
+	for i := s.firstIndex; i <= s.lastIndex; i++ {
+		var elog raft.Log
+
+		if err := s.store.GetLog(i, &elog); err != nil {
 			return err
 		}
-		if err := encoder.Encode(entry); err != nil {
+
+		if elog.Type == raft.LogCommand {
+			msg := types.NewRobustMessageFromBytes(elog.Data)
+			if time.Since(time.Unix(0, msg.Id.Id)) > 7*24*time.Hour &&
+				msg.Type == types.RobustIRCFromClient {
+				ircmsg := irc.ParseMessage(msg.Data)
+				// TODO: MODE (tricky)
+				// Delete messages which don’t modify state.
+				if ircmsg.Command == irc.PRIVMSG ||
+					ircmsg.Command == irc.USER ||
+					ircmsg.Command == irc.WHO ||
+					ircmsg.Command == irc.QUIT {
+					continue
+				}
+				if ircmsg.Command == irc.PART {
+					// Delete all PARTs because we only keep JOINs that are still relevant.
+					continue
+				}
+				// TODO: even better for JOIN/NICK: only retain the most recent one
+				if ircmsg.Command == irc.JOIN {
+					if s, err := ircserver.GetSession(msg.Session); err == nil {
+						// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
+						if _, ok := s.Channels[ircmsg.Params[0]]; !ok {
+							continue
+						}
+					}
+				}
+				if ircmsg.Command == irc.NICK {
+					if s, err := ircserver.GetSession(msg.Session); err == nil {
+						if s.Nick != ircmsg.Params[0] {
+							continue
+						}
+					}
+				}
+			}
+		}
+
+		if err := encoder.Encode(elog); err != nil {
 			sink.Cancel()
 			return err
 		}
 	}
+
 	sink.Close()
 	return nil
 }
@@ -149,56 +188,16 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 // of days are compacted, and proxy connections are only disconnected for a
 // couple of minutes at a time.
 func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
-	indexes, err := fsm.store.GetAll()
-
-	var filtered []uint64
-	for i := len(indexes) - 1; i >= 0; i-- {
-		var elog raft.Log
-
-		if err := fsm.store.GetLog(indexes[i], &elog); err != nil {
-			return nil, err
-		}
-
-		if elog.Type == raft.LogCommand {
-			msg := types.NewRobustMessageFromBytes(elog.Data)
-			if time.Since(time.Unix(0, msg.Id.Id)) > 7*24*time.Hour &&
-				msg.Type == types.RobustIRCFromClient {
-				ircmsg := irc.ParseMessage(msg.Data)
-				// TODO: MODE (tricky)
-				// Delete messages which don’t modify state.
-				if ircmsg.Command == irc.PRIVMSG ||
-					ircmsg.Command == irc.USER ||
-					ircmsg.Command == irc.WHO ||
-					ircmsg.Command == irc.QUIT {
-					continue
-				}
-				if ircmsg.Command == irc.PART {
-					// Delete all PARTs because we only keep JOINs that are still relevant.
-					continue
-				}
-				// TODO: even better for JOIN/NICK: only retain the most recent one
-				if ircmsg.Command == irc.JOIN {
-					if s, err := ircserver.GetSession(msg.Session); err == nil {
-						// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
-						if _, ok := s.Channels[ircmsg.Params[0]]; !ok {
-							continue
-						}
-					}
-				}
-				if ircmsg.Command == irc.NICK {
-					if s, err := ircserver.GetSession(msg.Session); err == nil {
-						if s.Nick != ircmsg.Params[0] {
-							continue
-						}
-					}
-				}
-			}
-		}
-
-		filtered = append([]uint64{indexes[i]}, filtered...)
+	first, err := fsm.store.FirstIndex()
+	if err != nil {
+		return nil, err
 	}
 
-	return &robustSnapshot{filtered, fsm.store}, err
+	last, err := fsm.store.LastIndex()
+	if err != nil {
+		return nil, err
+	}
+	return &robustSnapshot{first, last, fsm.store}, err
 }
 
 func (fsm *FSM) Restore(snap io.ReadCloser) error {
@@ -211,7 +210,7 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 
 	ircserver.ClearState()
 
-	decoder := gob.NewDecoder(snap)
+	decoder := json.NewDecoder(snap)
 	for {
 		var entry raft.Log
 		if err := decoder.Decode(&entry); err != nil {

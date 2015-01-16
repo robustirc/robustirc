@@ -19,7 +19,7 @@ import (
 func appendLog(logs []*raft.Log, msg string) []*raft.Log {
 	return append(logs, &raft.Log{
 		Type:  raft.LogCommand,
-		Index: uint64(len(logs)),
+		Index: uint64(len(logs) + 1),
 		Data:  []byte(msg),
 	})
 }
@@ -91,9 +91,8 @@ func TestCompaction(t *testing.T) {
 	if !ok {
 		t.Fatalf("fsm.Snapshot() return value is not a robustSnapshot")
 	}
-	if robustsnap.indexes[len(robustsnap.indexes)-1] != uint64(len(logs)-1) ||
-		robustsnap.indexes[len(robustsnap.indexes)-2] != uint64(len(logs)-2) {
-		t.Fatalf("snapshot does not retain the last two (recent) messages")
+	if robustsnap.lastIndex != uint64(len(logs)) {
+		t.Fatalf("snapshot does not retain the last message, got: %d, want: %d", robustsnap.lastIndex, len(logs))
 	}
 
 	fss, err := raft.NewFileSnapshotStore(tempdir, 5, nil)
@@ -126,13 +125,11 @@ func TestCompaction(t *testing.T) {
 		t.Fatalf("fsm.Restore(): %v", err)
 	}
 
-	indexes, err := store.GetAll()
-	if err != nil {
-		t.Fatalf("store.GetAll(): %v", err)
-	}
+	first, _ := store.FirstIndex()
+	last, _ := store.LastIndex()
 
-	if len(indexes) >= len(logs) {
-		t.Fatalf("Compaction did not decrease log size. got: %d, want: < %d", len(indexes), len(logs))
+	if last-first >= uint64(len(logs)) {
+		t.Fatalf("Compaction did not decrease log size. got: %d, want: < %d", last-first, len(logs))
 	}
 
 	verifyEndState(t)
