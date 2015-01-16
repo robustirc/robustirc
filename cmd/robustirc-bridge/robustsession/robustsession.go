@@ -440,6 +440,10 @@ func (s *RobustSession) Delete(quitmessage string) error {
 
 		close(s.Messages)
 		close(s.Errors)
+
+		if transport, ok := s.client.Transport.(*http.Transport); ok {
+			transport.CloseIdleConnections()
+		}
 	}()
 
 	b, err := json.Marshal(struct{ Quitmessage string }{quitmessage})
