@@ -65,7 +65,7 @@ func maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body io.ReadClos
 	p.ServeHTTP(w, r)
 }
 
-func sessionOrProxy(w http.ResponseWriter, r *http.Request) (*ircserver.Session, types.RobustId, error) {
+func session(r *http.Request) (*ircserver.Session, types.RobustId, error) {
 	var sessionid types.RobustId
 
 	idstr := mux.Vars(r)["sessionid"]
@@ -76,10 +76,6 @@ func sessionOrProxy(w http.ResponseWriter, r *http.Request) (*ircserver.Session,
 
 	session, err := ircserver.GetSession(types.RobustId{Id: id})
 	if err != nil {
-		if err == ircserver.ErrSessionNotYetSeen {
-			// The session might exist on the leader, so we must proxy.
-			maybeProxyToLeader(w, r, r.Body)
-		}
 		return session, sessionid, err
 	}
 
@@ -94,6 +90,20 @@ func sessionOrProxy(w http.ResponseWriter, r *http.Request) (*ircserver.Session,
 	sessionid.Id = id
 
 	return session, sessionid, nil
+}
+
+func sessionOrProxy(w http.ResponseWriter, r *http.Request) (*ircserver.Session, types.RobustId, error) {
+	session, sessionid, err := session(r)
+	if err == ircserver.ErrSessionNotYetSeen {
+		// The session might exist on the leader, so we must proxy.
+		maybeProxyToLeader(w, r, r.Body)
+		return session, sessionid, err
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+	}
+	return session, sessionid, err
 }
 
 // handlePostMessage is called by the robustirc-brigde whenever a message should be
@@ -190,8 +200,15 @@ func handleSnapshot(res http.ResponseWriter, req *http.Request) {
 }
 
 func handleGetMessages(w http.ResponseWriter, r *http.Request) {
-	s, session, err := sessionOrProxy(w, r)
+	// Avoid sessionOrProxy() because GetMessages can be answered on any raft
+	// node, it’s a read-only request.
+	s, session, err := session(r)
 	if err != nil {
+		if err == ircserver.ErrSessionNotYetSeen {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		} else {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		}
 		return
 	}
 
