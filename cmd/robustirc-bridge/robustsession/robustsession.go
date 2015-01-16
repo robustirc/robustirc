@@ -248,11 +248,16 @@ func Create(network string, tlsCAFile string) (*RobustSession, error) {
 
 		client = &http.Client{
 			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{RootCAs: roots},
+				TLSClientConfig:     &tls.Config{RootCAs: roots},
+				MaxIdleConnsPerHost: 1,
 			},
 		}
 	} else {
-		client = http.DefaultClient
+		client = &http.Client{
+			Transport: &http.Transport{
+				MaxIdleConnsPerHost: 1,
+			},
+		}
 	}
 
 	s := &RobustSession{
