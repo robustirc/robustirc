@@ -115,6 +115,9 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	t := s.LastActivity.Add(*postMessageCooloff)
+	time.Sleep(t.Sub(time.Now()))
+
 	type postMessageRequest struct {
 		Data            string
 		ClientMessageId uint64
