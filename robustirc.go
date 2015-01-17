@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/robustirc/robustirc/ircserver"
-	"github.com/robustirc/robustirc/raft_logstore"
 	"github.com/robustirc/robustirc/types"
 
 	auth "github.com/abbot/go-http-auth"
@@ -79,13 +78,13 @@ var (
 
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
-	logStore  *raft_logstore.RobustLogStore
+	logStore  *LevelDB
 )
 
 type robustSnapshot struct {
 	firstIndex uint64
 	lastIndex  uint64
-	store      *raft_logstore.RobustLogStore
+	store      *LevelDB
 }
 
 func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
@@ -149,7 +148,7 @@ func (s *robustSnapshot) Release() {
 }
 
 type FSM struct {
-	store *raft_logstore.RobustLogStore
+	store *LevelDB
 }
 
 func (fsm *FSM) Apply(l *raft.Log) interface{} {
@@ -416,11 +415,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	logStore, err = raft_logstore.NewRobustLogStore(*raftDir)
-	if err != nil {
-		log.Fatal(err)
-	}
-	stablestore, err := NewRobustStableStore(*raftDir)
+	logStore, err = NewLevelDB(*raftDir)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -431,7 +426,7 @@ func main() {
 	}
 
 	// NewRaft(*Config, FSM, LogStore, StableStore, SnapshotStore, PeerStore, Transport)
-	node, err = raft.NewRaft(config, fsm, logcache, stablestore, fss, peerStore, transport)
+	node, err = raft.NewRaft(config, fsm, logcache, logStore, fss, peerStore, transport)
 	if err != nil {
 		log.Fatal(err)
 	}
