@@ -149,7 +149,7 @@ func TestInvalidChannelPlumbing(t *testing.T) {
 	got := ProcessMessage(id, irc.ParseMessage("JOIN #foobar"))
 	want := []irc.Message{
 		irc.Message{
-			Prefix:   s.ircPrefix(),
+			Prefix:   &s.ircPrefix,
 			Command:  irc.JOIN,
 			Trailing: "#foobar",
 		},
