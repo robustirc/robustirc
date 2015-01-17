@@ -103,6 +103,7 @@ func startircserver(singlenode bool) {
 		"-tls_cert_path=" + filepath.Join(*localnetDir, "cert.pem"),
 		"-tls_ca_file=" + filepath.Join(*localnetDir, "cert.pem"),
 		"-tls_key_path=" + filepath.Join(*localnetDir, "key.pem"),
+		"-post_message_cooloff=0",
 	}
 
 	args = append(args, fmt.Sprintf("-listen=localhost:%d", randomPort))
