@@ -115,8 +115,8 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	<-s.AllowedToSend
-	s.AllowedToSend = time.After(*postMessageCooloff)
+	t := s.LastActivity.Add(*postMessageCooloff)
+	time.Sleep(t.Sub(time.Now()))
 
 	type postMessageRequest struct {
 		Data            string

@@ -138,12 +138,11 @@ func CreateSession(id types.RobustId, auth string) {
 		lastSeen = ircOutput[len(ircOutput)-1].Id
 	}
 	Sessions[id] = &Session{
-		Id:            id,
-		Auth:          auth,
-		StartId:       lastSeen,
-		Channels:      make(map[string]bool),
-		LastActivity:  time.Unix(0, id.Id),
-		AllowedToSend: time.After(0),
+		Id:           id,
+		Auth:         auth,
+		StartId:      lastSeen,
+		Channels:     make(map[string]bool),
+		LastActivity: time.Unix(0, id.Id),
 	}
 }
 
