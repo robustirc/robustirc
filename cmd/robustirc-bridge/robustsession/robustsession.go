@@ -317,12 +317,17 @@ func (s *RobustSession) getMessages() {
 
 		msgchan := make(chan types.RobustMessage)
 		errchan := make(chan error)
-		done := false
+		done := make(chan bool)
 		go func() {
 			defer close(msgchan)
 			defer close(errchan)
 			dec := json.NewDecoder(resp.Body)
-			for !done {
+			for {
+				select {
+				case <-done:
+					return
+				default:
+				}
 				var msg types.RobustMessage
 				if err := dec.Decode(&msg); err != nil {
 					errchan <- err
@@ -359,7 +364,7 @@ func (s *RobustSession) getMessages() {
 				break ReadLoop
 			}
 		}
-		done = true
+		close(done)
 		go func() {
 			for _ = range msgchan {
 			}
