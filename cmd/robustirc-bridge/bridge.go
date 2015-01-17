@@ -77,6 +77,17 @@ func (s *ircsession) Send(msg []byte) error {
 
 func (s *ircsession) Delete(killmsg string) error {
 	defer s.conn.Close()
+	// Read all remaining values to ensure nobody is blocked on sending.
+	defer func() {
+		go func() {
+			for _ = range s.Messages {
+			}
+		}()
+		go func() {
+			for _ = range s.Errors {
+			}
+		}()
+	}()
 
 	if killmsg != "" {
 		return s.conn.Encode(&irc.Message{
@@ -89,6 +100,8 @@ func (s *ircsession) Delete(killmsg string) error {
 }
 
 func (s *ircsession) getMessages() {
+	defer close(s.Messages)
+	defer close(s.Errors)
 	for {
 		ircmsg, err := s.conn.Decode()
 		if err != nil {
