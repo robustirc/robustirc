@@ -55,6 +55,9 @@ var (
 	newMessage  = sync.NewCond(&sync.Mutex{})
 
 	lastProcessed types.RobustId
+
+	// TODO(secure): remove this once OPER uses custom (configured) passwords.
+	NetworkPassword string
 )
 
 type Session struct {
@@ -63,6 +66,7 @@ type Session struct {
 	Nick         string
 	Channels     map[string]bool
 	LastActivity time.Time
+	Operator     bool
 
 	// The current IRC message id at the time when the session was started.
 	// This is used in handleGetMessages to skip uninteresting messages.
@@ -181,7 +185,8 @@ func ProcessMessage(session types.RobustId, message *irc.Message) []irc.Message 
 		return replies
 	}
 
-	switch message.Command {
+MessageSwitch:
+	switch strings.ToUpper(message.Command) {
 	case irc.NICK:
 		oldPrefix := s.ircPrefix
 		if len(message.Params) < 1 {
@@ -439,6 +444,80 @@ func ProcessMessage(session types.RobustId, message *irc.Message) []irc.Message 
 			Command:  irc.RPL_ENDOFWHO,
 			Params:   []string{s.Nick, channel},
 			Trailing: "End of /WHO list",
+		})
+
+	case irc.OPER:
+		if len(message.Params) < 2 {
+			replies = append(replies, irc.Message{
+				Prefix:   ServerPrefix,
+				Command:  irc.ERR_NEEDMOREPARAMS,
+				Params:   []string{s.Nick, message.Command},
+				Trailing: "Not enough parameters",
+			})
+			break
+		}
+
+		// TODO(secure): implement restriction to certain hosts once we have a
+		// configuration file. (ERR_NOOPERHOST)
+
+		if message.Params[1] != NetworkPassword {
+			replies = append(replies, irc.Message{
+				Prefix:   ServerPrefix,
+				Command:  irc.ERR_PASSWDMISMATCH,
+				Params:   []string{s.Nick},
+				Trailing: "Password incorrect",
+			})
+			break
+		}
+
+		s.Operator = true
+
+		replies = append(replies, irc.Message{
+			Prefix:   ServerPrefix,
+			Command:  irc.RPL_YOUREOPER,
+			Params:   []string{s.Nick},
+			Trailing: "You are now an IRC operator",
+		})
+
+	case irc.KILL:
+		if len(message.Params) < 1 || strings.TrimSpace(message.Trailing) == "" {
+			replies = append(replies, irc.Message{
+				Prefix:   ServerPrefix,
+				Command:  irc.ERR_NEEDMOREPARAMS,
+				Params:   []string{s.Nick, message.Command},
+				Trailing: "Not enough parameters",
+			})
+			break
+		}
+		if !s.Operator {
+			replies = append(replies, irc.Message{
+				Prefix:   ServerPrefix,
+				Command:  irc.ERR_NOPRIVILEGES,
+				Params:   []string{s.Nick},
+				Trailing: "Permission Denied - You're not an IRC operator",
+			})
+			break
+		}
+
+		for _, session := range Sessions {
+			if NickToLower(session.Nick) != NickToLower(message.Params[0]) {
+				continue
+			}
+
+			replies = append(replies, irc.Message{
+				Prefix:   &session.ircPrefix,
+				Command:  irc.QUIT,
+				Trailing: "Killed by " + s.Nick + ": " + message.Trailing,
+			})
+			DeleteSession(session.Id)
+			break MessageSwitch
+		}
+
+		replies = append(replies, irc.Message{
+			Prefix:   ServerPrefix,
+			Command:  irc.ERR_NOSUCHNICK,
+			Params:   []string{s.Nick, message.Params[0]},
+			Trailing: "No such nick/channel",
 		})
 	}
 

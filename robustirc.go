@@ -391,6 +391,7 @@ func main() {
 	}
 
 	ircserver.ClearState()
+	ircserver.NetworkPassword = *networkPassword
 
 	transport := NewTransport(&dnsAddr{*peerAddr}, *networkPassword, *tlsCAFile)
 
