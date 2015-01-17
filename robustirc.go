@@ -168,11 +168,14 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		ircserver.DeleteSession(msg.Session)
 
 	case types.RobustIRCFromClient:
-		replies := ircserver.ProcessMessage(msg.Session, irc.ParseMessage(string(msg.Data)))
-		ircserver.SendMessages(replies, msg.Session, msg.Id.Id)
+		// Need to do this first, because ircserver.ProcessMessage could delete
+		// the session, e.g. by using KILL or QUIT.
 		ircserver.Sessions[msg.Session].LastActivity = time.Unix(0, msg.Id.Id)
 		ircserver.Sessions[msg.Session].LastClientMessageId = msg.ClientMessageId
 		ircserver.Sessions[msg.Session].LastPostMessageReply = l.Data
+
+		replies := ircserver.ProcessMessage(msg.Session, irc.ParseMessage(string(msg.Data)))
+		ircserver.SendMessages(replies, msg.Session, msg.Id.Id)
 	}
 
 	return nil
