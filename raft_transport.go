@@ -145,12 +145,26 @@ func (t *Transport) handle(res http.ResponseWriter, req *http.Request, rpc raft.
 	respChan := make(chan raft.RPCResponse)
 	rpc.RespChan = respChan
 
-	// TODO(mero): Is the consumer channel guaranteed to be read? With one or
-	// more than one reader? And are all channels returned by Consume()
-	// guaranteed to be read? I hate channel-APIs…
-	t.consumer <- rpc
+	// Apparently both the dispatch of the rpc and waiting for a response can
+	// block more or less indefenitely. raft.NetworkTransport thus selects on
+	// both and so do we.
+	select {
+	case t.consumer <- rpc:
+	case <-time.After(raftTimeout):
+		http.Error(res, "timeout", 500)
+		log.Printf("Timout waiting to dispatch RPC")
+		return
+	}
 
-	resp := <-respChan
+	var resp raft.RPCResponse
+
+	select {
+	case resp = <-respChan:
+	case <-time.After(raftTimeout):
+		http.Error(res, "timeout", 500)
+		log.Printf("Timout when waiting for RPC response")
+		return
+	}
 
 	if resp.Error != nil {
 		http.Error(res, resp.Error.Error(), 400)
