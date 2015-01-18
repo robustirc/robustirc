@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/robustirc/robustirc/ircserver"
-	"github.com/robustirc/robustirc/raft_logstore"
+	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/types"
 
 	auth "github.com/abbot/go-http-auth"
@@ -79,13 +79,13 @@ var (
 
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
-	logStore  *raft_logstore.RobustLogStore
+	logStore  *raft_store.LevelDBStore
 )
 
 type robustSnapshot struct {
 	firstIndex uint64
 	lastIndex  uint64
-	store      *raft_logstore.RobustLogStore
+	store      *raft_store.LevelDBStore
 }
 
 func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
@@ -149,7 +149,7 @@ func (s *robustSnapshot) Release() {
 }
 
 type FSM struct {
-	store *raft_logstore.RobustLogStore
+	store *raft_store.LevelDBStore
 }
 
 func (fsm *FSM) Apply(l *raft.Log) interface{} {
@@ -210,7 +210,15 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 	log.Printf("Restoring snapshot\n")
 	defer snap.Close()
 
-	if err := fsm.store.DeleteAll(); err != nil {
+	min, err := fsm.store.FirstIndex()
+	if err != nil {
+		return err
+	}
+	max, err := fsm.store.LastIndex()
+	if err != nil {
+		return err
+	}
+	if err := fsm.store.DeleteRange(min, max); err != nil {
 		return err
 	}
 
@@ -416,11 +424,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	logStore, err = raft_logstore.NewRobustLogStore(*raftDir)
-	if err != nil {
-		log.Fatal(err)
-	}
-	stablestore, err := NewRobustStableStore(*raftDir)
+	logStore, err = raft_store.NewLevelDBStore(*raftDir)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -431,7 +435,7 @@ func main() {
 	}
 
 	// NewRaft(*Config, FSM, LogStore, StableStore, SnapshotStore, PeerStore, Transport)
-	node, err = raft.NewRaft(config, fsm, logcache, stablestore, fss, peerStore, transport)
+	node, err = raft.NewRaft(config, fsm, logcache, logStore, fss, peerStore, transport)
 	if err != nil {
 		log.Fatal(err)
 	}
