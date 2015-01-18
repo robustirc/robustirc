@@ -151,10 +151,14 @@ func (s *LevelDBStore) DeleteRange(min, max uint64) error {
 		binary.LittleEndian.PutUint64(key, n)
 		batch.Delete(key)
 	}
-	if max < meta.Hi {
+	if max == meta.Hi && min == meta.Lo {
+		meta.Lo = 0
+		meta.Hi = 0
+	} else if max < meta.Hi {
+		// We are deleting from the beginning. Update meta.Lo
 		meta.Lo = max + 1
-	}
-	if min > meta.Lo {
+	} else if min > meta.Lo {
+		// We are deleting from the end. Update meta.Hi
 		meta.Hi = min - 1
 	}
 
