@@ -26,6 +26,7 @@ const (
 	RobustIRCFromClient
 	RobustIRCToClient
 	RobustPing
+	RobustMessageOfDeath
 )
 
 type RobustMessage struct {

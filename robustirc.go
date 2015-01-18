@@ -167,6 +167,11 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 	log.Printf("Apply(fmsg.Type=%d)\n", msg.Type)
 
 	switch msg.Type {
+	case types.RobustMessageOfDeath:
+		// To prevent the message from being accepted again.
+		ircserver.UpdateLastMessage(&msg, l.Data)
+		log.Printf("Skipped message of death.\n")
+
 	case types.RobustCreateSession:
 		ircserver.CreateSession(msg.Id, msg.Data)
 
@@ -176,12 +181,36 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		ircserver.DeleteSession(msg.Session)
 
 	case types.RobustIRCFromClient:
+		defer func() {
+			if r := recover(); r != nil {
+				// Panics in ircserver.ProcessMessage() are a problem, since
+				// they will bring down the entire raft cluster and you cannot
+				// bring up any raft node anymore without deleting the entire
+				// log.
+				//
+				// Therefore, when we panic, we invalidate the log entry in
+				// question before crashing. This doesn’t fix the underlying
+				// bug, i.e. an IRC message will then go unhandled, but it
+				// prevents RobustIRC from dying horribly in such a situation.
+				msg.Type = types.RobustMessageOfDeath
+				data, err := json.Marshal(msg)
+				if err != nil {
+					log.Panicf("Could not marshal message: %v", err)
+				}
+				l.Data = data
+				if err := fsm.store.StoreLog(l); err != nil {
+					log.Panicf("Could not store log while marking message as message of death: %v", err)
+				}
+				log.Printf("Marked %+v as message of death\n", l)
+				panic(r)
+			}
+		}()
+
 		// Need to do this first, because ircserver.ProcessMessage could delete
 		// the session, e.g. by using KILL or QUIT.
-		ircserver.Sessions[msg.Session].LastActivity = time.Unix(0, msg.Id.Id)
-		ircserver.Sessions[msg.Session].LastClientMessageId = msg.ClientMessageId
-		ircserver.Sessions[msg.Session].LastPostMessageReply = l.Data
-
+		if err := ircserver.UpdateLastMessage(&msg, l.Data); err != nil {
+			log.Printf("Error updating the last message for session: %v\n", err)
+		}
 		replies := ircserver.ProcessMessage(msg.Session, irc.ParseMessage(string(msg.Data)))
 		ircserver.SendMessages(replies, msg.Session, msg.Id.Id)
 	}
