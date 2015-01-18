@@ -84,7 +84,7 @@ var (
 	peerStore *raft.JSONPeers
 	logStore  *raft_store.LevelDBStore
 
-	version string = executableHash()
+	executablehash string = executableHash()
 )
 
 type robustSnapshot struct {
@@ -475,7 +475,7 @@ func main() {
 	privaterouter.HandleFunc("/join", handleJoin)
 	privaterouter.HandleFunc("/snapshot", handleSnapshot)
 	privaterouter.HandleFunc("/leader", handleLeader)
-	privaterouter.HandleFunc("/version", handleVersion)
+	privaterouter.HandleFunc("/executablehash", handleHash)
 	privaterouter.HandleFunc("/quit", handleQuit)
 
 	publicrouter := mux.NewRouter()

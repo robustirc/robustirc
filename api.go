@@ -364,8 +364,8 @@ func handleLeader(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleVersion(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte(version))
+func handleHash(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte(executablehash))
 }
 
 func handleQuit(w http.ResponseWriter, r *http.Request) {
