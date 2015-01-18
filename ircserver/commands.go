@@ -1,7 +1,6 @@
 package ircserver
 
 import (
-	"log"
 	"strings"
 
 	"github.com/sorcix/irc"
@@ -104,7 +103,6 @@ func cmdNick(s *Session, msg *irc.Message) interface{} {
 	}
 	s.Nick = msg.Params[0]
 	s.updateIrcPrefix()
-	log.Printf("nickname now: %+v\n", s)
 	if oldPrefix.String() != "" {
 		return &irc.Message{
 			Prefix:   &oldPrefix,
