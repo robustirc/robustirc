@@ -134,19 +134,6 @@ func ClearState() {
 	idToIdx[types.RobustId{}] = -1
 }
 
-// UpdateLastMessage stores the clientmessageid of the last message in the
-// corresponding session, so that duplicate messages are not persisted twice.
-func UpdateLastMessage(msg *types.RobustMessage, serialized []byte) error {
-	session, err := GetSession(msg.Session)
-	if err != nil {
-		return err
-	}
-	session.LastActivity = time.Unix(0, msg.Id.Id)
-	session.LastClientMessageId = msg.ClientMessageId
-	session.LastPostMessageReply = serialized
-	return nil
-}
-
 // CreateSession creates a new session (equivalent to an IRC connection).
 func CreateSession(id types.RobustId, auth string) {
 	var lastSeen types.RobustId
