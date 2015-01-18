@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -205,7 +204,7 @@ func (s *LevelDBStore) Get(key []byte) ([]byte, error) {
 	key = append([]byte("stablestore-"), key...)
 	value, err := s.db.Get(key, nil)
 	if err == leveldb.ErrNotFound {
-		return nil, errors.New("not found")
+		return nil, nil
 	}
 	return value, err
 }
@@ -225,7 +224,7 @@ func (s *LevelDBStore) GetUint64(key []byte) (uint64, error) {
 	key = append([]byte("stablestore-"), key...)
 	v, err := s.db.Get(key, nil)
 	if err == leveldb.ErrNotFound {
-		return 0, errors.New("not found")
+		return 0, nil
 	}
 	return binary.LittleEndian.Uint64(v), err
 }
