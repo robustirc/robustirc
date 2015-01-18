@@ -13,6 +13,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	"github.com/syndtr/goleveldb/leveldb"
+	leveldb_errors "github.com/syndtr/goleveldb/leveldb/errors"
 )
 
 var metaKey = []byte("logstore-meta")
@@ -33,7 +34,7 @@ type logstoreMeta struct {
 func NewLevelDBStore(dir string) (*LevelDBStore, error) {
 	db, err := leveldb.OpenFile(dir, nil)
 	if err != nil {
-		if _, ok := err.(leveldb.ErrCorrupted); !ok {
+		if _, ok := err.(*leveldb_errors.ErrCorrupted); !ok {
 			return nil, fmt.Errorf("could not open: %v", err)
 		}
 		db, err = leveldb.RecoverFile(dir, nil)
