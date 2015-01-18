@@ -3,6 +3,7 @@ FROM busybox:ubuntu-14.04
 
 MAINTAINER Michael Stapelberg <michael@robustirc.net>
 
+ADD ca-certificates.crt /etc/certs/ca-certificates.crt
 ADD robustirc /usr/bin/robustirc
 
 # RobustIRC listens on port 443 by default, but a port in the dynamic port
