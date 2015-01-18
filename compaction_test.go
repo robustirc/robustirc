@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/types"
 
 	"github.com/hashicorp/raft"
@@ -50,7 +51,7 @@ func TestCompaction(t *testing.T) {
 	}
 	defer os.RemoveAll(tempdir)
 
-	store, err := NewLevelDBStore(tempdir)
+	store, err := raft_store.NewLevelDBStore(tempdir)
 	if err != nil {
 		t.Fatalf("Unexpected error in NewRobustLogStore: %v", err)
 	}

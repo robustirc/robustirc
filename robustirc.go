@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/types"
 
 	auth "github.com/abbot/go-http-auth"
@@ -78,13 +79,13 @@ var (
 
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
-	logStore  *LevelDBStore
+	logStore  *raft_store.LevelDBStore
 )
 
 type robustSnapshot struct {
 	firstIndex uint64
 	lastIndex  uint64
-	store      *LevelDBStore
+	store      *raft_store.LevelDBStore
 }
 
 func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
@@ -148,7 +149,7 @@ func (s *robustSnapshot) Release() {
 }
 
 type FSM struct {
-	store *LevelDBStore
+	store *raft_store.LevelDBStore
 }
 
 func (fsm *FSM) Apply(l *raft.Log) interface{} {
@@ -415,7 +416,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	logStore, err = NewLevelDBStore(*raftDir)
+	logStore, err = raft_store.NewLevelDBStore(*raftDir)
 	if err != nil {
 		log.Fatal(err)
 	}

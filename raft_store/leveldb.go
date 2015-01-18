@@ -1,4 +1,4 @@
-package main
+package raft_store
 
 import (
 	"bytes"
