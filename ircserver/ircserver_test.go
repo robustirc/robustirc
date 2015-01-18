@@ -33,7 +33,7 @@ func TestSessionInitialization(t *testing.T) {
 }
 
 func TestNickCollision(t *testing.T) {
-	var got, want []irc.Message
+	var got, want []*irc.Message
 
 	ClearState()
 	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
@@ -54,19 +54,19 @@ func TestNickCollision(t *testing.T) {
 		}
 	}
 	got = ProcessMessage(idMero, irc.ParseMessage("NICK s[E]CuRE"))
-	want = []irc.Message{*irc.ParseMessage(":robustirc.net 433 * s[E]CuRE :Nickname is already in use.")}
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 433 * s[E]CuRE :Nickname is already in use.")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 
 	got = ProcessMessage(idMero, irc.ParseMessage("NICK S[E]CURE"))
-	want = []irc.Message{*irc.ParseMessage(":robustirc.net 433 * S[E]CURE :Nickname is already in use.")}
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 433 * S[E]CURE :Nickname is already in use.")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 
 	got = ProcessMessage(idMero, irc.ParseMessage("NICK S{E}CURE"))
-	want = []irc.Message{*irc.ParseMessage(":robustirc.net 433 * S{E}CURE :Nickname is already in use.")}
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 433 * S{E}CURE :Nickname is already in use.")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -196,7 +196,7 @@ func TestInvalidPrivmsg(t *testing.T) {
 }
 
 func TestKill(t *testing.T) {
-	var got, want []irc.Message
+	var got, want []*irc.Message
 
 	ClearState()
 	NetworkPassword = "foo"
@@ -218,49 +218,49 @@ func TestKill(t *testing.T) {
 		}
 	}
 	got = ProcessMessage(idMero, irc.ParseMessage("NICK mero"))
-	want = []irc.Message{*irc.ParseMessage(":robustirc.net 001 mero :Welcome to RobustIRC!")}
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 001 mero :Welcome to RobustIRC!")}
 	if len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got[0], want[0])
 	}
 
 	got = ProcessMessage(idMero, irc.ParseMessage("KILL secure"))
-	want = []irc.Message{*irc.ParseMessage(":robustirc.net 461 mero KILL :Not enough parameters")}
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 461 mero KILL :Not enough parameters")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 
 	got = ProcessMessage(idMero, irc.ParseMessage("KILL"))
-	want = []irc.Message{*irc.ParseMessage(":robustirc.net 461 mero KILL :Not enough parameters")}
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 461 mero KILL :Not enough parameters")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 
 	got = ProcessMessage(idMero, irc.ParseMessage("KILL secure :die"))
-	want = []irc.Message{*irc.ParseMessage(":robustirc.net 481 mero :Permission Denied - You're not an IRC operator")}
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 481 mero :Permission Denied - You're not an IRC operator")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 
 	got = ProcessMessage(idMero, irc.ParseMessage("OPER mero bar"))
-	want = []irc.Message{*irc.ParseMessage(":robustirc.net 464 mero :Password incorrect")}
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 464 mero :Password incorrect")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 
 	got = ProcessMessage(idMero, irc.ParseMessage("OPER mero foo"))
-	want = []irc.Message{*irc.ParseMessage(":robustirc.net 381 mero :You are now an IRC operator")}
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 381 mero :You are now an IRC operator")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 
 	got = ProcessMessage(idMero, irc.ParseMessage("KILL socoro :die"))
-	want = []irc.Message{*irc.ParseMessage(":robustirc.net 401 mero socoro :No such nick/channel")}
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 401 mero socoro :No such nick/channel")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 
 	got = ProcessMessage(idMero, irc.ParseMessage("KILL s[E]CuRE :die now, will you?"))
-	want = []irc.Message{*irc.ParseMessage(":s[E]CuRE!robust@robust/0x13b5aa0a2bcfb8ad QUIT :Killed by mero: die now, will you?")}
+	want = []*irc.Message{irc.ParseMessage(":s[E]CuRE!robust@robust/0x13b5aa0a2bcfb8ad QUIT :Killed by mero: die now, will you?")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
