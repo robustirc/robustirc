@@ -78,13 +78,13 @@ var (
 
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
-	logStore  *LevelDB
+	logStore  *LevelDBStore
 )
 
 type robustSnapshot struct {
 	firstIndex uint64
 	lastIndex  uint64
-	store      *LevelDB
+	store      *LevelDBStore
 }
 
 func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
@@ -148,7 +148,7 @@ func (s *robustSnapshot) Release() {
 }
 
 type FSM struct {
-	store *LevelDB
+	store *LevelDBStore
 }
 
 func (fsm *FSM) Apply(l *raft.Log) interface{} {
@@ -415,7 +415,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	logStore, err = NewLevelDB(*raftDir)
+	logStore, err = NewLevelDBStore(*raftDir)
 	if err != nil {
 		log.Fatal(err)
 	}

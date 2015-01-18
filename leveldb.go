@@ -14,7 +14,7 @@ import (
 
 var metaKey = []byte("logstore-meta")
 
-type LevelDB struct {
+type LevelDBStore struct {
 	mu   sync.RWMutex
 	meta logstoreMeta
 	db   *leveldb.DB
@@ -25,7 +25,7 @@ type logstoreMeta struct {
 	Hi uint64
 }
 
-func NewLevelDB(dir string) (*LevelDB, error) {
+func NewLevelDBStore(dir string) (*LevelDBStore, error) {
 	db, err := leveldb.OpenFile(dir, nil)
 	if err != nil {
 		if _, ok := err.(leveldb.ErrCorrupted); !ok {
@@ -51,10 +51,10 @@ func NewLevelDB(dir string) (*LevelDB, error) {
 		return nil, err
 	}
 
-	return &LevelDB{db: db, meta: m}, nil
+	return &LevelDBStore{db: db, meta: m}, nil
 }
 
-func (s *LevelDB) Close() error {
+func (s *LevelDBStore) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -63,21 +63,21 @@ func (s *LevelDB) Close() error {
 	return err
 }
 
-func (s *LevelDB) FirstIndex() (uint64, error) {
+func (s *LevelDBStore) FirstIndex() (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	return s.meta.Lo, nil
 }
 
-func (s *LevelDB) LastIndex() (uint64, error) {
+func (s *LevelDBStore) LastIndex() (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	return s.meta.Hi, nil
 }
 
-func (s *LevelDB) GetLog(index uint64, rlog *raft.Log) error {
+func (s *LevelDBStore) GetLog(index uint64, rlog *raft.Log) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -90,11 +90,11 @@ func (s *LevelDB) GetLog(index uint64, rlog *raft.Log) error {
 	return json.Unmarshal(value, rlog)
 }
 
-func (s *LevelDB) StoreLog(entry *raft.Log) error {
+func (s *LevelDBStore) StoreLog(entry *raft.Log) error {
 	return s.StoreLogs([]*raft.Log{entry})
 }
 
-func (s *LevelDB) StoreLogs(logs []*raft.Log) error {
+func (s *LevelDBStore) StoreLogs(logs []*raft.Log) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -127,7 +127,7 @@ func (s *LevelDB) StoreLogs(logs []*raft.Log) error {
 	return nil
 }
 
-func (s *LevelDB) DeleteRange(min, max uint64) error {
+func (s *LevelDBStore) DeleteRange(min, max uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -161,7 +161,7 @@ func (s *LevelDB) DeleteRange(min, max uint64) error {
 	return nil
 }
 
-func (s *LevelDB) DeleteAll() error {
+func (s *LevelDBStore) DeleteAll() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -185,12 +185,12 @@ func (s *LevelDB) DeleteAll() error {
 	return nil
 }
 
-func (s *LevelDB) Set(key []byte, val []byte) error {
+func (s *LevelDBStore) Set(key []byte, val []byte) error {
 	key = append([]byte("stablestore-"), key...)
 	return s.db.Put(key, val, nil)
 }
 
-func (s *LevelDB) Get(key []byte) ([]byte, error) {
+func (s *LevelDBStore) Get(key []byte) ([]byte, error) {
 	key = append([]byte("stablestore-"), key...)
 	value, err := s.db.Get(key, nil)
 	if err == leveldb.ErrNotFound {
@@ -199,7 +199,7 @@ func (s *LevelDB) Get(key []byte) ([]byte, error) {
 	return value, err
 }
 
-func (s *LevelDB) SetUint64(key []byte, val uint64) error {
+func (s *LevelDBStore) SetUint64(key []byte, val uint64) error {
 	key = append([]byte("stablestore-"), key...)
 
 	v := make([]byte, 8)
@@ -208,7 +208,7 @@ func (s *LevelDB) SetUint64(key []byte, val uint64) error {
 	return s.db.Put(key, v, nil)
 }
 
-func (s *LevelDB) GetUint64(key []byte) (uint64, error) {
+func (s *LevelDBStore) GetUint64(key []byte) (uint64, error) {
 	key = append([]byte("stablestore-"), key...)
 	v, err := s.db.Get(key, nil)
 	if err == leveldb.ErrNotFound {

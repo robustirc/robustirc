@@ -50,7 +50,7 @@ func TestCompaction(t *testing.T) {
 	}
 	defer os.RemoveAll(tempdir)
 
-	store, err := NewLevelDB(tempdir)
+	store, err := NewLevelDBStore(tempdir)
 	if err != nil {
 		t.Fatalf("Unexpected error in NewRobustLogStore: %v", err)
 	}
