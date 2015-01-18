@@ -363,3 +363,11 @@ func handleLeader(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(leader.String()))
 	}
 }
+
+func handleHash(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte(executablehash))
+}
+
+func handleQuit(w http.ResponseWriter, r *http.Request) {
+	log.Fatalf("Exiting because %v triggered /quit", r.RemoteAddr)
+}
