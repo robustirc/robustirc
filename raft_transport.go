@@ -75,7 +75,7 @@ func (t *Transport) send(url string, in, out interface{}) error {
 	}
 
 	if res.StatusCode != 200 {
-		return fmt.Errorf("Unexpected HTTP status code: %v", res.Status)
+		return fmt.Errorf("unexpected HTTP status code: %v", res.Status)
 	}
 
 	if buf, err = ioutil.ReadAll(res.Body); err != nil {

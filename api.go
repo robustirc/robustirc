@@ -71,7 +71,7 @@ func session(r *http.Request) (*ircserver.Session, types.RobustId, error) {
 	idstr := mux.Vars(r)["sessionid"]
 	id, err := strconv.ParseInt(idstr, 0, 64)
 	if err != nil {
-		return nil, sessionid, fmt.Errorf("Invalid session: %v", err)
+		return nil, sessionid, fmt.Errorf("invalid session: %v", err)
 	}
 
 	session, err := ircserver.GetSession(types.RobustId{Id: id})
@@ -81,10 +81,10 @@ func session(r *http.Request) (*ircserver.Session, types.RobustId, error) {
 
 	header := r.Header.Get("X-Session-Auth")
 	if header == "" {
-		return nil, sessionid, fmt.Errorf("No X-Session-Auth header set")
+		return nil, sessionid, fmt.Errorf("no X-Session-Auth header set")
 	}
 	if header != session.Auth {
-		return nil, sessionid, fmt.Errorf("Invalid X-Session-Auth header")
+		return nil, sessionid, fmt.Errorf("invalid X-Session-Auth header")
 	}
 
 	sessionid.Id = id
