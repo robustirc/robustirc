@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -18,6 +19,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"bitbucket.org/kardianos/osext"
 
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/raft_store"
@@ -80,6 +83,8 @@ var (
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
 	logStore  *raft_store.LevelDBStore
+
+	version string = executableHash()
 )
 
 type robustSnapshot struct {
@@ -321,6 +326,26 @@ func joinMaster(addr string, peerStore *raft.JSONPeers) []net.Addr {
 	return p
 }
 
+func executableHash() string {
+	path, err := osext.Executable()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	h := sha256.New()
+	f, err := os.Open(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(h, f); err != nil {
+		log.Fatal(err)
+	}
+
+	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
 // dnsAddr contains a DNS name (e.g. robust1.twice-irc.de) and fulfills the
 // net.Addr interface, so that it can be used with our raft library.
 type dnsAddr struct {
@@ -450,6 +475,8 @@ func main() {
 	privaterouter.HandleFunc("/join", handleJoin)
 	privaterouter.HandleFunc("/snapshot", handleSnapshot)
 	privaterouter.HandleFunc("/leader", handleLeader)
+	privaterouter.HandleFunc("/version", handleVersion)
+	privaterouter.HandleFunc("/quit", handleQuit)
 
 	publicrouter := mux.NewRouter()
 	publicrouter.HandleFunc("/robustirc/v1/session", handleCreateSession).Methods("POST")
