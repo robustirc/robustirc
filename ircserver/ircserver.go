@@ -56,9 +56,23 @@ var (
 
 	lastProcessed types.RobustId
 
+	commands = make(map[string]*ircCommand)
+
 	// TODO(secure): remove this once OPER uses custom (configured) passwords.
 	NetworkPassword string
 )
+
+type ircCommand struct {
+	Func func(*Session, *irc.Message) []*irc.Message
+
+	// Interesting returns true if the message should be sent to the session.
+	Interesting func(*Session, *irc.Message) bool
+
+	// MinParams ensures that enough parameters were specified.
+	// irc.ERR_NEEDMOREPARAMS is returned in case less than MinParams
+	// parameters were found, otherwise, Func is called.
+	MinParams int
+}
 
 type Session struct {
 	Id           types.RobustId
@@ -99,30 +113,19 @@ func (s *Session) InterestedIn(msg *types.RobustMessage) bool {
 	}
 	ircmsg := irc.ParseMessage(msg.Data)
 
+	// Everything the server sends directly is interesting to the client.
 	if *ircmsg.Prefix == *ServerPrefix && msg.Session == s.Id {
 		return true
 	}
 
-	switch ircmsg.Command {
-	case irc.QUIT:
-		fallthrough
-	case irc.NICK:
-		// TODO(secure): does it make sense to restrict this to Sessions which
-		// have a channel in common? noting this because it doesn’t handle the
-		// query-only use-case. if there’s no downside (except for the privacy
-		// aspect), perhaps leave it as-is?
-		return true
-	case irc.JOIN:
-		return s.Channels[ircmsg.Trailing]
-	case irc.PART:
-		return s.ircPrefix == *ircmsg.Prefix || s.Channels[ircmsg.Params[0]]
-	case irc.PRIVMSG:
-		return s.ircPrefix != *ircmsg.Prefix && (s.Channels[ircmsg.Params[0]] || ircmsg.Params[0] == s.Nick)
-	case irc.MODE:
-		return ircmsg.Params[0] == s.Nick || s.Channels[ircmsg.Params[0]]
-	default:
+	// No strings.ToUpper(ircmsg.Command) because we generate all messages,
+	// thus they are well-formed.
+	cmd, ok := commands[ircmsg.Command]
+	if !ok || cmd.Interesting == nil {
 		return false
 	}
+
+	return cmd.Interesting(s, ircmsg)
 }
 
 func ClearState() {
@@ -187,357 +190,48 @@ func NickToLower(nick string) string {
 
 // ProcessMessage modifies state in response to 'message' and returns zero or
 // more IRC messages in response to 'message'.
-func ProcessMessage(session types.RobustId, message *irc.Message) []irc.Message {
-	var replies []irc.Message
-
+func ProcessMessage(session types.RobustId, message *irc.Message) []*irc.Message {
 	// alias for convenience
 	s := Sessions[session]
 
 	if !s.loggedIn() && message.Command != irc.NICK {
-		log.Printf("Ignoring line %q, user not logged in\n", message.Bytes())
-		return replies
+		return []*irc.Message{&irc.Message{
+			Prefix:   ServerPrefix,
+			Command:  irc.ERR_NOTREGISTERED,
+			Params:   []string{message.Command},
+			Trailing: "You have not registered",
+		}}
 	}
 
-MessageSwitch:
-	switch strings.ToUpper(message.Command) {
-	case irc.NICK:
-		oldPrefix := s.ircPrefix
-		if len(message.Params) < 1 {
-			replies = append(replies, irc.Message{
-				Prefix:   ServerPrefix,
-				Command:  irc.ERR_NONICKNAMEGIVEN,
-				Trailing: "No nickname given",
-			})
-			break
-		}
-		if !IsValidNickname(message.Params[0]) {
-			replies = append(replies, irc.Message{
-				Prefix:   ServerPrefix,
-				Command:  irc.ERR_ERRONEUSNICKNAME,
-				Params:   []string{"*", message.Params[0]},
-				Trailing: "Erroneus nickname.",
-			})
-			break
-		}
-		inuse := false
-		for _, session := range Sessions {
-			if NickToLower(session.Nick) == NickToLower(message.Params[0]) {
-				inuse = true
-				break
-			}
-		}
-		if inuse {
-			replies = append(replies, irc.Message{
-				Prefix:   ServerPrefix,
-				Command:  irc.ERR_NICKNAMEINUSE,
-				Params:   []string{"*", message.Params[0]},
-				Trailing: "Nickname is already in use.",
-			})
-			break
-		}
-		s.Nick = message.Params[0]
-		s.updateIrcPrefix()
-		log.Printf("nickname now: %+v\n", s)
-		if oldPrefix.String() != "" {
-			replies = append(replies, irc.Message{
-				Prefix:   &oldPrefix,
-				Command:  irc.NICK,
-				Trailing: message.Params[0],
-			})
-		} else {
-			// TODO(secure): send 002, 003, 004, 251, 252, 254, 255, 265, 266, [motd = 375, 372, 376]
-			replies = append(replies, irc.Message{
-				Prefix:   ServerPrefix,
-				Command:  irc.RPL_WELCOME,
-				Params:   []string{s.Nick},
-				Trailing: "Welcome to RobustIRC!",
-			})
-
-			replies = append(replies, irc.Message{
-				Prefix:   ServerPrefix,
-				Command:  irc.RPL_YOURHOST,
-				Params:   []string{s.Nick},
-				Trailing: "Your host is " + ServerPrefix.Name,
-			})
-
-			replies = append(replies, irc.Message{
-				Prefix:   ServerPrefix,
-				Command:  irc.RPL_CREATED,
-				Params:   []string{s.Nick},
-				Trailing: "This server was created " + serverCreation.String(),
-			})
-
-			replies = append(replies, irc.Message{
-				Prefix:  ServerPrefix,
-				Command: irc.RPL_MYINFO,
-				Params:  []string{s.Nick},
-				// TODO(secure): actually support these modes.
-				Trailing: ServerPrefix.Name + " v1 i nst",
-			})
-
-			// send ISUPPORT as per http://www.irc.org/tech_docs/draft-brocklesby-irc-isupport-03.txt
-			replies = append(replies, irc.Message{
-				Prefix:  ServerPrefix,
-				Command: "005",
-				Params: []string{
-					"CHANTYPES=#",
-					"CHANNELLEN=" + maxChannelLen,
-					"NICKLEN=" + maxNickLen,
-					"MODES=1",
-					"PREFIX=",
-				},
-				Trailing: "are supported by this server",
-			})
-		}
-
-	case irc.USER:
-		// We don’t need any information from the USER message.
-		break
-
-	case irc.PING:
-		if len(message.Params) < 1 {
-			break
-		}
-		replies = append(replies, irc.Message{
-			Prefix:  ServerPrefix,
-			Command: irc.PONG,
-			Params:  []string{message.Params[0]},
-		})
-
-	case irc.JOIN:
-		// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
-		if len(message.Params) < 1 {
-			replies = append(replies, irc.Message{
-				Prefix:   ServerPrefix,
-				Command:  irc.ERR_NEEDMOREPARAMS,
-				Trailing: "Not enough parameters",
-			})
-			break
-		}
-		if !IsValidChannel(message.Params[0]) {
-			replies = append(replies, irc.Message{
-				Prefix:   ServerPrefix,
-				Command:  irc.ERR_NOSUCHCHANNEL,
-				Params:   []string{s.Nick, message.Params[0]},
-				Trailing: "No such channel",
-			})
-			break
-		}
-		channel := message.Params[0]
-		s.Channels[channel] = true
-		var nicks []string
-		// TODO(secure): a separate map for quick lookup may be worthwhile for big channels.
-		for _, session := range Sessions {
-			if !session.Channels[channel] {
-				continue
-			}
-			nicks = append(nicks, session.Nick)
-		}
-		replies = append(replies, irc.Message{
-			Prefix:   &s.ircPrefix,
-			Command:  irc.JOIN,
-			Trailing: channel,
-		})
-		//replies = append(replies, irc.Message{
-		//	Prefix:  &irc.Prefix{Name: *network},
-		//	Command: irc.RPL_NOTOPIC,
-		//	Params:  []string{channel},
-		//})
-		// TODO(secure): why the = param?
-		replies = append(replies, irc.Message{
+	cmd, ok := commands[strings.ToUpper(message.Command)]
+	if !ok {
+		return []*irc.Message{&irc.Message{
 			Prefix:   ServerPrefix,
-			Command:  irc.RPL_NAMREPLY,
-			Params:   []string{s.Nick, "=", channel},
-			Trailing: strings.Join(nicks, " "),
-		})
-		replies = append(replies, irc.Message{
-			Prefix:   ServerPrefix,
-			Command:  irc.RPL_ENDOFNAMES,
-			Params:   []string{s.Nick, channel},
-			Trailing: "End of /NAMES list.",
-		})
-
-	case irc.PART:
-		// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
-		channel := message.Params[0]
-		delete(s.Channels, channel)
-		replies = append(replies, irc.Message{
-			Prefix:  &s.ircPrefix,
-			Command: irc.PART,
-			Params:  []string{channel},
-		})
-
-	case irc.QUIT:
-		replies = append(replies, irc.Message{
-			Prefix:   &s.ircPrefix,
-			Command:  irc.QUIT,
-			Trailing: message.Trailing,
-		})
-
-	case irc.PRIVMSG:
-		if len(message.Params) < 1 {
-			replies = append(replies, irc.Message{
-				Prefix:   ServerPrefix,
-				Command:  irc.ERR_NORECIPIENT,
-				Params:   []string{s.Nick},
-				Trailing: "No recipient given (PRIVMSG)",
-			})
-			break
-		}
-		if message.Trailing == "" {
-			replies = append(replies, irc.Message{
-				Prefix:   ServerPrefix,
-				Command:  irc.ERR_NOTEXTTOSEND,
-				Params:   []string{s.Nick},
-				Trailing: "No text to send",
-			})
-			break
-		}
-		replies = append(replies, irc.Message{
-			Prefix:   &s.ircPrefix,
-			Command:  irc.PRIVMSG,
-			Params:   []string{message.Params[0]},
-			Trailing: message.Trailing,
-		})
-
-	case irc.MODE:
-		channel := message.Params[0]
-		// TODO(secure): properly distinguish between users and channels
-		if s.Channels[channel] {
-			if len(message.Params) > 1 && message.Params[1] == "b" {
-				replies = append(replies, irc.Message{
-					Prefix:   ServerPrefix,
-					Command:  irc.RPL_ENDOFBANLIST,
-					Params:   []string{s.Nick, channel},
-					Trailing: "End of Channel Ban List",
-				})
-			} else {
-				replies = append(replies, irc.Message{
-					Prefix:  ServerPrefix,
-					Command: irc.RPL_CHANNELMODEIS,
-					Params:  []string{s.Nick, channel, "+"},
-				})
-			}
-		} else {
-			if channel == s.Nick {
-				replies = append(replies, irc.Message{
-					Prefix:   &s.ircPrefix,
-					Command:  irc.MODE,
-					Params:   []string{s.Nick},
-					Trailing: "+",
-				})
-			} else {
-				replies = append(replies, irc.Message{
-					Prefix:   ServerPrefix,
-					Command:  irc.ERR_NOTONCHANNEL,
-					Params:   []string{s.Nick, channel},
-					Trailing: "You're not on that channel",
-				})
-			}
-		}
-
-	case irc.WHO:
-		channel := message.Params[0]
-		// TODO(secure): a separate map for quick lookup may be worthwhile for big channels.
-		for _, session := range Sessions {
-			if !session.Channels[channel] {
-				continue
-			}
-			prefix := session.ircPrefix
-			replies = append(replies, irc.Message{
-				Prefix:   ServerPrefix,
-				Command:  irc.RPL_WHOREPLY,
-				Params:   []string{s.Nick, channel, prefix.User, prefix.Host, ServerPrefix.Name, prefix.Name, "H"},
-				Trailing: "0 Unknown",
-			})
-		}
-
-		replies = append(replies, irc.Message{
-			Prefix:   ServerPrefix,
-			Command:  irc.RPL_ENDOFWHO,
-			Params:   []string{s.Nick, channel},
-			Trailing: "End of /WHO list",
-		})
-
-	case irc.OPER:
-		if len(message.Params) < 2 {
-			replies = append(replies, irc.Message{
-				Prefix:   ServerPrefix,
-				Command:  irc.ERR_NEEDMOREPARAMS,
-				Params:   []string{s.Nick, message.Command},
-				Trailing: "Not enough parameters",
-			})
-			break
-		}
-
-		// TODO(secure): implement restriction to certain hosts once we have a
-		// configuration file. (ERR_NOOPERHOST)
-
-		if message.Params[1] != NetworkPassword {
-			replies = append(replies, irc.Message{
-				Prefix:   ServerPrefix,
-				Command:  irc.ERR_PASSWDMISMATCH,
-				Params:   []string{s.Nick},
-				Trailing: "Password incorrect",
-			})
-			break
-		}
-
-		s.Operator = true
-
-		replies = append(replies, irc.Message{
-			Prefix:   ServerPrefix,
-			Command:  irc.RPL_YOUREOPER,
-			Params:   []string{s.Nick},
-			Trailing: "You are now an IRC operator",
-		})
-
-	case irc.KILL:
-		if len(message.Params) < 1 || strings.TrimSpace(message.Trailing) == "" {
-			replies = append(replies, irc.Message{
-				Prefix:   ServerPrefix,
-				Command:  irc.ERR_NEEDMOREPARAMS,
-				Params:   []string{s.Nick, message.Command},
-				Trailing: "Not enough parameters",
-			})
-			break
-		}
-		if !s.Operator {
-			replies = append(replies, irc.Message{
-				Prefix:   ServerPrefix,
-				Command:  irc.ERR_NOPRIVILEGES,
-				Params:   []string{s.Nick},
-				Trailing: "Permission Denied - You're not an IRC operator",
-			})
-			break
-		}
-
-		for _, session := range Sessions {
-			if NickToLower(session.Nick) != NickToLower(message.Params[0]) {
-				continue
-			}
-
-			replies = append(replies, irc.Message{
-				Prefix:   &session.ircPrefix,
-				Command:  irc.QUIT,
-				Trailing: "Killed by " + s.Nick + ": " + message.Trailing,
-			})
-			DeleteSession(session.Id)
-			break MessageSwitch
-		}
-
-		replies = append(replies, irc.Message{
-			Prefix:   ServerPrefix,
-			Command:  irc.ERR_NOSUCHNICK,
-			Params:   []string{s.Nick, message.Params[0]},
-			Trailing: "No such nick/channel",
-		})
+			Command:  irc.ERR_UNKNOWNCOMMAND,
+			Params:   []string{s.Nick, message.Command},
+			Trailing: "Unknown command",
+		}}
 	}
 
+	if len(message.Params) < cmd.MinParams {
+		return []*irc.Message{&irc.Message{
+			Prefix:   ServerPrefix,
+			Command:  irc.ERR_NEEDMOREPARAMS,
+			Params:   []string{s.Nick, message.Command},
+			Trailing: "Not enough parameters",
+		}}
+	}
+
+	replies := cmd.Func(s, message)
+	for _, reply := range replies {
+		if reply.Prefix == nil {
+			reply.Prefix = ServerPrefix
+		}
+	}
 	return replies
 }
 
-func SendMessages(replies []irc.Message, session types.RobustId, id int64) {
+func SendMessages(replies []*irc.Message, session types.RobustId, id int64) {
 	ircOutputMu.Lock()
 	defer ircOutputMu.Unlock()
 	lastProcessed = types.RobustId{Id: id}
