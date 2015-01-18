@@ -43,10 +43,10 @@ func NewLevelDBStore(dir string) (*LevelDBStore, error) {
 			db.Close()
 			return nil, fmt.Errorf("error reading metadata: %v", err)
 		}
-		v = make([]byte, 16)
+		v = []byte(`{"Lo":0,"Hi":0}`)
 	}
 	var m logstoreMeta
-	if err = binary.Read(bytes.NewReader(v), binary.LittleEndian, &m); err != nil {
+	if err = json.Unmarshal(v, &m); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (s *LevelDBStore) GetLog(index uint64, rlog *raft.Log) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	key := make([]byte, 8)
+	key := make([]byte, binary.Size(index))
 	binary.LittleEndian.PutUint64(key, index)
 	value, err := s.db.Get(key, nil)
 	if err != nil {
@@ -99,7 +99,7 @@ func (s *LevelDBStore) StoreLogs(logs []*raft.Log) error {
 	defer s.mu.Unlock()
 
 	var batch leveldb.Batch
-	key := make([]byte, 8)
+	key := make([]byte, binary.Size(uint64(0)))
 	meta := s.meta
 
 	for _, entry := range logs {
@@ -118,7 +118,7 @@ func (s *LevelDBStore) StoreLogs(logs []*raft.Log) error {
 		}
 	}
 	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, meta)
+	json.NewEncoder(buf).Encode(meta)
 	batch.Put(metaKey, buf.Bytes())
 	if err := s.db.Write(&batch, nil); err != nil {
 		return err
@@ -132,7 +132,7 @@ func (s *LevelDBStore) DeleteRange(min, max uint64) error {
 	defer s.mu.Unlock()
 
 	var batch leveldb.Batch
-	key := make([]byte, 8)
+	key := make([]byte, binary.Size(uint64(0)))
 	meta := s.meta
 
 	if min > meta.Lo && max < meta.Hi {
@@ -151,7 +151,7 @@ func (s *LevelDBStore) DeleteRange(min, max uint64) error {
 	}
 
 	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, meta)
+	json.NewEncoder(buf).Encode(meta)
 	batch.Put(metaKey, buf.Bytes())
 
 	if err := s.db.Write(&batch, nil); err != nil {
@@ -166,7 +166,7 @@ func (s *LevelDBStore) DeleteAll() error {
 	defer s.mu.Unlock()
 
 	var batch leveldb.Batch
-	key := make([]byte, 8)
+	key := make([]byte, binary.Size(uint64(0)))
 
 	for n := s.meta.Lo; n <= s.meta.Hi; n++ {
 		binary.LittleEndian.PutUint64(key, n)
@@ -175,7 +175,7 @@ func (s *LevelDBStore) DeleteAll() error {
 	meta := logstoreMeta{0, 0}
 
 	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, meta)
+	json.NewEncoder(buf).Encode(meta)
 	batch.Put(metaKey, buf.Bytes())
 
 	if err := s.db.Write(&batch, nil); err != nil {
@@ -202,7 +202,7 @@ func (s *LevelDBStore) Get(key []byte) ([]byte, error) {
 func (s *LevelDBStore) SetUint64(key []byte, val uint64) error {
 	key = append([]byte("stablestore-"), key...)
 
-	v := make([]byte, 8)
+	v := make([]byte, binary.Size(val))
 	binary.LittleEndian.PutUint64(v, val)
 
 	return s.db.Put(key, v, nil)
