@@ -63,7 +63,7 @@ var (
 )
 
 type ircCommand struct {
-	Func func(*Session, *irc.Message) interface{}
+	Func func(*Session, *irc.Message) []*irc.Message
 
 	// Interesting returns true if the message should be sent to the session.
 	Interesting func(*Session, *irc.Message) bool
@@ -178,8 +178,6 @@ func NickToLower(nick string) string {
 // ProcessMessage modifies state in response to 'message' and returns zero or
 // more IRC messages in response to 'message'.
 func ProcessMessage(session types.RobustId, message *irc.Message) []*irc.Message {
-	var replies []*irc.Message
-
 	// alias for convenience
 	s := Sessions[session]
 
@@ -211,14 +209,7 @@ func ProcessMessage(session types.RobustId, message *irc.Message) []*irc.Message
 		}}
 	}
 
-	r := cmd.Func(s, message)
-	if singlemsg, ok := r.(*irc.Message); ok {
-		replies = append(replies, singlemsg)
-	} else if multiplemsgs, ok := r.([]*irc.Message); ok {
-		replies = append(replies, multiplemsgs...)
-	} else {
-		log.Panicf("Handler for %q returned invalid type", message.Command)
-	}
+	replies := cmd.Func(s, message)
 	for _, reply := range replies {
 		if reply.Prefix == nil {
 			reply.Prefix = ServerPrefix

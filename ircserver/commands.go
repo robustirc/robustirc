@@ -60,55 +60,55 @@ func commonChannelOrDirect(s *Session, msg *irc.Message) bool {
 	return s.Channels[msg.Params[0]] || msg.Params[0] == s.Nick
 }
 
-func cmdPing(s *Session, msg *irc.Message) interface{} {
+func cmdPing(s *Session, msg *irc.Message) []*irc.Message {
 	if len(msg.Params) < 1 {
-		return &irc.Message{
+		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOORIGIN,
 			Params:   []string{s.Nick},
 			Trailing: "No origin specified",
-		}
+		}}
 	}
-	return &irc.Message{
+	return []*irc.Message{&irc.Message{
 		Command: irc.PONG,
 		Params:  []string{msg.Params[0]},
-	}
+	}}
 }
 
-func cmdNick(s *Session, msg *irc.Message) interface{} {
+func cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 	oldPrefix := s.ircPrefix
 
 	if len(msg.Params) < 1 {
-		return &irc.Message{
+		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NONICKNAMEGIVEN,
 			Trailing: "No nickname given",
-		}
+		}}
 	}
 
 	if !IsValidNickname(msg.Params[0]) {
-		return &irc.Message{
+		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_ERRONEUSNICKNAME,
 			Params:   []string{"*", msg.Params[0]},
 			Trailing: "Erroneus nickname.",
-		}
+		}}
 	}
 
 	for _, session := range Sessions {
 		if NickToLower(session.Nick) == NickToLower(msg.Params[0]) {
-			return &irc.Message{
+			return []*irc.Message{&irc.Message{
 				Command:  irc.ERR_NICKNAMEINUSE,
 				Params:   []string{"*", msg.Params[0]},
 				Trailing: "Nickname is already in use.",
-			}
+			}}
 		}
 	}
 	s.Nick = msg.Params[0]
 	s.updateIrcPrefix()
 	if oldPrefix.String() != "" {
-		return &irc.Message{
+		return []*irc.Message{&irc.Message{
 			Prefix:   &oldPrefix,
 			Command:  irc.NICK,
 			Trailing: msg.Params[0],
-		}
+		}}
 	}
 
 	var replies []*irc.Message
@@ -155,7 +155,7 @@ func cmdNick(s *Session, msg *irc.Message) interface{} {
 	return replies
 }
 
-func cmdUser(s *Session, msg *irc.Message) interface{} {
+func cmdUser(s *Session, msg *irc.Message) []*irc.Message {
 	// We don’t need any information from the USER message.
 	return []*irc.Message{}
 }
@@ -164,15 +164,15 @@ func interestJoin(s *Session, msg *irc.Message) bool {
 	return s.Channels[msg.Trailing]
 }
 
-func cmdJoin(s *Session, msg *irc.Message) interface{} {
+func cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 	// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
 	channel := msg.Params[0]
 	if !IsValidChannel(channel) {
-		return &irc.Message{
+		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOSUCHCHANNEL,
 			Params:   []string{s.Nick, channel},
 			Trailing: "No such channel",
-		}
+		}}
 	}
 	s.Channels[channel] = true
 	var nicks []string
@@ -217,23 +217,23 @@ func interestPart(s *Session, msg *irc.Message) bool {
 	return s.ircPrefix == *msg.Prefix || s.Channels[msg.Params[0]]
 }
 
-func cmdPart(s *Session, msg *irc.Message) interface{} {
+func cmdPart(s *Session, msg *irc.Message) []*irc.Message {
 	// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
 	channel := msg.Params[0]
 	delete(s.Channels, channel)
-	return &irc.Message{
+	return []*irc.Message{&irc.Message{
 		Prefix:  &s.ircPrefix,
 		Command: irc.PART,
 		Params:  []string{channel},
-	}
+	}}
 }
 
-func cmdQuit(s *Session, msg *irc.Message) interface{} {
-	return &irc.Message{
+func cmdQuit(s *Session, msg *irc.Message) []*irc.Message {
+	return []*irc.Message{&irc.Message{
 		Prefix:   &s.ircPrefix,
 		Command:  irc.QUIT,
 		Trailing: msg.Trailing,
-	}
+	}}
 }
 
 func interestPrivmsg(s *Session, msg *irc.Message) bool {
@@ -245,72 +245,72 @@ func interestPrivmsg(s *Session, msg *irc.Message) bool {
 	return commonChannelOrDirect(s, msg)
 }
 
-func cmdPrivmsg(s *Session, msg *irc.Message) interface{} {
+func cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 	if len(msg.Params) < 1 {
-		return &irc.Message{
+		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NORECIPIENT,
 			Params:   []string{s.Nick},
 			Trailing: "No recipient given (PRIVMSG)",
-		}
+		}}
 	}
 
 	if msg.Trailing == "" {
-		return &irc.Message{
+		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOTEXTTOSEND,
 			Params:   []string{s.Nick},
 			Trailing: "No text to send",
-		}
+		}}
 	}
 
-	return &irc.Message{
+	return []*irc.Message{&irc.Message{
 		Prefix:   &s.ircPrefix,
 		Command:  irc.PRIVMSG,
 		Params:   []string{msg.Params[0]},
 		Trailing: msg.Trailing,
-	}
+	}}
 }
 
-func cmdMode(s *Session, msg *irc.Message) interface{} {
+func cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 	channel := msg.Params[0]
 	// TODO(secure): properly distinguish between users and channels
 	if s.Channels[channel] {
 		if len(msg.Params) > 1 && msg.Params[1] == "b" {
-			return &irc.Message{
+			return []*irc.Message{&irc.Message{
 				Command:  irc.RPL_ENDOFBANLIST,
 				Params:   []string{s.Nick, channel},
 				Trailing: "End of Channel Ban List",
-			}
+			}}
 		} else {
-			return &irc.Message{
+			return []*irc.Message{&irc.Message{
 				Command: irc.RPL_CHANNELMODEIS,
 				Params:  []string{s.Nick, channel, "+"},
-			}
+			}}
 		}
 	} else {
 		if channel == s.Nick {
-			return &irc.Message{
+			return []*irc.Message{&irc.Message{
 				Prefix:   &s.ircPrefix,
 				Command:  irc.MODE,
 				Params:   []string{s.Nick},
 				Trailing: "+",
-			}
+			}}
 		} else {
-			return &irc.Message{
+			return []*irc.Message{&irc.Message{
 				Command:  irc.ERR_NOTONCHANNEL,
 				Params:   []string{s.Nick, channel},
 				Trailing: "You're not on that channel",
-			}
+			}}
 		}
 	}
 }
 
-func cmdWho(s *Session, msg *irc.Message) interface{} {
+func cmdWho(s *Session, msg *irc.Message) []*irc.Message {
 	if len(msg.Params) < 1 {
-		return &irc.Message{
+		return []*irc.Message{&irc.Message{
 			Command:  irc.RPL_ENDOFWHO,
 			Params:   []string{s.Nick},
 			Trailing: "End of /WHO list",
-		}
+		}}
 	}
 
 	var replies []*irc.Message
@@ -338,42 +338,42 @@ func cmdWho(s *Session, msg *irc.Message) interface{} {
 	return replies
 }
 
-func cmdOper(s *Session, msg *irc.Message) interface{} {
+func cmdOper(s *Session, msg *irc.Message) []*irc.Message {
 	// TODO(secure): implement restriction to certain hosts once we have a
 	// configuration file. (ERR_NOOPERHOST)
 
 	if msg.Params[1] != NetworkPassword {
-		return &irc.Message{
+		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_PASSWDMISMATCH,
 			Params:   []string{s.Nick},
 			Trailing: "Password incorrect",
-		}
+		}}
 	}
 
 	s.Operator = true
 
-	return &irc.Message{
+	return []*irc.Message{&irc.Message{
 		Command:  irc.RPL_YOUREOPER,
 		Params:   []string{s.Nick},
 		Trailing: "You are now an IRC operator",
-	}
+	}}
 }
 
-func cmdKill(s *Session, msg *irc.Message) interface{} {
+func cmdKill(s *Session, msg *irc.Message) []*irc.Message {
 	if strings.TrimSpace(msg.Trailing) == "" {
-		return &irc.Message{
+		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NEEDMOREPARAMS,
 			Params:   []string{s.Nick, msg.Command},
 			Trailing: "Not enough parameters",
-		}
+		}}
 	}
 
 	if !s.Operator {
-		return &irc.Message{
+		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOPRIVILEGES,
 			Params:   []string{s.Nick},
 			Trailing: "Permission Denied - You're not an IRC operator",
-		}
+		}}
 	}
 
 	for _, session := range Sessions {
@@ -383,16 +383,16 @@ func cmdKill(s *Session, msg *irc.Message) interface{} {
 
 		prefix := session.ircPrefix
 		DeleteSession(session.Id)
-		return &irc.Message{
+		return []*irc.Message{&irc.Message{
 			Prefix:   &prefix,
 			Command:  irc.QUIT,
 			Trailing: "Killed by " + s.Nick + ": " + msg.Trailing,
-		}
+		}}
 	}
 
-	return &irc.Message{
+	return []*irc.Message{&irc.Message{
 		Command:  irc.ERR_NOSUCHNICK,
 		Params:   []string{s.Nick, msg.Params[0]},
 		Trailing: "No such nick/channel",
-	}
+	}}
 }
