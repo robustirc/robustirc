@@ -41,7 +41,7 @@ func NewLevelDBStore(dir string) (*LevelDBStore, error) {
 	if err != nil {
 		if err != leveldb.ErrNotFound {
 			db.Close()
-			return nil, fmt.Errorf("no meta value stored: %v", err)
+			return nil, fmt.Errorf("error reading metadata: %v", err)
 		}
 		v = make([]byte, 16)
 	}
