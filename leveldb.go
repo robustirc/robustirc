@@ -25,6 +25,8 @@ type logstoreMeta struct {
 	Hi uint64
 }
 
+// NewLevelDBStore opens a leveldb at the given directory to be used as a log-
+// and stable storage for raft.
 func NewLevelDBStore(dir string) (*LevelDBStore, error) {
 	db, err := leveldb.OpenFile(dir, nil)
 	if err != nil {
@@ -54,6 +56,7 @@ func NewLevelDBStore(dir string) (*LevelDBStore, error) {
 	return &LevelDBStore{db: db, meta: m}, nil
 }
 
+// Close closes the LevelDBStore. No other methods may be called after this.
 func (s *LevelDBStore) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -63,6 +66,7 @@ func (s *LevelDBStore) Close() error {
 	return err
 }
 
+// FirstIndex implements raft.LogStore.
 func (s *LevelDBStore) FirstIndex() (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -70,6 +74,7 @@ func (s *LevelDBStore) FirstIndex() (uint64, error) {
 	return s.meta.Lo, nil
 }
 
+// LastIndex implements raft.LogStore.
 func (s *LevelDBStore) LastIndex() (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -77,6 +82,7 @@ func (s *LevelDBStore) LastIndex() (uint64, error) {
 	return s.meta.Hi, nil
 }
 
+// GetLog implements raft.LogStore.
 func (s *LevelDBStore) GetLog(index uint64, rlog *raft.Log) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -90,10 +96,12 @@ func (s *LevelDBStore) GetLog(index uint64, rlog *raft.Log) error {
 	return json.Unmarshal(value, rlog)
 }
 
+// StoreLog implements raft.LogStore.
 func (s *LevelDBStore) StoreLog(entry *raft.Log) error {
 	return s.StoreLogs([]*raft.Log{entry})
 }
 
+// StoreLogs implements raft.LogStore.
 func (s *LevelDBStore) StoreLogs(logs []*raft.Log) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -127,6 +135,7 @@ func (s *LevelDBStore) StoreLogs(logs []*raft.Log) error {
 	return nil
 }
 
+// DeleteRange implements raft.LogStore.
 func (s *LevelDBStore) DeleteRange(min, max uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -185,11 +194,13 @@ func (s *LevelDBStore) DeleteAll() error {
 	return nil
 }
 
+// Set implements raft.StableStore.
 func (s *LevelDBStore) Set(key []byte, val []byte) error {
 	key = append([]byte("stablestore-"), key...)
 	return s.db.Put(key, val, nil)
 }
 
+// Get implements raft.StableStore.
 func (s *LevelDBStore) Get(key []byte) ([]byte, error) {
 	key = append([]byte("stablestore-"), key...)
 	value, err := s.db.Get(key, nil)
@@ -199,6 +210,7 @@ func (s *LevelDBStore) Get(key []byte) ([]byte, error) {
 	return value, err
 }
 
+// SetUint64 implements raft.StableStore.
 func (s *LevelDBStore) SetUint64(key []byte, val uint64) error {
 	key = append([]byte("stablestore-"), key...)
 
@@ -208,6 +220,7 @@ func (s *LevelDBStore) SetUint64(key []byte, val uint64) error {
 	return s.db.Put(key, v, nil)
 }
 
+// GetUint64 implements raft.StableStore.
 func (s *LevelDBStore) GetUint64(key []byte) (uint64, error) {
 	key = append([]byte("stablestore-"), key...)
 	v, err := s.db.Get(key, nil)
