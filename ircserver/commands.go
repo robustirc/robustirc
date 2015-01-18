@@ -93,18 +93,13 @@ func cmdNick(s *Session, msg *irc.Message) interface{} {
 		}
 	}
 
-	inuse := false
 	for _, session := range Sessions {
 		if NickToLower(session.Nick) == NickToLower(msg.Params[0]) {
-			inuse = true
-			break
-		}
-	}
-	if inuse {
-		return &irc.Message{
-			Command:  irc.ERR_NICKNAMEINUSE,
-			Params:   []string{"*", msg.Params[0]},
-			Trailing: "Nickname is already in use.",
+			return &irc.Message{
+				Command:  irc.ERR_NICKNAMEINUSE,
+				Params:   []string{"*", msg.Params[0]},
+				Trailing: "Nickname is already in use.",
+			}
 		}
 	}
 	s.Nick = msg.Params[0]
