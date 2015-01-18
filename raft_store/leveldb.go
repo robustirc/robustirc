@@ -1,3 +1,8 @@
+// package raft_store implements a storage backend for raft on top of LevelDB.
+//
+// LevelDBStore implements the LogStore and StableStore interfaces of
+// https://godoc.org/github.com/hashicorp/raft by using
+// https://godoc.org/github.com/syndtr/goleveldb as a storage backend.
 package raft_store
 
 import (
