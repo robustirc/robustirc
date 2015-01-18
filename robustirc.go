@@ -210,7 +210,15 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 	log.Printf("Restoring snapshot\n")
 	defer snap.Close()
 
-	if err := fsm.store.DeleteAll(); err != nil {
+	min, err := fsm.store.FirstIndex()
+	if err != nil {
+		return err
+	}
+	max, err := fsm.store.LastIndex()
+	if err != nil {
+		return err
+	}
+	if err := fsm.store.DeleteRange(min, max); err != nil {
 		return err
 	}
 

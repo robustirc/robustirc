@@ -169,30 +169,6 @@ func (s *LevelDBStore) DeleteRange(min, max uint64) error {
 	return nil
 }
 
-func (s *LevelDBStore) DeleteAll() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	var batch leveldb.Batch
-	key := make([]byte, binary.Size(uint64(0)))
-
-	for n := s.meta.Lo; n <= s.meta.Hi; n++ {
-		binary.LittleEndian.PutUint64(key, n)
-		batch.Delete(key)
-	}
-	meta := logstoreMeta{0, 0}
-
-	buf := new(bytes.Buffer)
-	json.NewEncoder(buf).Encode(meta)
-	batch.Put(metaKey, buf.Bytes())
-
-	if err := s.db.Write(&batch, nil); err != nil {
-		return err
-	}
-	s.meta = meta
-	return nil
-}
-
 // Set implements raft.StableStore.
 func (s *LevelDBStore) Set(key []byte, val []byte) error {
 	key = append([]byte("stablestore-"), key...)
