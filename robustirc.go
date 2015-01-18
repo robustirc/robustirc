@@ -53,6 +53,9 @@ var (
 	postMessageCooloff = flag.Duration("post_message_cooloff",
 		500*time.Millisecond,
 		"Enforced cooloff between two messages sent by a user. Set to 0 to disable throttling.")
+	version = flag.Bool("version",
+		false,
+		"Print version and exit")
 
 	singleNode = flag.Bool("singlenode",
 		false,
@@ -85,6 +88,9 @@ var (
 	logStore  *raft_store.LevelDBStore
 
 	executablehash string = executableHash()
+
+	// Overwritten by Makefile.
+	Version = "unknown"
 )
 
 type robustSnapshot struct {
@@ -436,8 +442,14 @@ func main() {
 		printDefault(flag.Lookup("listen"))
 		printDefault(flag.Lookup("raftdir"))
 		printDefault(flag.Lookup("tls_ca_file"))
+		printDefault(flag.Lookup("version"))
 	}
 	flag.Parse()
+
+	if *version {
+		log.Printf("RobustIRC %s\n", Version)
+		return
+	}
 
 	log.Printf("Initializing RobustIRC…\n")
 
