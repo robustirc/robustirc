@@ -6,7 +6,6 @@
 package raft_store
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -129,9 +128,12 @@ func (s *LevelDBStore) StoreLogs(logs []*raft.Log) error {
 			meta.Hi = entry.Index
 		}
 	}
-	buf := new(bytes.Buffer)
-	json.NewEncoder(buf).Encode(meta)
-	batch.Put(metaKey, buf.Bytes())
+	data, err := json.Marshal(meta)
+	if err != nil {
+		return err
+	}
+	batch.Put(metaKey, data)
+
 	if err := s.db.Write(&batch, nil); err != nil {
 		return err
 	}
@@ -167,9 +169,11 @@ func (s *LevelDBStore) DeleteRange(min, max uint64) error {
 		meta.Hi = min - 1
 	}
 
-	buf := new(bytes.Buffer)
-	json.NewEncoder(buf).Encode(meta)
-	batch.Put(metaKey, buf.Bytes())
+	data, err := json.Marshal(meta)
+	if err != nil {
+		return err
+	}
+	batch.Put(metaKey, data)
 
 	if err := s.db.Write(&batch, nil); err != nil {
 		return err
