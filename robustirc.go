@@ -85,7 +85,7 @@ var (
 
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
-	logStore  *raft_store.LevelDBStore
+	ircStore  *raft_store.LevelDBStore
 
 	executablehash string = executableHash()
 
@@ -109,6 +109,10 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 		if err := s.store.GetLog(i, &elog); err != nil {
 			return err
 		}
+
+		// TODO(secure): delete entries in s.store as well, otherwise we grow
+		// without bounds. refactor compaction, perhaps moving logic into
+		// ircserver/commands.go
 
 		if elog.Type == raft.LogCommand {
 			msg := types.NewRobustMessageFromBytes(elog.Data)
@@ -160,13 +164,20 @@ func (s *robustSnapshot) Release() {
 }
 
 type FSM struct {
+	// Used for invalidating messages of death.
 	store *raft_store.LevelDBStore
+
+	ircstore *raft_store.LevelDBStore
 }
 
 func (fsm *FSM) Apply(l *raft.Log) interface{} {
 	// Skip all messages that are raft-related.
 	if l.Type != raft.LogCommand {
 		return nil
+	}
+
+	if err := fsm.ircstore.StoreLog(l); err != nil {
+		log.Panicf("Could not persist message in irclogs/: %v", err)
 	}
 
 	msg := types.NewRobustMessageFromBytes(l.Data)
@@ -234,31 +245,34 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 // of days are compacted, and proxy connections are only disconnected for a
 // couple of minutes at a time.
 func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
-	first, err := fsm.store.FirstIndex()
+	first, err := fsm.ircstore.FirstIndex()
 	if err != nil {
 		return nil, err
 	}
 
-	last, err := fsm.store.LastIndex()
+	last, err := fsm.ircstore.LastIndex()
 	if err != nil {
 		return nil, err
 	}
-	return &robustSnapshot{first, last, fsm.store}, err
+	return &robustSnapshot{first, last, fsm.ircstore}, err
 }
 
 func (fsm *FSM) Restore(snap io.ReadCloser) error {
 	log.Printf("Restoring snapshot\n")
 	defer snap.Close()
 
-	min, err := fsm.store.FirstIndex()
+	// Clear state by resetting the ircserver package’s state and deleting the
+	// entire ircstore. Snapshots contain the entire (possibly compacted)
+	// ircstore, so this is safe.
+	min, err := fsm.ircstore.FirstIndex()
 	if err != nil {
 		return err
 	}
-	max, err := fsm.store.LastIndex()
+	max, err := fsm.ircstore.LastIndex()
 	if err != nil {
 		return err
 	}
-	if err := fsm.store.DeleteRange(min, max); err != nil {
+	if err := fsm.ircstore.DeleteRange(min, max); err != nil {
 		return err
 	}
 
@@ -278,14 +292,6 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 		// restoring snapshots during normal operation (when does that
 		// happen?), will we re-send messages to clients?
 		fsm.Apply(&entry)
-
-		if err := fsm.store.StoreLog(&entry); err != nil {
-			return err
-		}
-	}
-
-	if err := os.RemoveAll(filepath.Join(*raftDir, "robustlogs-obsolete")); err != nil {
-		return err
 	}
 
 	log.Printf("Restored snapshot\n")
@@ -496,11 +502,15 @@ func main() {
 	// number of messages/s.
 	config.SnapshotInterval = 1 * time.Second
 
-	logStore, err = raft_store.NewLevelDBStore(*raftDir)
+	logStore, err := raft_store.NewLevelDBStore(filepath.Join(*raftDir, "raftlog"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	fsm := &FSM{logStore}
+	ircStore, err = raft_store.NewLevelDBStore(filepath.Join(*raftDir, "irclog"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	fsm := &FSM{logStore, ircStore}
 	logcache, err := raft.NewLogCache(config.MaxAppendEntries, logStore)
 	if err != nil {
 		log.Fatal(err)

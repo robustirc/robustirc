@@ -18,13 +18,13 @@ import (
 func handleStatus(res http.ResponseWriter, req *http.Request) {
 	p, _ := peerStore.Peers()
 
-	lo, err := logStore.FirstIndex()
+	lo, err := ircStore.FirstIndex()
 	if err != nil {
 		log.Printf("Could not get first index: %v", err)
 		http.Error(res, "internal error", 500)
 		return
 	}
-	hi, err := logStore.LastIndex()
+	hi, err := ircStore.LastIndex()
 	if err != nil {
 		log.Printf("Could not get last index: %v", err)
 		http.Error(res, "internal error", 500)
@@ -36,7 +36,7 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		for i := lo; i <= hi; i++ {
 			l := new(raft.Log)
 
-			if err := logStore.GetLog(i, l); err != nil {
+			if err := ircStore.GetLog(i, l); err != nil {
 				log.Printf("Could not get entry %d: %v", i, err)
 				http.Error(res, "internal error", 500)
 				return
@@ -100,12 +100,12 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 	// better way that is lighter on resources. Perhaps store the processed
 	// indexes in the session?
 	inputs := make(map[types.RobustId]*types.RobustMessage)
-	first, _ := logStore.FirstIndex()
-	last, _ := logStore.LastIndex()
+	first, _ := ircStore.FirstIndex()
+	last, _ := ircStore.LastIndex()
 	for idx := first; idx <= last; idx++ {
 		var elog raft.Log
 
-		if err := logStore.GetLog(idx, &elog); err != nil {
+		if err := ircStore.GetLog(idx, &elog); err != nil {
 			http.Error(w, fmt.Sprintf("Cannot read log: %v", err), http.StatusInternalServerError)
 			return
 		}
