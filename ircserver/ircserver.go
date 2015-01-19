@@ -81,6 +81,7 @@ type Session struct {
 	Channels     map[string]bool
 	LastActivity time.Time
 	Operator     bool
+	AwayMsg      string
 
 	// The current IRC message id at the time when the session was started.
 	// This is used in handleGetMessages to skip uninteresting messages.

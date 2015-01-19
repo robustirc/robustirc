@@ -269,3 +269,47 @@ func TestKill(t *testing.T) {
 		t.Fatalf("GetSession(%v) returned a session after KILL", idSecure)
 	}
 }
+
+func TestAway(t *testing.T) {
+	var got, want []*irc.Message
+
+	ClearState()
+	NetworkPassword = "foo"
+	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
+
+	idSecure := types.RobustId{Id: 1420228218166687917}
+	idMero := types.RobustId{Id: 1420228218166687918}
+
+	CreateSession(idSecure, "auth-secure")
+	CreateSession(idMero, "auth-mero")
+
+	ProcessMessage(idSecure, irc.ParseMessage("NICK s[E]CuRE"))
+	ProcessMessage(idMero, irc.ParseMessage("NICK mero"))
+
+	got = ProcessMessage(idSecure, irc.ParseMessage("PRIVMSG mero :hey"))
+	want = []*irc.Message{irc.ParseMessage(":s[E]CuRE!robust@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :hey")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	got = ProcessMessage(idMero, irc.ParseMessage("AWAY :upgrading server"))
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 306 mero :You have been marked as being away")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	got = ProcessMessage(idSecure, irc.ParseMessage("PRIVMSG mero :you there?"))
+	want = []*irc.Message{
+		irc.ParseMessage(":s[E]CuRE!robust@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :you there?"),
+		irc.ParseMessage(":robustirc.net 301 s[E]CuRE mero :upgrading server"),
+	}
+	if len(got) != len(want) || len(got) < 2 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 || bytes.Compare(got[1].Bytes(), want[1].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	got = ProcessMessage(idMero, irc.ParseMessage("AWAY"))
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 305 mero :You are no longer marked as being away")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
