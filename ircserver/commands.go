@@ -60,6 +60,7 @@ func init() {
 		MinParams:   1,
 		Interesting: interestTopic,
 	}
+	commands["MOTD"] = &ircCommand{Func: cmdMotd}
 }
 
 // commonChannelOrDirect returns true when msg’s first parameter is a channel
@@ -122,7 +123,7 @@ func cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 
 	var replies []*irc.Message
 
-	// TODO(secure): send 002, 003, 004, 251, 252, 254, 255, 265, 266, [motd = 375, 372, 376]
+	// TODO(secure): send 002, 003, 004, 251, 252, 254, 255, 265, 266
 	replies = append(replies, &irc.Message{
 		Command:  irc.RPL_WELCOME,
 		Params:   []string{s.Nick},
@@ -160,6 +161,8 @@ func cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 		},
 		Trailing: "are supported by this server",
 	})
+
+	replies = append(replies, cmdMotd(s, msg)...)
 
 	return replies
 }
@@ -532,4 +535,25 @@ func cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 		Params:   []string{channel},
 		Trailing: msg.Trailing,
 	}}
+}
+
+func cmdMotd(s *Session, msg *irc.Message) []*irc.Message {
+	return []*irc.Message{
+		&irc.Message{
+			Command:  irc.RPL_MOTDSTART,
+			Params:   []string{s.Nick},
+			Trailing: "- " + ServerPrefix.Name + " Message of the day - ",
+		},
+		// TODO(secure): make motd configurable
+		&irc.Message{
+			Command:  irc.RPL_MOTD,
+			Params:   []string{s.Nick},
+			Trailing: "- No MOTD configured yet.",
+		},
+		&irc.Message{
+			Command:  irc.RPL_ENDOFMOTD,
+			Params:   []string{s.Nick},
+			Trailing: "End of MOTD command",
+		},
+	}
 }
