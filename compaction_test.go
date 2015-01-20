@@ -3,6 +3,7 @@ package main
 import (
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"testing"
@@ -51,11 +52,15 @@ func TestCompaction(t *testing.T) {
 	}
 	defer os.RemoveAll(tempdir)
 
-	store, err := raft_store.NewLevelDBStore(tempdir)
+	logstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "raftlog"))
 	if err != nil {
-		t.Fatalf("Unexpected error in NewRobustLogStore: %v", err)
+		t.Fatalf("Unexpected error in NewLevelDBStore: %v", err)
 	}
-	fsm := FSM{store}
+	ircstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "irclog"))
+	if err != nil {
+		t.Fatalf("Unexpected error in NewLevelDBStore: %v", err)
+	}
+	fsm := FSM{logstore, ircstore}
 
 	var logs []*raft.Log
 	logs = appendLog(logs, `{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`)
@@ -73,7 +78,7 @@ func TestCompaction(t *testing.T) {
 	nowId += 1
 	logs = appendLog(logs, `{"Id": {"Id": `+strconv.FormatInt(nowId, 10)+`}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`)
 
-	if err := store.StoreLogs(logs); err != nil {
+	if err := ircstore.StoreLogs(logs); err != nil {
 		t.Fatalf("Unexpected error in store.StoreLogs: %v", err)
 	}
 	for _, log := range logs {
@@ -125,8 +130,8 @@ func TestCompaction(t *testing.T) {
 		t.Fatalf("fsm.Restore(): %v", err)
 	}
 
-	first, _ := store.FirstIndex()
-	last, _ := store.LastIndex()
+	first, _ := ircstore.FirstIndex()
+	last, _ := ircstore.LastIndex()
 
 	if last-first >= uint64(len(logs)) {
 		t.Fatalf("Compaction did not decrease log size. got: %d, want: < %d", last-first, len(logs))
