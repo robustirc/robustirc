@@ -52,6 +52,7 @@ func init() {
 	commands["WHO"] = &ircCommand{Func: cmdWho}
 	commands["OPER"] = &ircCommand{Func: cmdOper, MinParams: 2}
 	commands["KILL"] = &ircCommand{Func: cmdKill, MinParams: 1}
+	commands["AWAY"] = &ircCommand{Func: cmdAway}
 }
 
 // commonChannelOrDirect returns true when msg’s first parameter is a channel
@@ -92,6 +93,7 @@ func cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
+	// TODO(secure): add a map for quick nickname lookup.
 	for _, session := range Sessions {
 		if NickToLower(session.Nick) == NickToLower(msg.Params[0]) {
 			return []*irc.Message{&irc.Message{
@@ -262,11 +264,43 @@ func cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
+	if strings.HasPrefix(msg.Params[0], "#") {
+		return []*irc.Message{&irc.Message{
+			Prefix:   &s.ircPrefix,
+			Command:  irc.PRIVMSG,
+			Params:   []string{msg.Params[0]},
+			Trailing: msg.Trailing,
+		}}
+	}
+
+	// TODO(secure): add a map for quick nickname lookup.
+	for _, session := range Sessions {
+		if NickToLower(session.Nick) == NickToLower(msg.Params[0]) {
+			var replies []*irc.Message
+
+			replies = append(replies, &irc.Message{
+				Prefix:   &s.ircPrefix,
+				Command:  irc.PRIVMSG,
+				Params:   []string{msg.Params[0]},
+				Trailing: msg.Trailing,
+			})
+
+			if session.AwayMsg != "" {
+				replies = append(replies, &irc.Message{
+					Command:  irc.RPL_AWAY,
+					Params:   []string{s.Nick, msg.Params[0]},
+					Trailing: session.AwayMsg,
+				})
+			}
+
+			return replies
+		}
+	}
+
 	return []*irc.Message{&irc.Message{
-		Prefix:   &s.ircPrefix,
-		Command:  irc.PRIVMSG,
-		Params:   []string{msg.Params[0]},
-		Trailing: msg.Trailing,
+		Command:  irc.ERR_NOSUCHNICK,
+		Params:   []string{s.Nick, msg.Params[0]},
+		Trailing: "No such nick/channel",
 	}}
 }
 
@@ -395,4 +429,21 @@ func cmdKill(s *Session, msg *irc.Message) []*irc.Message {
 		Params:   []string{s.Nick, msg.Params[0]},
 		Trailing: "No such nick/channel",
 	}}
+}
+
+func cmdAway(s *Session, msg *irc.Message) []*irc.Message {
+	s.AwayMsg = strings.TrimSpace(msg.Trailing)
+	if s.AwayMsg != "" {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.RPL_NOWAWAY,
+			Params:   []string{s.Nick},
+			Trailing: "You have been marked as being away",
+		}}
+	} else {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.RPL_UNAWAY,
+			Params:   []string{s.Nick},
+			Trailing: "You are no longer marked as being away",
+		}}
+	}
 }
