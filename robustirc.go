@@ -490,6 +490,12 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// TODO(secure): update once https://github.com/hashicorp/raft/issues/32 gets closed.
+	// Check whether a snapshot needs to be taken every second. The check is
+	// cheap, and the default value far too high for networks with a high
+	// number of messages/s.
+	config.SnapshotInterval = 1 * time.Second
+
 	logStore, err = raft_store.NewLevelDBStore(*raftDir)
 	if err != nil {
 		log.Fatal(err)
