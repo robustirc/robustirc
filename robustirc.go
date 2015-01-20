@@ -81,7 +81,7 @@ var (
 		"Use the specified file as trusted CA instead of the system CAs. Useful for testing.")
 	networkPassword = flag.String("network_password",
 		"",
-		"A secure password to protect the communication between raft nodes. Use pwgen(1) or similar.")
+		"A secure password to protect the communication between raft nodes. Use pwgen(1) or similar. Can also be passed via the ROBUSTIRC_NETWORK_PASSWORD environment variable.")
 
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
@@ -453,6 +453,9 @@ func main() {
 
 	log.Printf("Initializing RobustIRC…\n")
 
+	if *networkPassword == "" {
+		*networkPassword = os.Getenv("ROBUSTIRC_NETWORK_PASSWORD")
+	}
 	if *networkPassword == "" {
 		log.Fatalf("-network_password not set. You MUST protect your network.\n")
 	}

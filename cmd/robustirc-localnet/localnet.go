@@ -8,12 +8,14 @@
 package main
 
 import (
+	crypto_rand "crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/big"
 	"math/rand"
 	"net/http"
 	"os"
@@ -99,7 +101,6 @@ func leader(port int) (string, error) {
 func startircserver(singlenode bool) {
 	args := []string{
 		"-network_name=localnet.localhost",
-		"-network_password=" + networkPassword,
 		"-tls_cert_path=" + filepath.Join(*localnetDir, "cert.pem"),
 		"-tls_ca_file=" + filepath.Join(*localnetDir, "cert.pem"),
 		"-tls_key_path=" + filepath.Join(*localnetDir, "key.pem"),
@@ -126,6 +127,7 @@ func startircserver(singlenode bool) {
 
 	log.Printf("Starting %q\n", "robustirc "+strings.Join(args, " "))
 	cmd := exec.Command("robustirc", args...)
+	cmd.Env = append(os.Environ(), fmt.Sprintf("ROBUSTIRC_NETWORK_PASSWORD=%s", networkPassword))
 	stdout, err := os.Create(filepath.Join(tempdir, "stdout.txt"))
 	if err != nil {
 		log.Panic(err)
@@ -284,6 +286,35 @@ func kill() {
 	os.Remove(tempdirsFile)
 }
 
+func randomChar() (byte, error) {
+	bn, err := crypto_rand.Int(crypto_rand.Reader, big.NewInt(62))
+	if err != nil {
+		return 0, err
+	}
+	n := byte(bn.Int64())
+	switch {
+	case n < 26:
+		return 'a' + n, nil
+	case n < 52:
+		return 'A' + n - 26, nil
+	case n < 62:
+		return '0' + n - 52, nil
+	}
+	panic("unreachable")
+}
+
+func randomPassword(n int) (string, error) {
+	pw := make([]byte, n)
+	for i := 0; i < n; i++ {
+		c, err := randomChar()
+		if err != nil {
+			return "", err
+		}
+		pw[i] = c
+	}
+	return string(pw), nil
+}
+
 func main() {
 	flag.Parse()
 
@@ -294,8 +325,8 @@ func main() {
 	// startircserver() can increase the port to find a higher unused port.
 	randomPort = 49152 + rand.Intn(55535-49152)
 
-	// TODO(secure): use an actually random password
-	networkPassword = "TODO-random"
+	var err error
+	networkPassword, err = randomPassword(20)
 
 	if (*localnetDir)[:2] == "~/" {
 		usr, err := user.Current()
