@@ -287,20 +287,16 @@ func kill() {
 }
 
 func randomChar() (byte, error) {
-	bn, err := crypto_rand.Int(crypto_rand.Reader, big.NewInt(62))
+	charset := "abcdefghijklmnopqrstuvwxyz" +
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
+		"0123456789"
+
+	bn, err := crypto_rand.Int(crypto_rand.Reader, big.NewInt(int64(len(charset))))
 	if err != nil {
 		return 0, err
 	}
 	n := byte(bn.Int64())
-	switch {
-	case n < 26:
-		return 'a' + n, nil
-	case n < 52:
-		return 'A' + n - 26, nil
-	case n < 62:
-		return '0' + n - 52, nil
-	}
-	panic("unreachable")
+	return charset[n], nil
 }
 
 func randomPassword(n int) (string, error) {
