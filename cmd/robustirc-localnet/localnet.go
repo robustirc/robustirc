@@ -119,6 +119,27 @@ func startircserver(singlenode bool) {
 		log.Panicf("Could not record tempdir: %v", err)
 	}
 
+	// Create a shell script with which you can restart a killed robustirc
+	// server. This is intentionally before the -singlenode and -join
+	// arguments, which are only required for the very first bootstrap.
+	f, err := os.OpenFile(filepath.Join(tempdir, "restart.sh"), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
+	if err != nil {
+		log.Panic(err)
+	}
+	defer f.Close()
+
+	quotedargs := make([]string, len(args))
+	for idx, arg := range args {
+		quotedargs[idx] = fmt.Sprintf("%q", arg)
+	}
+
+	fmt.Fprintf(f, "#!/bin/sh\n")
+	fmt.Fprintf(f, "PATH=%q robustirc %s >>%q 2>>%q\n",
+		os.Getenv("PATH"),
+		strings.Join(quotedargs, " "),
+		filepath.Join(tempdir, "stdout.txt"),
+		filepath.Join(tempdir, "stderr.txt"))
+
 	if singlenode {
 		args = append(args, "-singlenode")
 	} else {
