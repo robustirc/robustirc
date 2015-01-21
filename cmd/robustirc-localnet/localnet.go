@@ -192,7 +192,6 @@ func startircserver(singlenode bool) {
 		log.Fatal("robustirc was not reachable via HTTP after 2.5s")
 	}
 	ports = append(ports, randomPort)
-	randomPort++
 
 	if singlenode {
 		for try := 0; try < 10; try++ {
@@ -207,6 +206,7 @@ func startircserver(singlenode bool) {
 	}
 
 	log.Printf("Node is available at https://robustirc:%s@localhost:%d/", networkPassword, randomPort)
+	randomPort++
 }
 
 func startbridge() {
