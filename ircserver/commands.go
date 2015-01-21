@@ -235,6 +235,14 @@ func cmdPart(s *Session, msg *irc.Message) []*irc.Message {
 	c, ok := channels[channelname]
 	if !ok {
 		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOSUCHCHANNEL,
+			Params:   []string{s.Nick, channelname},
+			Trailing: "No such channel",
+		}}
+	}
+
+	if !c.nicks[s.Nick] {
+		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOTONCHANNEL,
 			Params:   []string{s.Nick, channelname},
 			Trailing: "You're not on that channel",
