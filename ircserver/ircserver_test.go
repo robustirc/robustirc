@@ -395,3 +395,29 @@ func TestTopic(t *testing.T) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 }
+
+func TestMotd(t *testing.T) {
+	var got []*irc.Message
+
+	ClearState()
+	NetworkPassword = "foo"
+	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
+
+	idSecure := types.RobustId{Id: 1420228218166687917}
+
+	CreateSession(idSecure, "auth-secure")
+
+	got = ProcessMessage(idSecure, irc.ParseMessage("NICK s[E]CuRE"))
+	motdFound := false
+	for i := 0; i < len(got)-2; i++ {
+		if got[i].Command == irc.RPL_MOTDSTART &&
+			got[i+1].Command == irc.RPL_MOTD &&
+			got[i+2].Command == irc.RPL_ENDOFMOTD {
+			motdFound = true
+			break
+		}
+	}
+	if !motdFound {
+		t.Fatalf("got %v, did not find MOTDSTART, MOTD, ENDOFMOTD in order", got)
+	}
+}
