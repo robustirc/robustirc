@@ -168,7 +168,11 @@ func cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 }
 
 func cmdUser(s *Session, msg *irc.Message) []*irc.Message {
-	// We don’t need any information from the USER message.
+	// We keep the username (so that bans are more effective) and realname
+	// (some people actually set it and look at it).
+	s.Username = msg.Params[0]
+	s.Realname = msg.Trailing
+	s.updateIrcPrefix()
 	return []*irc.Message{}
 }
 
