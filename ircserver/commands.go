@@ -1,7 +1,9 @@
 package ircserver
 
 import (
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sorcix/irc"
 )
@@ -53,6 +55,11 @@ func init() {
 	commands["OPER"] = &ircCommand{Func: cmdOper, MinParams: 2}
 	commands["KILL"] = &ircCommand{Func: cmdKill, MinParams: 1}
 	commands["AWAY"] = &ircCommand{Func: cmdAway}
+	commands["TOPIC"] = &ircCommand{
+		Func:        cmdTopic,
+		MinParams:   1,
+		Interesting: interestTopic,
+	}
 }
 
 // commonChannelOrDirect returns true when msg’s first parameter is a channel
@@ -168,22 +175,27 @@ func interestJoin(s *Session, msg *irc.Message) bool {
 
 func cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 	// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
-	channel := msg.Params[0]
-	if !IsValidChannel(channel) {
+	channelname := msg.Params[0]
+	if !IsValidChannel(channelname) {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOSUCHCHANNEL,
-			Params:   []string{s.Nick, channel},
+			Params:   []string{s.Nick, channelname},
 			Trailing: "No such channel",
 		}}
 	}
-	s.Channels[channel] = true
-	var nicks []string
-	// TODO(secure): a separate map for quick lookup may be worthwhile for big channels.
-	for _, session := range Sessions {
-		if !session.Channels[channel] {
-			continue
+	c, ok := channels[channelname]
+	if !ok {
+		c = &channel{
+			nicks: make(map[string]bool),
 		}
-		nicks = append(nicks, session.Nick)
+		channels[channelname] = c
+	}
+	c.nicks[s.Nick] = true
+	s.Channels[channelname] = true
+
+	nicks := make([]string, 0, len(c.nicks))
+	for nick := range c.nicks {
+		nicks = append(nicks, nick)
 	}
 
 	var replies []*irc.Message
@@ -191,22 +203,19 @@ func cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 	replies = append(replies, &irc.Message{
 		Prefix:   &s.ircPrefix,
 		Command:  irc.JOIN,
-		Trailing: channel,
+		Trailing: channelname,
 	})
-	//replies = append(replies, irc.Message{
-	//	Prefix:  &irc.Prefix{Name: *network},
-	//	Command: irc.RPL_NOTOPIC,
-	//	Params:  []string{channel},
-	//})
+	// Integrate the topic response by simulating a TOPIC command.
+	replies = append(replies, cmdTopic(s, &irc.Message{Command: irc.TOPIC, Params: []string{channelname}})...)
 	// TODO(secure): why the = param?
 	replies = append(replies, &irc.Message{
 		Command:  irc.RPL_NAMREPLY,
-		Params:   []string{s.Nick, "=", channel},
+		Params:   []string{s.Nick, "=", channelname},
 		Trailing: strings.Join(nicks, " "),
 	})
 	replies = append(replies, &irc.Message{
 		Command:  irc.RPL_ENDOFNAMES,
-		Params:   []string{s.Nick, channel},
+		Params:   []string{s.Nick, channelname},
 		Trailing: "End of /NAMES list.",
 	})
 
@@ -221,12 +230,34 @@ func interestPart(s *Session, msg *irc.Message) bool {
 
 func cmdPart(s *Session, msg *irc.Message) []*irc.Message {
 	// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
-	channel := msg.Params[0]
-	delete(s.Channels, channel)
+	channelname := msg.Params[0]
+
+	c, ok := channels[channelname]
+	if !ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOSUCHCHANNEL,
+			Params:   []string{s.Nick, channelname},
+			Trailing: "No such channel",
+		}}
+	}
+
+	if !c.nicks[s.Nick] {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOTONCHANNEL,
+			Params:   []string{s.Nick, channelname},
+			Trailing: "You're not on that channel",
+		}}
+	}
+
+	delete(c.nicks, s.Nick)
+	if len(c.nicks) == 0 {
+		delete(channels, channelname)
+	}
+	delete(s.Channels, channelname)
 	return []*irc.Message{&irc.Message{
 		Prefix:  &s.ircPrefix,
 		Command: irc.PART,
-		Params:  []string{channel},
+		Params:  []string{channelname},
 	}}
 }
 
@@ -446,4 +477,59 @@ func cmdAway(s *Session, msg *irc.Message) []*irc.Message {
 			Trailing: "You are no longer marked as being away",
 		}}
 	}
+}
+
+func interestTopic(s *Session, msg *irc.Message) bool {
+	return s.Channels[msg.Params[0]]
+}
+
+func cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
+	channel := msg.Params[0]
+	c, ok := channels[channel]
+	if !ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOSUCHCHANNEL,
+			Params:   []string{s.Nick, channel},
+			Trailing: "No such channel",
+		}}
+	}
+
+	if msg.Trailing == "" {
+		// TODO(secure): implement clearing topics once issue #2 in sorcix/irc is fixed
+		if c.topicTime.IsZero() {
+			return []*irc.Message{&irc.Message{
+				Command:  irc.RPL_NOTOPIC,
+				Params:   []string{s.Nick, channel},
+				Trailing: "No topic is set",
+			}}
+		}
+
+		// TODO(secure): if the channel is secret, return ERR_NOTONCHANNEL
+
+		return []*irc.Message{
+			&irc.Message{
+				Command:  irc.RPL_TOPIC,
+				Params:   []string{s.Nick, channel},
+				Trailing: c.topic,
+			},
+			&irc.Message{
+				// RPL_TOPICWHOTIME (ircu-specific, not in the RFC)
+				Command: "333",
+				Params:  []string{s.Nick, channel, c.topicNick, strconv.FormatInt(c.topicTime.Unix(), 10)},
+			},
+		}
+
+	}
+
+	// TODO(secure): check that the user is op if +n is set and send ERR_CHANOPRIVSNEEDED
+	c.topicNick = s.Nick
+	c.topicTime = time.Now()
+	c.topic = msg.Trailing
+
+	return []*irc.Message{&irc.Message{
+		Prefix:   &s.ircPrefix,
+		Command:  irc.TOPIC,
+		Params:   []string{channel},
+		Trailing: msg.Trailing,
+	}}
 }

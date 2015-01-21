@@ -147,21 +147,18 @@ func TestInvalidChannelPlumbing(t *testing.T) {
 	ProcessMessage(id, irc.ParseMessage("NICK secure"))
 
 	got := ProcessMessage(id, irc.ParseMessage("JOIN #foobar"))
-	want := []irc.Message{
-		irc.Message{
-			Prefix:   &s.ircPrefix,
-			Command:  irc.JOIN,
-			Trailing: "#foobar",
-		},
-		*irc.ParseMessage(":robustirc.net 353 secure = #foobar :secure"),
-		*irc.ParseMessage(":robustirc.net 366 secure #foobar :End of /NAMES list."),
+	want := []*irc.Message{
+		&irc.Message{Prefix: &s.ircPrefix, Command: irc.JOIN, Trailing: "#foobar"},
+		irc.ParseMessage(":robustirc.net 331 secure #foobar :No topic is set"),
+		irc.ParseMessage(":robustirc.net 353 secure = #foobar :secure"),
+		irc.ParseMessage(":robustirc.net 366 secure #foobar :End of /NAMES list."),
 	}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 
 	got = ProcessMessage(id, irc.ParseMessage("JOIN foobar"))
-	want = []irc.Message{*irc.ParseMessage(":robustirc.net 403 secure foobar :No such channel")}
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 403 secure foobar :No such channel")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -309,6 +306,91 @@ func TestAway(t *testing.T) {
 
 	got = ProcessMessage(idMero, irc.ParseMessage("AWAY"))
 	want = []*irc.Message{irc.ParseMessage(":robustirc.net 305 mero :You are no longer marked as being away")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+// TestTopic tests that setting/getting topics works properly. Using topic as
+// the channel’s state, it also verifies that joining/parting will
+// create/delete channels.
+func TestTopic(t *testing.T) {
+	var got, want []*irc.Message
+
+	ClearState()
+	NetworkPassword = "foo"
+	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
+
+	idSecure := types.RobustId{Id: 1420228218166687917}
+	idMero := types.RobustId{Id: 1420228218166687918}
+
+	CreateSession(idSecure, "auth-secure")
+	sSecure, _ := GetSession(idSecure)
+	CreateSession(idMero, "auth-mero")
+	sMero, _ := GetSession(idMero)
+
+	ProcessMessage(idSecure, irc.ParseMessage("NICK sECuRE"))
+	ProcessMessage(idSecure, irc.ParseMessage("JOIN #test"))
+	ProcessMessage(idMero, irc.ParseMessage("NICK mero"))
+
+	got = ProcessMessage(idSecure, irc.ParseMessage("TOPIC #nonexistant"))
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 403 sECuRE #nonexistant :No such channel")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	got = ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test"))
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 331 sECuRE #test :No topic is set")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	got = ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :yeah, this is a topic."))
+	want = []*irc.Message{&irc.Message{
+		Prefix:   &sSecure.ircPrefix,
+		Command:  irc.TOPIC,
+		Params:   []string{"#test"},
+		Trailing: "yeah, this is a topic."},
+	}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	got = ProcessMessage(idMero, irc.ParseMessage("JOIN #test"))
+	want = []*irc.Message{
+		&irc.Message{Prefix: &sMero.ircPrefix, Command: irc.JOIN, Trailing: "#test"},
+		irc.ParseMessage(":robustirc.net 332 sECuRE #test :yeah, this is a topic."),
+		irc.ParseMessage(":robustirc.net 333 sECuRE #test sECuRE 1421864845"),
+		irc.ParseMessage(":robustirc.net 353 mero = #test :sECuRE mero"),
+		irc.ParseMessage(":robustirc.net 366 mero #test :End of /NAMES list."),
+	}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	got = ProcessMessage(idMero, irc.ParseMessage("PART #test"))
+	want = []*irc.Message{&irc.Message{Prefix: &sMero.ircPrefix, Command: irc.PART, Params: []string{"#test"}}}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	got = ProcessMessage(idMero, irc.ParseMessage("TOPIC #test"))
+	want = []*irc.Message{
+		irc.ParseMessage(":robustirc.net 332 mero #test :yeah, this is a topic."),
+		irc.ParseMessage(":robustirc.net 333 mero #test sECuRE 1421864845"),
+	}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	got = ProcessMessage(idSecure, irc.ParseMessage("PART #test"))
+	want = []*irc.Message{&irc.Message{Prefix: &sSecure.ircPrefix, Command: irc.PART, Params: []string{"#test"}}}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	got = ProcessMessage(idMero, irc.ParseMessage("TOPIC #test"))
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 403 mero #test :No such channel")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
