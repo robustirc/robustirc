@@ -321,8 +321,14 @@ func main() {
 	// startircserver() can increase the port to find a higher unused port.
 	randomPort = 49152 + rand.Intn(55535-49152)
 
-	var err error
-	networkPassword, err = randomPassword(20)
+	networkPassword = os.Getenv("ROBUSTIRC_NETWORK_PASSWORD")
+	if networkPassword == "" {
+		var err error
+		networkPassword, err = randomPassword(20)
+		if err != nil {
+			log.Fatalf("Could not generate password: %v")
+		}
+	}
 
 	if (*localnetDir)[:2] == "~/" {
 		usr, err := user.Current()
