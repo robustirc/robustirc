@@ -184,6 +184,8 @@ func startircserver(singlenode bool) {
 			break
 		}
 	}
+
+	log.Printf("Node is available at https://robustirc:%s@localhost:%d/", networkPassword, randomPort)
 }
 
 func startbridge() {
