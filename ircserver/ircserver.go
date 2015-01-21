@@ -47,6 +47,7 @@ var (
 var (
 	serverCreation = time.Now()
 	Sessions       = make(map[types.RobustId]*Session)
+	channels       map[string]*channel
 	ServerPrefix   *irc.Prefix
 
 	ircOutputMu sync.Mutex
@@ -129,7 +130,16 @@ func (s *Session) InterestedIn(msg *types.RobustMessage) bool {
 	return cmd.Interesting(s, ircmsg)
 }
 
+type channel struct {
+	topicNick string
+	topicTime time.Time
+	topic     string
+
+	nicks map[string]bool
+}
+
 func ClearState() {
+	channels = make(map[string]*channel)
 	Sessions = make(map[types.RobustId]*Session)
 	idToIdx = make(map[types.RobustId]int)
 	idToIdx[types.RobustId{}] = -1
