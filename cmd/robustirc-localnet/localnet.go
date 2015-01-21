@@ -127,10 +127,15 @@ func startircserver(singlenode bool) {
 	}
 	defer f.Close()
 
+	quotedargs := make([]string, len(args))
+	for idx, arg := range args {
+		quotedargs[idx] = fmt.Sprintf("%q", arg)
+	}
+
 	fmt.Fprintf(f, "#!/bin/sh\n")
 	fmt.Fprintf(f, "PATH=%s robustirc %s >>%s 2>>%s\n",
 		os.Getenv("PATH"),
-		strings.Join(args, " "),
+		strings.Join(quotedargs, " "),
 		filepath.Join(tempdir, "stdout.txt"),
 		filepath.Join(tempdir, "stderr.txt"))
 
