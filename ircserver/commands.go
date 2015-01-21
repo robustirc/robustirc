@@ -194,7 +194,7 @@ func cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 	s.Channels[channelname] = true
 
 	nicks := make([]string, 0, len(c.nicks))
-	for nick, _ := range c.nicks {
+	for nick := range c.nicks {
 		nicks = append(nicks, nick)
 	}
 
