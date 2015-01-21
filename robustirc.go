@@ -384,7 +384,7 @@ func executableHash() string {
 		log.Fatal(err)
 	}
 
-	return fmt.Sprintf("%16x", h.Sum(nil))
+	return fmt.Sprintf("%.16x", h.Sum(nil))
 }
 
 // dnsAddr contains a DNS name (e.g. robust1.twice-irc.de) and fulfills the

@@ -1,4 +1,4 @@
 robustirc
-cmd/robustirc-bridge/robustirc-bridge
+cmd/robustirc-rollingrestart/robustirc-rollingrestart
 cmd/robustirc-localnet/robustirc-localnet
 ca-certificates.crt
