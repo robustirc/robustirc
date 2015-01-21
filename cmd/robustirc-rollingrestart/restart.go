@@ -41,7 +41,7 @@ func fileHash(path string) string {
 		log.Fatal(err)
 	}
 
-	return fmt.Sprintf("%16x", h.Sum(nil))
+	return fmt.Sprintf("%.16x", h.Sum(nil))
 }
 
 func resolveNetwork() []string {
