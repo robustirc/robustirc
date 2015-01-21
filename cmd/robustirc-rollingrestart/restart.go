@@ -134,7 +134,7 @@ func main() {
 	for rtry := 0; rtry < 5; rtry++ {
 		for _, server := range servers {
 			// Skip this server if it’s already running the target version.
-			if current, _ := serverVersion(server); current == binaryHash {
+			if current, err := serverVersion(server); err != nil || current == binaryHash {
 				continue
 			}
 
