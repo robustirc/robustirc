@@ -26,9 +26,14 @@ func TestSessionInitialization(t *testing.T) {
 	}
 
 	ProcessMessage(id, irc.ParseMessage("NICK secure"))
+	ProcessMessage(id, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
 
 	if s.Nick != "secure" {
 		t.Fatalf("session.Nick: got %q, want %q", s.Nick, "secure")
+	}
+
+	if !s.loggedIn() {
+		t.Fatalf("session.loggedIn() still false after sending NICK and USER")
 	}
 }
 
@@ -145,6 +150,7 @@ func TestInvalidChannelPlumbing(t *testing.T) {
 	}
 
 	ProcessMessage(id, irc.ParseMessage("NICK secure"))
+	ProcessMessage(id, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
 
 	got := ProcessMessage(id, irc.ParseMessage("JOIN #foobar"))
 	want := []irc.Message{
@@ -175,6 +181,7 @@ func TestInvalidPrivmsg(t *testing.T) {
 	CreateSession(id, "authbytes")
 
 	ProcessMessage(id, irc.ParseMessage("NICK secure"))
+	ProcessMessage(id, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
 	ProcessMessage(id, irc.ParseMessage("JOIN #test"))
 	got := ProcessMessage(id, irc.ParseMessage("PRIVMSG #test"))
 	want := []irc.Message{*irc.ParseMessage(":robustirc.net 412 secure :No text to send")}
@@ -209,6 +216,7 @@ func TestKill(t *testing.T) {
 	CreateSession(idMero, "auth-mero")
 
 	got = ProcessMessage(idSecure, irc.ParseMessage("NICK s[E]CuRE"))
+	ProcessMessage(idSecure, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
 	if len(got) > 0 {
 		for _, msg := range got {
 			if msg.Command != irc.ERR_NICKNAMEINUSE {
@@ -218,6 +226,7 @@ func TestKill(t *testing.T) {
 		}
 	}
 	got = ProcessMessage(idMero, irc.ParseMessage("NICK mero"))
+	ProcessMessage(idMero, irc.ParseMessage("USER foo 0 * :Axel Wagner"))
 	want = []*irc.Message{irc.ParseMessage(":robustirc.net 001 mero :Welcome to RobustIRC!")}
 	if len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got[0], want[0])
@@ -260,7 +269,7 @@ func TestKill(t *testing.T) {
 	}
 
 	got = ProcessMessage(idMero, irc.ParseMessage("KILL s[E]CuRE :die now, will you?"))
-	want = []*irc.Message{irc.ParseMessage(":s[E]CuRE!robust@robust/0x13b5aa0a2bcfb8ad QUIT :Killed by mero: die now, will you?")}
+	want = []*irc.Message{irc.ParseMessage(":s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad QUIT :Killed by mero: die now, will you?")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -284,10 +293,12 @@ func TestAway(t *testing.T) {
 	CreateSession(idMero, "auth-mero")
 
 	ProcessMessage(idSecure, irc.ParseMessage("NICK s[E]CuRE"))
+	ProcessMessage(idSecure, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
 	ProcessMessage(idMero, irc.ParseMessage("NICK mero"))
+	ProcessMessage(idMero, irc.ParseMessage("USER foo 0 * :Axel Wagner"))
 
 	got = ProcessMessage(idSecure, irc.ParseMessage("PRIVMSG mero :hey"))
-	want = []*irc.Message{irc.ParseMessage(":s[E]CuRE!robust@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :hey")}
+	want = []*irc.Message{irc.ParseMessage(":s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :hey")}
 	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -300,7 +311,7 @@ func TestAway(t *testing.T) {
 
 	got = ProcessMessage(idSecure, irc.ParseMessage("PRIVMSG mero :you there?"))
 	want = []*irc.Message{
-		irc.ParseMessage(":s[E]CuRE!robust@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :you there?"),
+		irc.ParseMessage(":s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :you there?"),
 		irc.ParseMessage(":robustirc.net 301 s[E]CuRE mero :upgrading server"),
 	}
 	if len(got) != len(want) || len(got) < 2 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 || bytes.Compare(got[1].Bytes(), want[1].Bytes()) != 0 {

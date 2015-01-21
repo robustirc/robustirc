@@ -78,6 +78,8 @@ type Session struct {
 	Id           types.RobustId
 	Auth         string
 	Nick         string
+	Username     string
+	Realname     string
 	Channels     map[string]bool
 	LastActivity time.Time
 	Operator     bool
@@ -95,15 +97,16 @@ type Session struct {
 }
 
 func (s *Session) loggedIn() bool {
-	return s.Nick != ""
+	return s.Nick != "" && s.Username != ""
 }
 
 // updateIrcPrefix MUST be called whenever the Nick field changes.
 func (s *Session) updateIrcPrefix() {
-	// TODO(secure): Is there a better value for User?
 	s.ircPrefix = irc.Prefix{
 		Name: s.Nick,
-		User: "robust",
+		User: s.Username,
+		// Similar to FreeNode’s “unaffiliated/foo”, so clients should already
+		// support this format.
 		Host: fmt.Sprintf("robust/0x%x", s.Id.Id),
 	}
 }
@@ -195,7 +198,7 @@ func ProcessMessage(session types.RobustId, message *irc.Message) []*irc.Message
 	// alias for convenience
 	s := Sessions[session]
 
-	if !s.loggedIn() && message.Command != irc.NICK {
+	if !s.loggedIn() && message.Command != irc.NICK && message.Command != irc.USER {
 		return []*irc.Message{&irc.Message{
 			Prefix:   ServerPrefix,
 			Command:  irc.ERR_NOTREGISTERED,

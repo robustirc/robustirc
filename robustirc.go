@@ -122,7 +122,6 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 				// TODO: MODE (tricky)
 				// Delete messages which don’t modify state.
 				if ircmsg.Command == irc.PRIVMSG ||
-					ircmsg.Command == irc.USER ||
 					ircmsg.Command == irc.WHO ||
 					ircmsg.Command == irc.QUIT {
 					continue
