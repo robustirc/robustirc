@@ -369,6 +369,14 @@ func TestTopic(t *testing.T) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 
+	got = ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :"))
+	want = []*irc.Message{irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad TOPIC #test :")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :yeah, this is a topic."))
+
 	got = ProcessMessage(idMero, irc.ParseMessage("JOIN #test"))
 	want = []*irc.Message{
 		&irc.Message{Prefix: &sMero.ircPrefix, Command: irc.JOIN, Trailing: "#test"},
