@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -37,9 +36,9 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 			l := new(raft.Log)
 
 			if err := ircStore.GetLog(i, l); err != nil {
-				log.Printf("Could not get entry %d: %v", i, err)
-				http.Error(res, "internal error", 500)
-				return
+				// Not every message goes into the ircStore (e.g. raft peer change
+				// messages do not).
+				continue
 			}
 			entries = append(entries, l)
 		}
@@ -106,8 +105,9 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 		var elog raft.Log
 
 		if err := ircStore.GetLog(idx, &elog); err != nil {
-			http.Error(w, fmt.Sprintf("Cannot read log: %v", err), http.StatusInternalServerError)
-			return
+			// Not every message goes into the ircStore (e.g. raft peer change
+			// messages do not).
+			continue
 		}
 		if elog.Type != raft.LogCommand {
 			continue
