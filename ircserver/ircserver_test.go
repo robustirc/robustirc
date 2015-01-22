@@ -341,8 +341,10 @@ func TestTopic(t *testing.T) {
 	sMero, _ := GetSession(idMero)
 
 	ProcessMessage(idSecure, irc.ParseMessage("NICK sECuRE"))
+	ProcessMessage(idSecure, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
 	ProcessMessage(idSecure, irc.ParseMessage("JOIN #test"))
 	ProcessMessage(idMero, irc.ParseMessage("NICK mero"))
+	ProcessMessage(idMero, irc.ParseMessage("USER foo 0 * :Axel Wagner"))
 
 	got = ProcessMessage(idSecure, irc.ParseMessage("TOPIC #nonexistant"))
 	want = []*irc.Message{irc.ParseMessage(":robustirc.net 403 sECuRE #nonexistant :No such channel")}
