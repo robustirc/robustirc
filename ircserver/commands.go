@@ -501,8 +501,23 @@ func cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
+	// “TOPIC :”, i.e. unset the topic.
+	if msg.Trailing == "" && msg.EmptyTrailing {
+		c.topicNick = ""
+		c.topicTime = time.Time{}
+		c.topic = ""
+
+		return []*irc.Message{&irc.Message{
+			Prefix:        &s.ircPrefix,
+			Command:       irc.TOPIC,
+			Params:        []string{channel},
+			Trailing:      msg.Trailing,
+			EmptyTrailing: true,
+		}}
+	}
+
+	// “TOPIC”, i.e. get the topic.
 	if msg.Trailing == "" {
-		// TODO(secure): implement clearing topics once issue #2 in sorcix/irc is fixed
 		if c.topicTime.IsZero() {
 			return []*irc.Message{&irc.Message{
 				Command:  irc.RPL_NOTOPIC,
