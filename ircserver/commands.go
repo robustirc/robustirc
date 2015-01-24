@@ -358,7 +358,7 @@ func cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 			modestr = msg.Params[1]
 		}
 		if strings.HasPrefix(modestr, "+") || strings.HasPrefix(modestr, "-") {
-			if !c.nicks[s.Nick][chanop] {
+			if !c.nicks[s.Nick][chanop] && !s.Operator {
 				return []*irc.Message{&irc.Message{
 					Command:  irc.ERR_CHANOPRIVSNEEDED,
 					Params:   []string{s.Nick, channelname},

@@ -527,4 +527,12 @@ func TestChannelMemberStatus(t *testing.T) {
 	mustMatchMsg(t,
 		ProcessMessage(idXeen, irc.ParseMessage("TOPIC #test :nooo")),
 		":robustirc.net 482 xeen #test :You're not channel operator")
+
+	mustMatchMsg(t,
+		ProcessMessage(idXeen, irc.ParseMessage("OPER xeen foo")),
+		":robustirc.net 381 xeen :You are now an IRC operator")
+
+	mustMatchMsg(t,
+		ProcessMessage(idXeen, irc.ParseMessage("MODE #test +o xeen")),
+		":xeen!baz@robust/0x13b5aa0a2bcfb8af MODE #test +o xeen")
 }
