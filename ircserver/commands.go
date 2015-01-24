@@ -193,11 +193,16 @@ func cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 	c, ok := channels[channelname]
 	if !ok {
 		c = &channel{
-			nicks: make(map[string]bool),
+			nicks: make(map[string]*[maxChanMemberStatus]bool),
 		}
 		channels[channelname] = c
 	}
-	c.nicks[s.Nick] = true
+	c.nicks[s.Nick] = &[maxChanMemberStatus]bool{}
+	// If the channel did not exist before, the first joining user becomes a
+	// channel operator.
+	if !ok {
+		c.nicks[s.Nick][chanop] = true
+	}
 	s.Channels[channelname] = true
 
 	nicks := make([]string, 0, len(c.nicks))
@@ -248,7 +253,7 @@ func cmdPart(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
-	if !c.nicks[s.Nick] {
+	if _, ok := c.nicks[s.Nick]; !ok {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOTONCHANNEL,
 			Params:   []string{s.Nick, channelname},
@@ -538,6 +543,14 @@ func cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
+	if !s.Channels[channel] {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOTONCHANNEL,
+			Params:   []string{s.Nick, channel},
+			Trailing: "You're not on that channel",
+		}}
+	}
+
 	// “TOPIC”, i.e. get the topic.
 	if msg.Trailing == "" {
 		if c.topicTime.IsZero() {
@@ -565,14 +578,14 @@ func cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 
 	}
 
-	// TODO(secure): check that the user is op if +n is set and send ERR_CHANOPRIVSNEEDED
-	if c.modes['t'] {
+	if c.modes['t'] && !c.nicks[s.Nick][chanop] {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_CHANOPRIVSNEEDED,
 			Params:   []string{s.Nick, channel},
 			Trailing: "You're not channel operator",
 		}}
 	}
+
 	c.topicNick = s.Nick
 	c.topicTime = time.Now()
 	c.topic = msg.Trailing

@@ -189,7 +189,7 @@ func TestInvalidChannelPlumbing(t *testing.T) {
 		[]*irc.Message{
 			&irc.Message{Prefix: &s.ircPrefix, Command: irc.JOIN, Trailing: "#foobar"},
 			irc.ParseMessage(":robustirc.net 331 secure #foobar :No topic is set"),
-			irc.ParseMessage(":robustirc.net 353 secure = #foobar :secure"),
+			irc.ParseMessage(":robustirc.net 353 secure = #foobar :@secure"),
 			irc.ParseMessage(":robustirc.net 366 secure #foobar :End of /NAMES list."),
 		})
 
@@ -371,13 +371,9 @@ func TestTopic(t *testing.T) {
 			// TODO: the following line is flaky. We should set a defined time
 			// on the server for testing instead of the server using time.Now().
 			irc.ParseMessage(":robustirc.net 333 mero #test sECuRE " + strconv.FormatInt(time.Now().Unix(), 10)),
-			irc.ParseMessage(":robustirc.net 353 mero = #test :sECuRE mero"),
+			irc.ParseMessage(":robustirc.net 353 mero = #test :@sECuRE mero"),
 			irc.ParseMessage(":robustirc.net 366 mero #test :End of /NAMES list."),
 		})
-
-	mustMatchIrcmsg(t,
-		ProcessMessage(idMero, irc.ParseMessage("PART #test")),
-		&irc.Message{Prefix: &sMero.ircPrefix, Command: irc.PART, Params: []string{"#test"}})
 
 	mustMatchIrcmsgs(t,
 		ProcessMessage(idMero, irc.ParseMessage("TOPIC #test")),
@@ -387,6 +383,10 @@ func TestTopic(t *testing.T) {
 			// on the server for testing instead of the server using time.Now().
 			irc.ParseMessage(":robustirc.net 333 mero #test sECuRE " + strconv.FormatInt(time.Now().Unix(), 10)),
 		})
+
+	mustMatchIrcmsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("PART #test")),
+		&irc.Message{Prefix: &sMero.ircPrefix, Command: irc.PART, Params: []string{"#test"}})
 
 	mustMatchIrcmsg(t,
 		ProcessMessage(idSecure, irc.ParseMessage("PART #test")),
@@ -441,33 +441,31 @@ func TestChannelMode(t *testing.T) {
 	ProcessMessage(idMero, irc.ParseMessage("NICK mero"))
 	ProcessMessage(idMero, irc.ParseMessage("USER foo 0 * :Axel Wagner"))
 
-	// Join the channel to create it, otherwise TOPIC will not work.
 	ProcessMessage(idMero, irc.ParseMessage("JOIN #test"))
-
-	// Set a topic from the outside.
-	got = ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :foobar"))
-	want = []*irc.Message{irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad TOPIC #test :foobar")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
-
-	got = ProcessMessage(idMero, irc.ParseMessage("MODE #test +t"))
-	want = []*irc.Message{irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae MODE #test +t")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
-
-	got = ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :bleh"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 482 sECuRE #test :You're not channel operator")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
-
 	ProcessMessage(idSecure, irc.ParseMessage("JOIN #test"))
 
-	got = ProcessMessage(idSecure, irc.ParseMessage("MODE #test"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 324 sECuRE #test +t")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	// Set a topic from the outside.
+	mustMatchMsg(t,
+		ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :foobar")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad TOPIC #test :foobar")
+
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("MODE #test +t")),
+		":mero!foo@robust/0x13b5aa0a2bcfb8ae MODE #test +t")
+
+	mustMatchMsg(t,
+		ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :bleh")),
+		":robustirc.net 482 sECuRE #test :You're not channel operator")
+
+	mustMatchMsg(t,
+		ProcessMessage(idSecure, irc.ParseMessage("MODE #test")),
+		":robustirc.net 324 sECuRE #test +t")
+
+	mustMatchMsg(t,
+		ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :bleh")),
+		":robustirc.net 482 sECuRE #test :You're not channel operator")
+
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("TOPIC #test :bleh")),
+		":mero!foo@robust/0x13b5aa0a2bcfb8ae TOPIC #test :bleh")
 }

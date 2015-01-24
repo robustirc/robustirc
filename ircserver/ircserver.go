@@ -152,12 +152,18 @@ func (s *Session) InterestedIn(msg *types.RobustMessage) bool {
 	return cmd.Interesting(s, ircmsg)
 }
 
+const (
+	chanop = iota
+	voice
+	maxChanMemberStatus
+)
+
 type channel struct {
 	topicNick string
 	topicTime time.Time
 	topic     string
 
-	nicks map[string]bool
+	nicks map[string]*[maxChanMemberStatus]bool
 
 	// We waste 65 bytes per channel for clearer code (being able to directly
 	// access modes by using their letter as an index).
