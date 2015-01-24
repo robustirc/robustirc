@@ -343,23 +343,45 @@ func cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 }
 
 func cmdMode(s *Session, msg *irc.Message) []*irc.Message {
-	channel := msg.Params[0]
+	channelname := msg.Params[0]
 	// TODO(secure): properly distinguish between users and channels
-	if s.Channels[channel] {
+	if s.Channels[channelname] {
+		// Channel must exist, the user is in it.
+		c := channels[channelname]
+		var modestr string
+		if len(msg.Params) > 1 {
+			modestr = msg.Params[1]
+		}
+		if strings.HasPrefix(modestr, "+") {
+			for _, char := range modestr[1:] {
+				c.modes[char] = true
+			}
+			return []*irc.Message{&irc.Message{
+				Prefix:  &s.ircPrefix,
+				Command: irc.MODE,
+				Params:  []string{channelname, modestr},
+			}}
+		}
 		if len(msg.Params) > 1 && msg.Params[1] == "b" {
 			return []*irc.Message{&irc.Message{
 				Command:  irc.RPL_ENDOFBANLIST,
-				Params:   []string{s.Nick, channel},
+				Params:   []string{s.Nick, channelname},
 				Trailing: "End of Channel Ban List",
 			}}
 		} else {
+			modestr := "+"
+			for mode := 'A'; mode < 'z'; mode++ {
+				if c.modes[mode] {
+					modestr += string(mode)
+				}
+			}
 			return []*irc.Message{&irc.Message{
 				Command: irc.RPL_CHANNELMODEIS,
-				Params:  []string{s.Nick, channel, "+"},
+				Params:  []string{s.Nick, channelname, modestr},
 			}}
 		}
 	} else {
-		if channel == s.Nick {
+		if channelname == s.Nick {
 			return []*irc.Message{&irc.Message{
 				Prefix:   &s.ircPrefix,
 				Command:  irc.MODE,
@@ -369,7 +391,7 @@ func cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 		} else {
 			return []*irc.Message{&irc.Message{
 				Command:  irc.ERR_NOTONCHANNEL,
-				Params:   []string{s.Nick, channel},
+				Params:   []string{s.Nick, channelname},
 				Trailing: "You're not on that channel",
 			}}
 		}
@@ -544,6 +566,13 @@ func cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	// TODO(secure): check that the user is op if +n is set and send ERR_CHANOPRIVSNEEDED
+	if c.modes['t'] {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_CHANOPRIVSNEEDED,
+			Params:   []string{s.Nick, channel},
+			Trailing: "You're not channel operator",
+		}}
+	}
 	c.topicNick = s.Nick
 	c.topicTime = time.Now()
 	c.topic = msg.Trailing

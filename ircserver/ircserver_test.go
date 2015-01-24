@@ -422,3 +422,52 @@ func TestMotd(t *testing.T) {
 		t.Fatalf("got %v, did not find MOTDSTART, MOTD, ENDOFMOTD in order", got)
 	}
 }
+
+func TestChannelMode(t *testing.T) {
+	var got, want []*irc.Message
+
+	ClearState()
+	NetworkPassword = "foo"
+	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
+
+	idSecure := types.RobustId{Id: 1420228218166687917}
+	idMero := types.RobustId{Id: 1420228218166687918}
+
+	CreateSession(idSecure, "auth-secure")
+	CreateSession(idMero, "auth-mero")
+
+	ProcessMessage(idSecure, irc.ParseMessage("NICK sECuRE"))
+	ProcessMessage(idSecure, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
+	ProcessMessage(idMero, irc.ParseMessage("NICK mero"))
+	ProcessMessage(idMero, irc.ParseMessage("USER foo 0 * :Axel Wagner"))
+
+	// Join the channel to create it, otherwise TOPIC will not work.
+	ProcessMessage(idMero, irc.ParseMessage("JOIN #test"))
+
+	// Set a topic from the outside.
+	got = ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :foobar"))
+	want = []*irc.Message{irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad TOPIC #test :foobar")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	got = ProcessMessage(idMero, irc.ParseMessage("MODE #test +t"))
+	want = []*irc.Message{irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae MODE #test +t")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	got = ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :bleh"))
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 482 sECuRE #test :You're not channel operator")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
+	ProcessMessage(idSecure, irc.ParseMessage("JOIN #test"))
+
+	got = ProcessMessage(idSecure, irc.ParseMessage("MODE #test"))
+	want = []*irc.Message{irc.ParseMessage(":robustirc.net 324 sECuRE #test +t")}
+	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}

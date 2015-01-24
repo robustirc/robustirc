@@ -158,6 +158,10 @@ type channel struct {
 	topic     string
 
 	nicks map[string]bool
+
+	// We waste 65 bytes per channel for clearer code (being able to directly
+	// access modes by using their letter as an index).
+	modes ['z']bool
 }
 
 func ClearState() {
