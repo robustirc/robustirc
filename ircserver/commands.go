@@ -206,8 +206,12 @@ func cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 	s.Channels[channelname] = true
 
 	nicks := make([]string, 0, len(c.nicks))
-	for nick := range c.nicks {
-		nicks = append(nicks, nick)
+	for nick, perms := range c.nicks {
+		var prefix string
+		if perms[chanop] {
+			prefix = prefix + string('@')
+		}
+		nicks = append(nicks, prefix+nick)
 	}
 
 	var replies []*irc.Message

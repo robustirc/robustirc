@@ -424,8 +424,6 @@ func TestMotd(t *testing.T) {
 }
 
 func TestChannelMode(t *testing.T) {
-	var got, want []*irc.Message
-
 	ClearState()
 	NetworkPassword = "foo"
 	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
@@ -479,8 +477,6 @@ func TestChannelMode(t *testing.T) {
 }
 
 func TestChannelMemberStatus(t *testing.T) {
-	var got, want []*irc.Message
-
 	ClearState()
 	NetworkPassword = "foo"
 	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
@@ -490,6 +486,7 @@ func TestChannelMemberStatus(t *testing.T) {
 	idXeen := types.RobustId{Id: 1420228218166687919}
 
 	CreateSession(idSecure, "auth-secure")
+	sSecure, _ := GetSession(idSecure)
 	CreateSession(idMero, "auth-mero")
 	CreateSession(idXeen, "auth-xeen")
 
@@ -501,7 +498,15 @@ func TestChannelMemberStatus(t *testing.T) {
 	ProcessMessage(idXeen, irc.ParseMessage("USER baz 0 * :Iks Enn"))
 
 	ProcessMessage(idMero, irc.ParseMessage("JOIN #test"))
-	ProcessMessage(idSecure, irc.ParseMessage("JOIN #test"))
+	mustMatchIrcmsgs(t,
+		ProcessMessage(idSecure, irc.ParseMessage("JOIN #test")),
+		[]*irc.Message{
+			&irc.Message{Prefix: &sSecure.ircPrefix, Command: irc.JOIN, Trailing: "#test"},
+			irc.ParseMessage(":robustirc.net 331 sECuRE #test :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 sECuRE = #test :@mero sECuRE"),
+			irc.ParseMessage(":robustirc.net 366 sECuRE #test :End of /NAMES list."),
+		})
+
 	ProcessMessage(idXeen, irc.ParseMessage("JOIN #test"))
 
 	mustMatchMsg(t,
