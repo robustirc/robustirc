@@ -468,4 +468,63 @@ func TestChannelMode(t *testing.T) {
 	mustMatchMsg(t,
 		ProcessMessage(idMero, irc.ParseMessage("TOPIC #test :bleh")),
 		":mero!foo@robust/0x13b5aa0a2bcfb8ae TOPIC #test :bleh")
+
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("MODE #test +o sECuRE")),
+		":mero!foo@robust/0x13b5aa0a2bcfb8ae MODE #test +o sECuRE")
+
+	mustMatchMsg(t,
+		ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :finally")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad TOPIC #test :finally")
+}
+
+func TestChannelMemberStatus(t *testing.T) {
+	var got, want []*irc.Message
+
+	ClearState()
+	NetworkPassword = "foo"
+	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
+
+	idSecure := types.RobustId{Id: 1420228218166687917}
+	idMero := types.RobustId{Id: 1420228218166687918}
+	idXeen := types.RobustId{Id: 1420228218166687919}
+
+	CreateSession(idSecure, "auth-secure")
+	CreateSession(idMero, "auth-mero")
+	CreateSession(idXeen, "auth-xeen")
+
+	ProcessMessage(idSecure, irc.ParseMessage("NICK sECuRE"))
+	ProcessMessage(idSecure, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
+	ProcessMessage(idMero, irc.ParseMessage("NICK mero"))
+	ProcessMessage(idMero, irc.ParseMessage("USER foo 0 * :Axel Wagner"))
+	ProcessMessage(idXeen, irc.ParseMessage("NICK xeen"))
+	ProcessMessage(idXeen, irc.ParseMessage("USER baz 0 * :Iks Enn"))
+
+	ProcessMessage(idMero, irc.ParseMessage("JOIN #test"))
+	ProcessMessage(idSecure, irc.ParseMessage("JOIN #test"))
+	ProcessMessage(idXeen, irc.ParseMessage("JOIN #test"))
+
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("MODE #test +t")),
+		":mero!foo@robust/0x13b5aa0a2bcfb8ae MODE #test +t")
+
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("MODE #test +o xeen")),
+		":mero!foo@robust/0x13b5aa0a2bcfb8ae MODE #test +o xeen")
+
+	mustMatchMsg(t,
+		ProcessMessage(idXeen, irc.ParseMessage("MODE #test -o+o xeen sECuRE")),
+		":xeen!baz@robust/0x13b5aa0a2bcfb8af MODE #test -o+o xeen sECuRE")
+
+	mustMatchMsg(t,
+		ProcessMessage(idXeen, irc.ParseMessage("MODE #test +o xeen")),
+		":robustirc.net 482 xeen #test :You're not channel operator")
+
+	mustMatchMsg(t,
+		ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :finally")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad TOPIC #test :finally")
+
+	mustMatchMsg(t,
+		ProcessMessage(idXeen, irc.ParseMessage("TOPIC #test :nooo")),
+		":robustirc.net 482 xeen #test :You're not channel operator")
 }

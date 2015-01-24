@@ -357,15 +357,57 @@ func cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 		if len(msg.Params) > 1 {
 			modestr = msg.Params[1]
 		}
-		if strings.HasPrefix(modestr, "+") {
-			for _, char := range modestr[1:] {
-				c.modes[char] = true
+		if strings.HasPrefix(modestr, "+") || strings.HasPrefix(modestr, "-") {
+			if !c.nicks[s.Nick][chanop] {
+				return []*irc.Message{&irc.Message{
+					Command:  irc.ERR_CHANOPRIVSNEEDED,
+					Params:   []string{s.Nick, channelname},
+					Trailing: "You're not channel operator",
+				}}
 			}
-			return []*irc.Message{&irc.Message{
+			var replies []*irc.Message
+			// true for adding a mode, false for removing it
+			newvalue := strings.HasPrefix(modestr, "+")
+			modearg := 2
+			for _, char := range modestr[1:] {
+				switch char {
+				case '+', '-':
+					newvalue = (char == '+')
+				case 't':
+					c.modes[char] = newvalue
+				case 'o':
+					if len(msg.Params) > modearg {
+						nick := msg.Params[modearg]
+						perms, ok := c.nicks[nick]
+						if !ok {
+							replies = append(replies, &irc.Message{
+								Command:  irc.ERR_USERNOTINCHANNEL,
+								Params:   []string{s.Nick, nick, channelname},
+								Trailing: "They aren't on that channel",
+							})
+						} else {
+							// If the user already is a chanop, silently do
+							// nothing (like UnrealIRCd).
+							if perms[chanop] != newvalue {
+								c.nicks[nick][chanop] = newvalue
+							}
+						}
+					}
+					modearg++
+				default:
+					replies = append(replies, &irc.Message{
+						Command:  irc.ERR_UNKNOWNMODE,
+						Params:   []string{s.Nick, string(char)},
+						Trailing: "is unknown mode char to me",
+					})
+				}
+			}
+			replies = append(replies, &irc.Message{
 				Prefix:  &s.ircPrefix,
 				Command: irc.MODE,
-				Params:  []string{channelname, modestr},
-			}}
+				Params:  msg.Params[:modearg],
+			})
+			return replies
 		}
 		if len(msg.Params) > 1 && msg.Params[1] == "b" {
 			return []*irc.Message{&irc.Message{
