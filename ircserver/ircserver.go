@@ -82,11 +82,23 @@ func init() {
 	prometheus.MustRegister(sessionsGauge)
 }
 
+// logCursor is like a database cursor: it returns the next message.
+// ircCommand’s StillRelevant callback will get a cursor for all messages
+// _before_ the current message and a separate cursor returning all
+// messages _after_ the current message.
+type logCursor func() (*irc.Message, error)
+
+var CursorEOF = errors.New("No more messages")
+
 type ircCommand struct {
 	Func func(*Session, *irc.Message) []*irc.Message
 
 	// Interesting returns true if the message should be sent to the session.
 	Interesting func(*Session, *irc.Message) bool
+
+	// StillRelevant is used during compaction. If it returns true, the message
+	// is kept, otherwise it will be deleted.
+	StillRelevant func(*Session, *irc.Message, logCursor, logCursor) (bool, error)
 
 	// MinParams ensures that enough parameters were specified.
 	// irc.ERR_NEEDMOREPARAMS is returned in case less than MinParams
@@ -321,4 +333,22 @@ func GetSession(id types.RobustId) (*Session, error) {
 	} else {
 		return nil, ErrSessionNotYetSeen
 	}
+}
+
+func StillRelevant(session *Session, ircmsg *irc.Message, prev, next logCursor) (bool, error) {
+	if ircmsg == nil {
+		return true, nil
+	}
+
+	c, ok := commands[strings.ToUpper(ircmsg.Command)]
+	if !ok {
+		return true, nil
+	}
+
+	// If unable to figure out whether the message is still relevant, keep it.
+	if c.StillRelevant == nil {
+		return true, nil
+	}
+
+	return c.StillRelevant(session, ircmsg, prev, next)
 }

@@ -9,8 +9,13 @@ import (
 	"github.com/sorcix/irc"
 )
 
-// Each handler function must have the “cmd” prefix and return either a single
-// *irc.Message or a slice of *irc.Message.
+func neverRelevant(s *Session, m *irc.Message, prev, next logCursor) (bool, error) {
+	return false, nil
+}
+
+func alwaysRelevant(s *Session, m *irc.Message, prev, next logCursor) (bool, error) {
+	return true, nil
+}
 
 func init() {
 	// Keep this list ordered the same way the functions below are ordered.
@@ -24,17 +29,24 @@ func init() {
 			// aspect), perhaps leave it as-is?
 			return true
 		},
+		StillRelevant: relevantNick,
 	}
-	commands["USER"] = &ircCommand{Func: cmdUser, MinParams: 3}
+	commands["USER"] = &ircCommand{
+		Func:          cmdUser,
+		MinParams:     3,
+		StillRelevant: relevantUser,
+	}
 	commands["JOIN"] = &ircCommand{
-		Func:        cmdJoin,
-		MinParams:   1,
-		Interesting: interestJoin,
+		Func:          cmdJoin,
+		MinParams:     1,
+		Interesting:   interestJoin,
+		StillRelevant: relevantJoin,
 	}
 	commands["PART"] = &ircCommand{
-		Func:        cmdPart,
-		MinParams:   1,
-		Interesting: interestPart,
+		Func:          cmdPart,
+		MinParams:     1,
+		Interesting:   interestPart,
+		StillRelevant: relevantPart,
 	}
 	commands["QUIT"] = &ircCommand{
 		Func: cmdQuit,
@@ -45,21 +57,31 @@ func init() {
 			// aspect), perhaps leave it as-is?
 			return true
 		},
+		// TODO: the bridge always sends DestroySession, but third-party clients may not. so, better keep QUITs?
+		StillRelevant: neverRelevant,
 	}
-	commands["PRIVMSG"] = &ircCommand{Func: cmdPrivmsg, Interesting: interestPrivmsg}
+	commands["PRIVMSG"] = &ircCommand{
+		Func:          cmdPrivmsg,
+		Interesting:   interestPrivmsg,
+		StillRelevant: neverRelevant,
+	}
 	commands["MODE"] = &ircCommand{
 		Func:        cmdMode,
 		MinParams:   1,
 		Interesting: commonChannelOrDirect,
 	}
-	commands["WHO"] = &ircCommand{Func: cmdWho}
+	commands["WHO"] = &ircCommand{
+		Func:          cmdWho,
+		StillRelevant: neverRelevant,
+	}
 	commands["OPER"] = &ircCommand{Func: cmdOper, MinParams: 2}
 	commands["KILL"] = &ircCommand{Func: cmdKill, MinParams: 1}
 	commands["AWAY"] = &ircCommand{Func: cmdAway}
 	commands["TOPIC"] = &ircCommand{
-		Func:        cmdTopic,
-		MinParams:   1,
-		Interesting: interestTopic,
+		Func:          cmdTopic,
+		MinParams:     1,
+		Interesting:   interestTopic,
+		StillRelevant: relevantTopic,
 	}
 	commands["MOTD"] = &ircCommand{Func: cmdMotd}
 }
@@ -82,6 +104,36 @@ func cmdPing(s *Session, msg *irc.Message) []*irc.Message {
 		Command: irc.PONG,
 		Params:  []string{msg.Params[0]},
 	}}
+}
+
+func relevantNick(s *Session, msg *irc.Message, prev, next logCursor) (bool, error) {
+	if len(msg.Params) < 1 {
+		return false, nil
+	}
+
+	for {
+		nmsg, err := next()
+		if err != nil {
+			if err == CursorEOF {
+				break
+			}
+			return true, err
+		}
+		// Found a USER message. This NICK command is thus the first one and must not be compacted.
+		if nmsg.Command == irc.USER {
+			return true, nil
+		}
+		// TOPIC relies on the NICK.
+		if nmsg.Command == irc.TOPIC {
+			return true, nil
+		}
+		// There is a newer NICK command, so discard this one.
+		if nmsg.Command == irc.NICK {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 func cmdNick(s *Session, msg *irc.Message) []*irc.Message {
@@ -168,6 +220,28 @@ func cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 	return replies
 }
 
+func relevantUser(s *Session, msg *irc.Message, prev, next logCursor) (bool, error) {
+	if len(msg.Params) < 1 {
+		return false, nil
+	}
+
+	for {
+		pmsg, err := prev()
+		if err != nil {
+			if err == CursorEOF {
+				break
+			}
+			return true, err
+		}
+		// There already was a USER message, so discard this one.
+		if pmsg.Command == irc.USER {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
 func cmdUser(s *Session, msg *irc.Message) []*irc.Message {
 	// We keep the username (so that bans are more effective) and realname
 	// (some people actually set it and look at it).
@@ -179,6 +253,35 @@ func cmdUser(s *Session, msg *irc.Message) []*irc.Message {
 
 func interestJoin(s *Session, msg *irc.Message) bool {
 	return s.Channels[msg.Trailing]
+}
+
+func relevantJoin(s *Session, msg *irc.Message, prev, next logCursor) (bool, error) {
+	if s == nil {
+		return true, nil
+	}
+	if len(msg.Params) < 1 {
+		return false, nil
+	}
+
+	// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
+
+	for {
+		nmsg, err := next()
+		if err != nil {
+			if err == CursorEOF {
+				break
+			}
+			return true, err
+		}
+		if nmsg.Command == irc.TOPIC && nmsg.Params[0] == msg.Params[0] {
+			return true, nil
+		}
+		if nmsg.Command == irc.PART && nmsg.Params[0] == msg.Params[0] {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 func cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
@@ -245,6 +348,29 @@ func interestPart(s *Session, msg *irc.Message) bool {
 	// Do send PART messages back to the sender (who, by now, is not in the
 	// channel anymore).
 	return s.ircPrefix == *msg.Prefix || s.Channels[msg.Params[0]]
+}
+
+func relevantPart(s *Session, msg *irc.Message, prev, next logCursor) (bool, error) {
+	if len(msg.Params) < 1 {
+		return false, nil
+	}
+
+	// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
+
+	for {
+		pmsg, err := prev()
+		if err != nil {
+			if err == CursorEOF {
+				break
+			}
+			return true, err
+		}
+		if pmsg.Command == irc.JOIN && pmsg.Params[0] == msg.Params[0] {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func cmdPart(s *Session, msg *irc.Message) []*irc.Message {
@@ -564,6 +690,31 @@ func cmdAway(s *Session, msg *irc.Message) []*irc.Message {
 
 func interestTopic(s *Session, msg *irc.Message) bool {
 	return s.Channels[msg.Params[0]]
+}
+
+func relevantTopic(s *Session, msg *irc.Message, prev, next logCursor) (bool, error) {
+	if s == nil {
+		return true, nil
+	}
+	if len(msg.Params) < 1 {
+		return false, nil
+	}
+
+	for {
+		nmsg, err := next()
+		if err != nil {
+			if err == CursorEOF {
+				break
+			}
+			return true, err
+		}
+		// There is a newer TOPIC command for this channel, discard the old one.
+		if nmsg.Command == irc.TOPIC && nmsg.Params[0] == msg.Params[0] {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 func cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
