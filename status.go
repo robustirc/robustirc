@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/types"
@@ -55,6 +56,7 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		Stats              map[string]string
 		Sessions           map[types.RobustId]*ircserver.Session
 		GetMessageRequests map[string]GetMessageStats
+		Latencies          map[string]time.Duration
 	}{
 		*peerAddr,
 		node.State(),
@@ -66,6 +68,7 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		node.Stats(),
 		ircserver.Sessions,
 		GetMessageRequests,
+		nodeLatencyTracker.Latencies(),
 	}
 
 	statusTpl.Execute(res, args)

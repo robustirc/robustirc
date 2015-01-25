@@ -11,20 +11,23 @@ import (
 	"log"
 	"net"
 	"net/http"
+	net_url "net/url"
 	"path"
 	"time"
 
 	"github.com/hashicorp/raft"
+	"github.com/robustirc/robustirc/latencytracker"
 )
 
 type Transport struct {
-	consumer chan raft.RPC
-	addr     net.Addr
-	password string
-	client   *http.Client
+	consumer       chan raft.RPC
+	addr           net.Addr
+	password       string
+	client         *http.Client
+	latencytracker *latencytracker.LatencyTracker
 }
 
-func NewTransport(addr net.Addr, password string, tlsCAFile string) *Transport {
+func NewTransport(addr net.Addr, password string, tlsCAFile string, tracker *latencytracker.LatencyTracker) *Transport {
 	var client *http.Client
 	if tlsCAFile != "" {
 		roots := x509.NewCertPool()
@@ -45,10 +48,11 @@ func NewTransport(addr net.Addr, password string, tlsCAFile string) *Transport {
 	}
 
 	return &Transport{
-		consumer: make(chan raft.RPC),
-		addr:     addr,
-		password: password,
-		client:   client,
+		consumer:       make(chan raft.RPC),
+		addr:           addr,
+		password:       password,
+		client:         client,
+		latencytracker: tracker,
 	}
 }
 
@@ -84,7 +88,11 @@ func (t *Transport) send(url string, in, out interface{}) error {
 	if err = json.Unmarshal(buf, out); err != nil {
 		return fmt.Errorf("could not unmarshal InstallShnapshotResponse: %v", err)
 	}
-	log.Printf("send(%q) took %v\n", url, time.Since(started))
+
+	parsed, err := net_url.Parse(url)
+	if err == nil {
+		t.latencytracker.AddSample(parsed.Host, time.Since(started))
+	}
 	return nil
 }
 

@@ -23,6 +23,7 @@ import (
 	"bitbucket.org/kardianos/osext"
 
 	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/latencytracker"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/types"
 
@@ -88,6 +89,8 @@ var (
 	ircStore  *raft_store.LevelDBStore
 
 	executablehash string = executableHash()
+
+	nodeLatencyTracker = latencytracker.NewLatencyTracker("raft-node-latency")
 
 	// Overwritten by Makefile.
 	Version = "unknown"
@@ -481,7 +484,7 @@ func main() {
 	ircserver.ClearState()
 	ircserver.NetworkPassword = *networkPassword
 
-	transport := NewTransport(&dnsAddr{*peerAddr}, *networkPassword, *tlsCAFile)
+	transport := NewTransport(&dnsAddr{*peerAddr}, *networkPassword, *tlsCAFile, nodeLatencyTracker)
 
 	peerStore = raft.NewJSONPeers(*raftDir, transport)
 
