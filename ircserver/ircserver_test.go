@@ -2,6 +2,7 @@ package ircserver
 
 import (
 	"bytes"
+	"strconv"
 	"testing"
 	"time"
 
@@ -9,6 +10,43 @@ import (
 
 	"github.com/sorcix/irc"
 )
+
+// mustMatchIrcmsgs compares two slices of irc.Messages and logs the contents
+// before failing the test if they don’t match byte for byte:
+//
+// --- FAIL: TestAway (0.00s)
+// 	ircserver_test.go:285: got (2 messages):
+// 	ircserver_test.go:287:     :s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :you there?
+// 	ircserver_test.go:287:     :robustirc.net 301 s[E]CuRE mero :upgrading server
+// 	ircserver_test.go:289: want (2 messages):
+// 	ircserver_test.go:291:     :s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :yo there?
+// 	ircserver_test.go:291:     :robustirc.net 301 s[E]CuRE mero :upgrading server
+// 	ircserver_test.go:293: ProcessMessage() return value does not match expectation: got [:s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :you there? :robustirc.net 301 s[E]CuRE mero :upgrading server], want [:s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :yo there? :robustirc.net 301 s[E]CuRE mero :upgrading server]
+func mustMatchIrcmsgs(t *testing.T, got []*irc.Message, want []*irc.Message) {
+	failed := len(got) != len(want)
+	for idx := 0; !failed && idx < len(want); idx++ {
+		failed = bytes.Compare(got[idx].Bytes(), want[idx].Bytes()) != 0
+	}
+	if failed {
+		t.Logf("got (%d messages):\n", len(got))
+		for _, msg := range got {
+			t.Logf("    %s\n", msg.Bytes())
+		}
+		t.Logf("want (%d messages):\n", len(want))
+		for _, msg := range want {
+			t.Logf("    %s\n", msg.Bytes())
+		}
+		t.Fatalf("ProcessMessage() return value does not match expectation: got %v, want %v", got, want)
+	}
+}
+
+func mustMatchIrcmsg(t *testing.T, got []*irc.Message, want *irc.Message) {
+	mustMatchIrcmsgs(t, got, []*irc.Message{want})
+}
+
+func mustMatchMsg(t *testing.T, got []*irc.Message, want string) {
+	mustMatchIrcmsgs(t, got, []*irc.Message{irc.ParseMessage(want)})
+}
 
 func TestSessionInitialization(t *testing.T) {
 	id := types.RobustId{Id: time.Now().UnixNano()}
@@ -38,7 +76,7 @@ func TestSessionInitialization(t *testing.T) {
 }
 
 func TestNickCollision(t *testing.T) {
-	var got, want []*irc.Message
+	var got []*irc.Message
 
 	ClearState()
 	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
@@ -58,23 +96,17 @@ func TestNickCollision(t *testing.T) {
 			t.Fatalf("got %v, wanted anything but ERR_NICKNAMEINUSE", msg)
 		}
 	}
-	got = ProcessMessage(idMero, irc.ParseMessage("NICK s[E]CuRE"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 433 * s[E]CuRE :Nickname is already in use.")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("NICK s[E]CuRE")),
+		":robustirc.net 433 * s[E]CuRE :Nickname is already in use.")
 
-	got = ProcessMessage(idMero, irc.ParseMessage("NICK S[E]CURE"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 433 * S[E]CURE :Nickname is already in use.")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("NICK S[E]CURE")),
+		":robustirc.net 433 * S[E]CURE :Nickname is already in use.")
 
-	got = ProcessMessage(idMero, irc.ParseMessage("NICK S{E}CURE"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 433 * S{E}CURE :Nickname is already in use.")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("NICK S{E}CURE")),
+		":robustirc.net 433 * S{E}CURE :Nickname is already in use.")
 }
 
 func TestInvalidNick(t *testing.T) {
@@ -126,11 +158,9 @@ func TestInvalidNickPlumbing(t *testing.T) {
 		t.Fatalf("session.loggedIn() true before sending NICK")
 	}
 
-	got := ProcessMessage(id, irc.ParseMessage("NICK 0secure"))
-	want := []irc.Message{*irc.ParseMessage(":robustirc.net 432 * 0secure :Erroneus nickname.")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(id, irc.ParseMessage("NICK 0secure")),
+		":robustirc.net 432 * 0secure :Erroneus nickname.")
 
 	if s.Nick != "" {
 		t.Fatalf("session.Nick: got %q, want %q", s.Nick, "")
@@ -152,22 +182,18 @@ func TestInvalidChannelPlumbing(t *testing.T) {
 	ProcessMessage(id, irc.ParseMessage("NICK secure"))
 	ProcessMessage(id, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
 
-	got := ProcessMessage(id, irc.ParseMessage("JOIN #foobar"))
-	want := []*irc.Message{
-		&irc.Message{Prefix: &s.ircPrefix, Command: irc.JOIN, Trailing: "#foobar"},
-		irc.ParseMessage(":robustirc.net 331 secure #foobar :No topic is set"),
-		irc.ParseMessage(":robustirc.net 353 secure = #foobar :secure"),
-		irc.ParseMessage(":robustirc.net 366 secure #foobar :End of /NAMES list."),
-	}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchIrcmsgs(t,
+		ProcessMessage(id, irc.ParseMessage("JOIN #foobar")),
+		[]*irc.Message{
+			&irc.Message{Prefix: &s.ircPrefix, Command: irc.JOIN, Trailing: "#foobar"},
+			irc.ParseMessage(":robustirc.net 331 secure #foobar :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 secure = #foobar :secure"),
+			irc.ParseMessage(":robustirc.net 366 secure #foobar :End of /NAMES list."),
+		})
 
-	got = ProcessMessage(id, irc.ParseMessage("JOIN foobar"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 403 secure foobar :No such channel")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(id, irc.ParseMessage("JOIN foobar")),
+		":robustirc.net 403 secure foobar :No such channel")
 }
 
 func TestInvalidPrivmsg(t *testing.T) {
@@ -180,27 +206,22 @@ func TestInvalidPrivmsg(t *testing.T) {
 	ProcessMessage(id, irc.ParseMessage("NICK secure"))
 	ProcessMessage(id, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
 	ProcessMessage(id, irc.ParseMessage("JOIN #test"))
-	got := ProcessMessage(id, irc.ParseMessage("PRIVMSG #test"))
-	want := []irc.Message{*irc.ParseMessage(":robustirc.net 412 secure :No text to send")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
 
-	got = ProcessMessage(id, irc.ParseMessage("PRIVMSG #test foo"))
-	want = []irc.Message{*irc.ParseMessage(":robustirc.net 412 secure :No text to send")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(id, irc.ParseMessage("PRIVMSG #test")),
+		":robustirc.net 412 secure :No text to send")
 
-	got = ProcessMessage(id, irc.ParseMessage("PRIVMSG"))
-	want = []irc.Message{*irc.ParseMessage(":robustirc.net 411 secure :No recipient given (PRIVMSG)")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(id, irc.ParseMessage("PRIVMSG #test foo")),
+		":robustirc.net 412 secure :No text to send")
+
+	mustMatchMsg(t,
+		ProcessMessage(id, irc.ParseMessage("PRIVMSG")),
+		":robustirc.net 411 secure :No recipient given (PRIVMSG)")
 }
 
 func TestKill(t *testing.T) {
-	var got, want []*irc.Message
+	var got []*irc.Message
 
 	ClearState()
 	NetworkPassword = "foo"
@@ -224,52 +245,35 @@ func TestKill(t *testing.T) {
 	}
 	got = ProcessMessage(idMero, irc.ParseMessage("NICK mero"))
 	ProcessMessage(idMero, irc.ParseMessage("USER foo 0 * :Axel Wagner"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 001 mero :Welcome to RobustIRC!")}
-	if len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got[0], want[0])
-	}
+	mustMatchMsg(t, []*irc.Message{got[0]}, ":robustirc.net 001 mero :Welcome to RobustIRC!")
 
-	got = ProcessMessage(idMero, irc.ParseMessage("KILL secure"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 461 mero KILL :Not enough parameters")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("KILL secure")),
+		":robustirc.net 461 mero KILL :Not enough parameters")
 
-	got = ProcessMessage(idMero, irc.ParseMessage("KILL"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 461 mero KILL :Not enough parameters")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("KILL")),
+		":robustirc.net 461 mero KILL :Not enough parameters")
 
-	got = ProcessMessage(idMero, irc.ParseMessage("KILL secure :die"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 481 mero :Permission Denied - You're not an IRC operator")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("KILL secure :die")),
+		":robustirc.net 481 mero :Permission Denied - You're not an IRC operator")
 
-	got = ProcessMessage(idMero, irc.ParseMessage("OPER mero bar"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 464 mero :Password incorrect")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("OPER mero bar")),
+		":robustirc.net 464 mero :Password incorrect")
 
-	got = ProcessMessage(idMero, irc.ParseMessage("OPER mero foo"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 381 mero :You are now an IRC operator")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("OPER mero foo")),
+		":robustirc.net 381 mero :You are now an IRC operator")
 
-	got = ProcessMessage(idMero, irc.ParseMessage("KILL socoro :die"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 401 mero socoro :No such nick/channel")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("KILL socoro :die")),
+		":robustirc.net 401 mero socoro :No such nick/channel")
 
-	got = ProcessMessage(idMero, irc.ParseMessage("KILL s[E]CuRE :die now, will you?"))
-	want = []*irc.Message{irc.ParseMessage(":s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad QUIT :Killed by mero: die now, will you?")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("KILL s[E]CuRE :die now, will you?")),
+		":s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad QUIT :Killed by mero: die now, will you?")
 
 	if _, err := GetSession(idSecure); err == nil {
 		t.Fatalf("GetSession(%v) returned a session after KILL", idSecure)
@@ -277,8 +281,6 @@ func TestKill(t *testing.T) {
 }
 
 func TestAway(t *testing.T) {
-	var got, want []*irc.Message
-
 	ClearState()
 	NetworkPassword = "foo"
 	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
@@ -294,40 +296,30 @@ func TestAway(t *testing.T) {
 	ProcessMessage(idMero, irc.ParseMessage("NICK mero"))
 	ProcessMessage(idMero, irc.ParseMessage("USER foo 0 * :Axel Wagner"))
 
-	got = ProcessMessage(idSecure, irc.ParseMessage("PRIVMSG mero :hey"))
-	want = []*irc.Message{irc.ParseMessage(":s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :hey")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idSecure, irc.ParseMessage("PRIVMSG mero :hey")),
+		":s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :hey")
 
-	got = ProcessMessage(idMero, irc.ParseMessage("AWAY :upgrading server"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 306 mero :You have been marked as being away")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("AWAY :upgrading server")),
+		":robustirc.net 306 mero :You have been marked as being away")
 
-	got = ProcessMessage(idSecure, irc.ParseMessage("PRIVMSG mero :you there?"))
-	want = []*irc.Message{
-		irc.ParseMessage(":s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :you there?"),
-		irc.ParseMessage(":robustirc.net 301 s[E]CuRE mero :upgrading server"),
-	}
-	if len(got) != len(want) || len(got) < 2 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 || bytes.Compare(got[1].Bytes(), want[1].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchIrcmsgs(t,
+		ProcessMessage(idSecure, irc.ParseMessage("PRIVMSG mero :you there?")),
+		[]*irc.Message{
+			irc.ParseMessage(":s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :you there?"),
+			irc.ParseMessage(":robustirc.net 301 s[E]CuRE mero :upgrading server"),
+		})
 
-	got = ProcessMessage(idMero, irc.ParseMessage("AWAY"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 305 mero :You are no longer marked as being away")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("AWAY")),
+		":robustirc.net 305 mero :You are no longer marked as being away")
 }
 
 // TestTopic tests that setting/getting topics works properly. Using topic as
 // the channel’s state, it also verifies that joining/parting will
 // create/delete channels.
 func TestTopic(t *testing.T) {
-	var got, want []*irc.Message
-
 	ClearState()
 	NetworkPassword = "foo"
 	ServerPrefix = &irc.Prefix{Name: "robustirc.net"}
@@ -346,75 +338,61 @@ func TestTopic(t *testing.T) {
 	ProcessMessage(idMero, irc.ParseMessage("NICK mero"))
 	ProcessMessage(idMero, irc.ParseMessage("USER foo 0 * :Axel Wagner"))
 
-	got = ProcessMessage(idSecure, irc.ParseMessage("TOPIC #nonexistant"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 403 sECuRE #nonexistant :No such channel")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idSecure, irc.ParseMessage("TOPIC #nonexistant")),
+		":robustirc.net 403 sECuRE #nonexistant :No such channel")
 
-	got = ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 331 sECuRE #test :No topic is set")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test")),
+		":robustirc.net 331 sECuRE #test :No topic is set")
 
-	got = ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :yeah, this is a topic."))
-	want = []*irc.Message{&irc.Message{
-		Prefix:   &sSecure.ircPrefix,
-		Command:  irc.TOPIC,
-		Params:   []string{"#test"},
-		Trailing: "yeah, this is a topic."},
-	}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchIrcmsg(t,
+		ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :yeah, this is a topic.")),
+		&irc.Message{
+			Prefix:   &sSecure.ircPrefix,
+			Command:  irc.TOPIC,
+			Params:   []string{"#test"},
+			Trailing: "yeah, this is a topic.",
+		})
 
-	got = ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :"))
-	want = []*irc.Message{irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad TOPIC #test :")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad TOPIC #test :")
 
 	ProcessMessage(idSecure, irc.ParseMessage("TOPIC #test :yeah, this is a topic."))
 
-	got = ProcessMessage(idMero, irc.ParseMessage("JOIN #test"))
-	want = []*irc.Message{
-		&irc.Message{Prefix: &sMero.ircPrefix, Command: irc.JOIN, Trailing: "#test"},
-		irc.ParseMessage(":robustirc.net 332 sECuRE #test :yeah, this is a topic."),
-		irc.ParseMessage(":robustirc.net 333 sECuRE #test sECuRE 1421864845"),
-		irc.ParseMessage(":robustirc.net 353 mero = #test :sECuRE mero"),
-		irc.ParseMessage(":robustirc.net 366 mero #test :End of /NAMES list."),
-	}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchIrcmsgs(t,
+		ProcessMessage(idMero, irc.ParseMessage("JOIN #test")),
+		[]*irc.Message{
+			&irc.Message{Prefix: &sMero.ircPrefix, Command: irc.JOIN, Trailing: "#test"},
+			irc.ParseMessage(":robustirc.net 332 mero #test :yeah, this is a topic."),
+			// TODO: the following line is flaky. We should set a defined time
+			// on the server for testing instead of the server using time.Now().
+			irc.ParseMessage(":robustirc.net 333 mero #test sECuRE " + strconv.FormatInt(time.Now().Unix(), 10)),
+			irc.ParseMessage(":robustirc.net 353 mero = #test :sECuRE mero"),
+			irc.ParseMessage(":robustirc.net 366 mero #test :End of /NAMES list."),
+		})
 
-	got = ProcessMessage(idMero, irc.ParseMessage("PART #test"))
-	want = []*irc.Message{&irc.Message{Prefix: &sMero.ircPrefix, Command: irc.PART, Params: []string{"#test"}}}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchIrcmsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("PART #test")),
+		&irc.Message{Prefix: &sMero.ircPrefix, Command: irc.PART, Params: []string{"#test"}})
 
-	got = ProcessMessage(idMero, irc.ParseMessage("TOPIC #test"))
-	want = []*irc.Message{
-		irc.ParseMessage(":robustirc.net 332 mero #test :yeah, this is a topic."),
-		irc.ParseMessage(":robustirc.net 333 mero #test sECuRE 1421864845"),
-	}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchIrcmsgs(t,
+		ProcessMessage(idMero, irc.ParseMessage("TOPIC #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 332 mero #test :yeah, this is a topic."),
+			// TODO: the following line is flaky. We should set a defined time
+			// on the server for testing instead of the server using time.Now().
+			irc.ParseMessage(":robustirc.net 333 mero #test sECuRE " + strconv.FormatInt(time.Now().Unix(), 10)),
+		})
 
-	got = ProcessMessage(idSecure, irc.ParseMessage("PART #test"))
-	want = []*irc.Message{&irc.Message{Prefix: &sSecure.ircPrefix, Command: irc.PART, Params: []string{"#test"}}}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchIrcmsg(t,
+		ProcessMessage(idSecure, irc.ParseMessage("PART #test")),
+		&irc.Message{Prefix: &sSecure.ircPrefix, Command: irc.PART, Params: []string{"#test"}})
 
-	got = ProcessMessage(idMero, irc.ParseMessage("TOPIC #test"))
-	want = []*irc.Message{irc.ParseMessage(":robustirc.net 403 mero #test :No such channel")}
-	if len(got) != len(want) || len(got) < 1 || bytes.Compare(got[0].Bytes(), want[0].Bytes()) != 0 {
-		t.Fatalf("got %v, want %v", got, want)
-	}
+	mustMatchMsg(t,
+		ProcessMessage(idMero, irc.ParseMessage("TOPIC #test")),
+		":robustirc.net 403 mero #test :No such channel")
 }
 
 func TestMotd(t *testing.T) {
