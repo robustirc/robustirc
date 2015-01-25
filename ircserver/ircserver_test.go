@@ -594,6 +594,24 @@ func TestTopic(t *testing.T) {
 	mustMatchMsg(t,
 		i.ProcessMessage(ids["mero"], irc.ParseMessage("TOPIC #test")),
 		":robustirc.net 403 mero #test :No such channel")
+
+	// Same with QUIT
+	i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(ids["mero"], irc.ParseMessage("JOIN #test"))
+
+	mustMatchIrcmsg(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("PART #test")),
+		&irc.Message{Prefix: &sMero.ircPrefix, Command: irc.PART, Params: []string{"#test"}})
+
+	mustMatchMsg(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("PART #test")),
+		":robustirc.net 442 mero #test :You're not on that channel")
+
+	i.ProcessMessage(ids["secure"], irc.ParseMessage("QUIT"))
+
+	mustMatchMsg(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("PART #test")),
+		":robustirc.net 403 mero #test :No such channel")
 }
 
 func TestMotd(t *testing.T) {

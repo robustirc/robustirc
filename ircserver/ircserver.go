@@ -87,6 +87,11 @@ type Session struct {
 	Operator     bool
 	AwayMsg      string
 
+	// The (raw) password from a PASS command.
+	Pass string
+
+	Server bool
+
 	// The current IRC message id at the time when the session was started.
 	// This is used in handleGetMessages to skip uninteresting messages.
 	startId types.RobustId
@@ -140,6 +145,11 @@ type IRCServer struct {
 	// the session id.
 	sessions   map[types.RobustId]*Session
 	sessionsMu *sync.RWMutex
+
+	// serverSessions is a slice that contains the IDs of all sessions that
+	// represent server-to-server connections, so that they can efficiently be
+	// added in e.g. interestJoin.
+	serverSessions []int64
 
 	// nicks maps from nicknames in lower-case (e.g. NickToLower("sECuRE")) to
 	// session pointers. Being able to quickly look up sessions based on their
@@ -225,8 +235,12 @@ func (i *IRCServer) DeleteSessionById(sessionid types.RobustId) {
 // itself (when processing QUIT or KILL) or from the API (DELETE request coming
 // from the bridge).
 func (i *IRCServer) DeleteSession(s *Session) {
-	for _, c := range i.channels {
+	for channelname, c := range i.channels {
 		delete(c.nicks, s.Nick)
+
+		if len(c.nicks) == 0 {
+			delete(i.channels, channelname)
+		}
 	}
 	delete(i.nicks, NickToLower(s.Nick))
 	// Instead of deleting the session here, we defer that to SendMessages, as
@@ -245,6 +259,10 @@ func (i *IRCServer) ExpireSessions(timeout time.Duration) []*types.RobustMessage
 	defer i.sessionsMu.RUnlock()
 
 	for id, s := range i.sessions {
+		// Skip sessions that were introduced by services (e.g. NickServ).
+		if id.Reply != 0 {
+			continue
+		}
 		if time.Since(s.LastActivity) <= timeout {
 			continue
 		}
@@ -291,7 +309,11 @@ func (i *IRCServer) ProcessMessage(session types.RobustId, message *irc.Message)
 
 	messagesProcessed.WithLabelValues(command).Inc()
 
-	if !s.loggedIn() && command != irc.NICK && command != irc.USER {
+	if !s.loggedIn() && !s.Server &&
+		command != irc.NICK &&
+		command != irc.USER &&
+		command != irc.PASS &&
+		command != irc.SERVER {
 		return []*irc.Message{&irc.Message{
 			Prefix:   i.ServerPrefix,
 			Command:  irc.ERR_NOTREGISTERED,
@@ -300,7 +322,11 @@ func (i *IRCServer) ProcessMessage(session types.RobustId, message *irc.Message)
 		}}
 	}
 
-	cmd, ok := commands[command]
+	var serverPrefix string
+	if s.Server {
+		serverPrefix = "server_"
+	}
+	cmd, ok := commands[serverPrefix+command]
 	if !ok {
 		return []*irc.Message{&irc.Message{
 			Prefix:   i.ServerPrefix,
@@ -323,6 +349,8 @@ func (i *IRCServer) ProcessMessage(session types.RobustId, message *irc.Message)
 	for _, reply := range replies {
 		if reply.Prefix == nil {
 			reply.Prefix = i.ServerPrefix
+		} else if reply.Prefix.Name == "" {
+			reply.Prefix = nil
 		}
 	}
 	return replies
@@ -348,24 +376,42 @@ func (i *IRCServer) SendMessages(replies []*irc.Message, session types.RobustId,
 			Reply: int64(idx + 1),
 		}
 
+		if reply.Prefix == nil {
+			server := false
+			i.sessionsMu.RLock()
+			if s, ok := i.sessions[session]; ok {
+				server = s.Server
+			}
+			i.sessionsMu.RUnlock()
+			if server {
+				robustmsg.InterestingFor = make(map[int64]bool)
+				robustmsg.InterestingFor[session.Id] = true
+				for _, serverid := range i.serverSessions {
+					robustmsg.InterestingFor[serverid] = true
+				}
+				robustreplies[idx] = robustmsg
+				continue
+			}
+		}
+
+		// No strings.ToUpper(ircmsg.Command) because we generate all messages,
+		// thus they are well-formed.
+		cmd, ok := commands[reply.Command]
+		if ok && cmd.Interesting != nil {
+			robustmsg.InterestingFor = cmd.Interesting(i, session, reply)
+			robustreplies[idx] = robustmsg
+			continue
+		}
+
 		// Everything the server sends directly is interesting to the client.
-		if *reply.Prefix == *i.ServerPrefix {
+		if reply.Prefix != nil && *reply.Prefix == *i.ServerPrefix {
 			robustmsg.InterestingFor = make(map[int64]bool)
 			robustmsg.InterestingFor[session.Id] = true
 			robustreplies[idx] = robustmsg
 			continue
 		}
 
-		// No strings.ToUpper(ircmsg.Command) because we generate all messages,
-		// thus they are well-formed.
-		cmd, ok := commands[reply.Command]
-		if !ok || cmd.Interesting == nil {
-			robustmsg.InterestingFor = make(map[int64]bool)
-			robustreplies[idx] = robustmsg
-			continue
-		}
-
-		robustmsg.InterestingFor = cmd.Interesting(i, session, reply)
+		robustmsg.InterestingFor = make(map[int64]bool)
 		robustreplies[idx] = robustmsg
 	}
 
@@ -373,6 +419,13 @@ func (i *IRCServer) SendMessages(replies []*irc.Message, session types.RobustId,
 	i.sessionsMu.Lock()
 	defer i.sessionsMu.Unlock()
 	if s, ok := i.sessions[session]; ok && s.deleted {
+		if s.Server {
+			for id, session := range i.sessions {
+				if id.Id == s.Id.Id && id.Reply != 0 && session.deleted {
+					delete(i.sessions, id)
+				}
+			}
+		}
 		delete(i.sessions, session)
 	}
 }

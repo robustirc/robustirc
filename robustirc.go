@@ -337,9 +337,9 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 
 	case types.RobustDeleteSession:
 		if _, err := ircServer.GetSession(msg.Session); err == nil {
+			// TODO(secure): overwrite QUIT messages for services with an faq entry explaining that they are not robust yet.
 			replies := ircServer.ProcessMessage(msg.Session, irc.ParseMessage("QUIT :"+string(msg.Data)))
 			ircServer.SendMessages(replies, msg.Session, msg.Id.Id)
-			ircServer.DeleteSessionById(msg.Session)
 		}
 
 	case types.RobustIRCFromClient:

@@ -71,6 +71,11 @@ func init() {
 		Interesting:   (*IRCServer).interestPrivmsg,
 		StillRelevant: neverRelevant,
 	}
+	commands["NOTICE"] = &ircCommand{
+		Func:          (*IRCServer).cmdPrivmsg,
+		Interesting:   (*IRCServer).interestPrivmsg,
+		StillRelevant: neverRelevant,
+	}
 	commands["MODE"] = &ircCommand{
 		Func:        (*IRCServer).cmdMode,
 		MinParams:   1,
@@ -101,6 +106,7 @@ func init() {
 			},
 		}
 	}
+	commands["PASS"] = &ircCommand{Func: (*IRCServer).cmdPass}
 }
 
 func neverRelevant(m *irc.Message, prev, next logCursor) (bool, error) {
@@ -155,7 +161,18 @@ func (i *IRCServer) interestNick(sessionid types.RobustId, msg *irc.Message) map
 	// everyone who is in any of the channels the nick is in
 	result := make(map[int64]bool)
 
+	for _, serverid := range i.serverSessions {
+		result[serverid] = true
+	}
+
+	// Send NICK message in server-to-server format only to servers.
+	if len(msg.Params) > 1 {
+		return result
+	}
+
 	s := i.sessions[sessionid]
+
+	result[i.nicks[NickToLower(msg.Trailing)].Id.Id] = true
 
 	for channelname, _ := range s.Channels {
 		channel := i.channels[channelname]
@@ -255,6 +272,30 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 		Trailing: "are supported by this server",
 	})
 
+	// TODO: if NICK was sent first, wait for USER. add test for that. we need a non-zero username here
+	user := "placeholder"
+	if s.Username != "" {
+		user = s.Username
+	}
+	realname := "Place Holder"
+	if s.Realname != "" {
+		realname = s.Realname
+	}
+	replies = append(replies, &irc.Message{
+		Prefix:  &irc.Prefix{},
+		Command: irc.NICK,
+		Params: []string{
+			s.Nick,
+			"1", // hopcount (ignored by anope)
+			"1", // timestamp
+			user,
+			s.ircPrefix.Host,
+			i.ServerPrefix.Name,
+			"0", // svid TODO: this field is not in the RFC?
+		},
+		Trailing: realname,
+	})
+
 	replies = append(replies, i.cmdMotd(s, msg)...)
 
 	return replies
@@ -295,6 +336,12 @@ func (i *IRCServer) interestJoin(sessionid types.RobustId, msg *irc.Message) map
 	// everyone who currently is in the channel
 	result := make(map[int64]bool)
 	channel := i.channels[msg.Trailing]
+
+	// If this is a server-to-server prefix, don’t send the message to clients.
+	if msg.Prefix.User == "" {
+		return result
+	}
+
 	for nick, _ := range channel.nicks {
 		result[i.nicks[NickToLower(nick)].Id.Id] = true
 	}
@@ -371,6 +418,15 @@ func (i *IRCServer) cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 		Command:  irc.JOIN,
 		Trailing: channelname,
 	})
+	var prefix string
+	if c.nicks[s.Nick][chanop] {
+		prefix = prefix + string('@')
+	}
+	replies = append(replies, &irc.Message{
+		Command:  "SJOIN",
+		Params:   []string{"1", channelname},
+		Trailing: prefix + s.Nick,
+	})
 	// Integrate the topic response by simulating a TOPIC command.
 	replies = append(replies, i.cmdTopic(s, &irc.Message{Command: irc.TOPIC, Params: []string{channelname}})...)
 	// TODO(secure): why the = param?
@@ -391,6 +447,11 @@ func (i *IRCServer) cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 func (i *IRCServer) interestPart(sessionid types.RobustId, msg *irc.Message) map[int64]bool {
 	result := make(map[int64]bool)
 	channel, ok := i.channels[msg.Params[0]]
+
+	for _, serverid := range i.serverSessions {
+		result[serverid] = true
+	}
+
 	if ok {
 		for nick, _ := range channel.nicks {
 			result[i.nicks[NickToLower(nick)].Id.Id] = true
@@ -463,6 +524,10 @@ func (i *IRCServer) interestQuit(sessionid types.RobustId, msg *irc.Message) map
 	// everyone who is in any of the channels the nick is in
 	result := make(map[int64]bool)
 
+	for _, serverid := range i.serverSessions {
+		result[serverid] = true
+	}
+
 	s := i.sessions[sessionid]
 
 	for channelname, _ := range s.Channels {
@@ -479,13 +544,32 @@ func (i *IRCServer) interestQuit(sessionid types.RobustId, msg *irc.Message) map
 }
 
 func (i *IRCServer) cmdQuit(s *Session, msg *irc.Message) []*irc.Message {
-	prefix := s.ircPrefix
+	var replies []*irc.Message
+
 	i.DeleteSession(s)
-	return []*irc.Message{&irc.Message{
-		Prefix:   &prefix,
+	replies = append(replies, &irc.Message{
+		Prefix:   &s.ircPrefix,
 		Command:  irc.QUIT,
 		Trailing: msg.Trailing,
-	}}
+	})
+
+	if s.Server {
+		// For services, we also need to delete all sessions that share the
+		// same .Id, but have a different .Reply.
+		for id, session := range i.sessions {
+			if id.Id != s.Id.Id || id.Reply == 0 {
+				continue
+			}
+			i.DeleteSession(session)
+			replies = append(replies, &irc.Message{
+				Prefix:   &session.ircPrefix,
+				Command:  irc.QUIT,
+				Trailing: msg.Trailing,
+			})
+		}
+	}
+
+	return replies
 }
 
 func (i *IRCServer) interestPrivmsg(sessionid types.RobustId, msg *irc.Message) map[int64]bool {
@@ -532,7 +616,7 @@ func (i *IRCServer) cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 	if strings.HasPrefix(msg.Params[0], "#") {
 		return []*irc.Message{&irc.Message{
 			Prefix:   &s.ircPrefix,
-			Command:  irc.PRIVMSG,
+			Command:  msg.Command,
 			Params:   []string{msg.Params[0]},
 			Trailing: msg.Trailing,
 		}}
@@ -551,12 +635,12 @@ func (i *IRCServer) cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 
 	replies = append(replies, &irc.Message{
 		Prefix:   &s.ircPrefix,
-		Command:  irc.PRIVMSG,
+		Command:  msg.Command,
 		Params:   []string{msg.Params[0]},
 		Trailing: msg.Trailing,
 	})
 
-	if session.AwayMsg != "" {
+	if session.AwayMsg != "" && msg.Command == irc.PRIVMSG {
 		replies = append(replies, &irc.Message{
 			Command:  irc.RPL_AWAY,
 			Params:   []string{s.Nick, msg.Params[0]},
@@ -571,6 +655,13 @@ func (i *IRCServer) interestMode(sessionid types.RobustId, msg *irc.Message) map
 	result := make(map[int64]bool)
 
 	channel, ok := i.channels[msg.Params[0]]
+	// Don’t send messages from services back to services.
+	if msg.Prefix.Host != "services" {
+		for _, serverid := range i.serverSessions {
+			result[serverid] = true
+		}
+	}
+
 	if !ok {
 		// It MUST either be a channel or a nick, otherwise no PRIVMSG reply is
 		// generated. Hence no error checking.
@@ -742,6 +833,7 @@ func (i *IRCServer) cmdWho(s *Session, msg *irc.Message) []*irc.Message {
 }
 
 func (i *IRCServer) cmdOper(s *Session, msg *irc.Message) []*irc.Message {
+	// TODO: set umode +o
 	name := msg.Params[0]
 	password := msg.Params[1]
 	authenticated := false
@@ -848,6 +940,15 @@ func (i *IRCServer) interestTopic(sessionid types.RobustId, msg *irc.Message) ma
 	result := make(map[int64]bool)
 
 	channel := i.channels[msg.Params[0]]
+	for _, serverid := range i.serverSessions {
+		result[serverid] = true
+	}
+
+	// Send outgoing server-to-server messages only to servers.
+	if len(msg.Params) > 1 {
+		return result
+	}
+
 	for nick, _ := range channel.nicks {
 		result[i.nicks[NickToLower(nick)].Id.Id] = true
 	}
@@ -872,13 +973,22 @@ func (i *IRCServer) cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 		c.topicTime = time.Time{}
 		c.topic = ""
 
-		return []*irc.Message{&irc.Message{
-			Prefix:        &s.ircPrefix,
-			Command:       irc.TOPIC,
-			Params:        []string{channel},
-			Trailing:      msg.Trailing,
-			EmptyTrailing: true,
-		}}
+		return []*irc.Message{
+			&irc.Message{
+				Prefix:        &s.ircPrefix,
+				Command:       irc.TOPIC,
+				Params:        []string{channel},
+				Trailing:      msg.Trailing,
+				EmptyTrailing: true,
+			},
+			&irc.Message{
+				Prefix:        &irc.Prefix{Name: s.Nick},
+				Command:       irc.TOPIC,
+				Params:        []string{channel, s.Nick, "0"},
+				Trailing:      msg.Trailing,
+				EmptyTrailing: true,
+			},
+		}
 	}
 
 	if !s.Channels[channel] {
@@ -928,12 +1038,20 @@ func (i *IRCServer) cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 	c.topicTime = s.LastActivity
 	c.topic = msg.Trailing
 
-	return []*irc.Message{&irc.Message{
-		Prefix:   &s.ircPrefix,
-		Command:  irc.TOPIC,
-		Params:   []string{channel},
-		Trailing: msg.Trailing,
-	}}
+	return []*irc.Message{
+		&irc.Message{
+			Prefix:   &s.ircPrefix,
+			Command:  irc.TOPIC,
+			Params:   []string{channel},
+			Trailing: msg.Trailing,
+		},
+		&irc.Message{
+			Prefix:   &irc.Prefix{Name: s.Nick},
+			Command:  irc.TOPIC,
+			Params:   []string{channel, c.topicNick, strconv.FormatInt(c.topicTime.Unix(), 10)},
+			Trailing: msg.Trailing,
+		},
+	}
 }
 
 func (i *IRCServer) cmdMotd(s *Session, msg *irc.Message) []*irc.Message {
@@ -955,4 +1073,9 @@ func (i *IRCServer) cmdMotd(s *Session, msg *irc.Message) []*irc.Message {
 			Trailing: "End of MOTD command",
 		},
 	}
+}
+
+func (i *IRCServer) cmdPass(s *Session, msg *irc.Message) []*irc.Message {
+	s.Pass = msg.Trailing
+	return []*irc.Message{}
 }
