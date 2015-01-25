@@ -40,6 +40,17 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 								{{ end }}
 								</ul></td>
 							</tr>
+
+							{{ if gt (.Latencies|len) 0 }}
+							<tr>
+								<td class="col-sm-2 field-label"><label>Latencies:</label></td>
+								<td class="col-sm-10"><ul class="list-unstyled">
+								{{ range $host, $latency := .Latencies }}
+									<li><a href="https://{{ $host }}">{{ $host }}</a> avg: {{ $latency }}</li>
+								{{ end }}
+								</ul></td>
+							</tr>
+							{{ end }}
 						</tbody>
 					</table>
 				</div>
@@ -112,7 +123,7 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 			</div>
 
 			<div class="row">
-				<h2>Raft Log Entries (index={{ .First }} to index={{ .Last}})</h2>
+				<h2>IRC Log Entries (index={{ .First }} to index={{ .Last}})</h2>
 				<table class="table table-striped">
 					<thead>
 						<tr>
