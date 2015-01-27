@@ -22,6 +22,7 @@ import (
 
 	"bitbucket.org/kardianos/osext"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/types"
@@ -536,6 +537,7 @@ func main() {
 	privaterouter.HandleFunc("/leader", handleLeader)
 	privaterouter.HandleFunc("/executablehash", handleHash)
 	privaterouter.HandleFunc("/quit", handleQuit)
+	privaterouter.Handle("/metrics", prometheus.Handler())
 
 	publicrouter := mux.NewRouter()
 	publicrouter.HandleFunc("/robustirc/v1/session", handleCreateSession).Methods("POST")

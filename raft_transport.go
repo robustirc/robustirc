@@ -11,11 +11,37 @@ import (
 	"log"
 	"net"
 	"net/http"
+	net_url "net/url"
 	"path"
 	"time"
 
 	"github.com/hashicorp/raft"
+	"github.com/prometheus/client_golang/prometheus"
 )
+
+var (
+	requests = prometheus.NewCounter(prometheus.CounterOpts{
+		Subsystem: "transport",
+		Name:      "requests",
+		Help:      "Number of requests handled",
+	})
+
+	latency = prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Subsystem: "transport",
+			Name:      "latency",
+			Help:      "Latency in nanoseconds",
+			// Compute the quantiles over a rolling 1-minute window.
+			MaxAge: 1 * time.Minute,
+		},
+		[]string{"peer"},
+	)
+)
+
+func init() {
+	prometheus.MustRegister(requests)
+	prometheus.MustRegister(latency)
+}
 
 type Transport struct {
 	consumer chan raft.RPC
@@ -84,7 +110,10 @@ func (t *Transport) send(url string, in, out interface{}) error {
 	if err = json.Unmarshal(buf, out); err != nil {
 		return fmt.Errorf("could not unmarshal InstallShnapshotResponse: %v", err)
 	}
-	log.Printf("send(%q) took %v\n", url, time.Since(started))
+	parsed, err := net_url.Parse(url)
+	if err == nil {
+		latency.WithLabelValues(parsed.Host).Observe(float64(time.Since(started).Nanoseconds()))
+	}
 	return nil
 }
 
@@ -190,6 +219,7 @@ func (t *Transport) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	}
 
 	t.handle(res, req, rpc)
+	requests.Inc()
 }
 
 func (t *Transport) SetHeartbeatHandler(cb func(rpc raft.RPC)) {
