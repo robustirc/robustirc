@@ -134,8 +134,9 @@ func startircserver(singlenode bool) {
 	}
 
 	fmt.Fprintf(f, "#!/bin/sh\n")
-	fmt.Fprintf(f, "PATH=%q robustirc %s >>%q 2>>%q\n",
+	fmt.Fprintf(f, "PATH=%q ROBUSTIRC_NETWORK_PASSWORD=%q robustirc %s >>%q 2>>%q\n",
 		os.Getenv("PATH"),
+		networkPassword,
 		strings.Join(quotedargs, " "),
 		filepath.Join(tempdir, "stdout.txt"),
 		filepath.Join(tempdir, "stderr.txt"))
