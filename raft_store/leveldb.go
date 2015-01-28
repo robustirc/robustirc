@@ -1,4 +1,4 @@
-// package raft_store implements a storage backend for raft on top of LevelDB.
+// Package raft_store implements a storage backend for raft on top of LevelDB.
 //
 // LevelDBStore implements the LogStore and StableStore interfaces of
 // https://godoc.org/github.com/hashicorp/raft by using
@@ -18,6 +18,8 @@ import (
 
 var metaKey = []byte("logstore-meta")
 
+// LevelDBStore implements the raft.LogStore and raft.StableStore interfaces on
+// top of leveldb.
 type LevelDBStore struct {
 	mu   sync.RWMutex
 	meta logstoreMeta
