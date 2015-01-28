@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robustirc/robustirc/types"
-
 	"github.com/sorcix/irc"
 )
 
@@ -61,7 +61,32 @@ var (
 
 	// TODO(secure): remove this once OPER uses custom (configured) passwords.
 	NetworkPassword string
+
+	messagesProcessed = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: "irc",
+			Name:      "messages_processed",
+			Help:      "Number of messages processed by message command",
+		},
+		[]string{"command"},
+	)
+
+	sessionsGauge = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Subsystem: "irc",
+			Name:      "sessions",
+			Help:      "Number of IRC sessions",
+		},
+		func() float64 {
+			return float64(len(Sessions))
+		},
+	)
 )
+
+func init() {
+	prometheus.MustRegister(messagesProcessed)
+	prometheus.MustRegister(sessionsGauge)
+}
 
 type ircCommand struct {
 	Func func(*Session, *irc.Message) []*irc.Message
@@ -207,6 +232,8 @@ func NickToLower(nick string) string {
 func ProcessMessage(session types.RobustId, message *irc.Message) []*irc.Message {
 	// alias for convenience
 	s := Sessions[session]
+
+	messagesProcessed.WithLabelValues(message.Command).Inc()
 
 	if !s.loggedIn() && message.Command != irc.NICK && message.Command != irc.USER {
 		return []*irc.Message{&irc.Message{
