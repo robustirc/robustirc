@@ -92,7 +92,26 @@ var (
 
 	// Overwritten by Makefile.
 	Version = "unknown"
+
+	isLeaderGauge = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Subsystem: "raft",
+			Name:      "isleader",
+			Help:      "1 if this node is the raft leader, 0 otherwise",
+		},
+		func() float64 {
+			if node.State() == raft.Leader {
+				return 1
+			} else {
+				return 0
+			}
+		},
+	)
 )
+
+func init() {
+	prometheus.MustRegister(isLeaderGauge)
+}
 
 type robustSnapshot struct {
 	firstIndex uint64
