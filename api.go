@@ -167,8 +167,6 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request) {
 
 	s.LastPostMessageReply = msgbytes
 	s.LastClientMessageId = req.ClientMessageId
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(msgbytes)
 }
 
 func handleJoin(w http.ResponseWriter, r *http.Request) {
