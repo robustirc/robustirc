@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/robustirc/robustirc/ircserver"
@@ -22,7 +23,8 @@ import (
 )
 
 var (
-	GetMessageRequests = make(map[string]GetMessageStats)
+	GetMessageRequests    = make(map[string]GetMessageStats)
+	getMessagesRequestsMu sync.Mutex
 )
 
 type GetMessageStats struct {
@@ -216,13 +218,17 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	remoteAddr := r.RemoteAddr
+	getMessagesRequestsMu.Lock()
 	GetMessageRequests[remoteAddr] = GetMessageStats{
 		Session: session,
 		Nick:    s.Nick,
 		Started: time.Now(),
 	}
+	getMessagesRequestsMu.Unlock()
 	defer func() {
+		getMessagesRequestsMu.Lock()
 		delete(GetMessageRequests, remoteAddr)
+		getMessagesRequestsMu.Unlock()
 	}()
 
 	lastSeen := s.StartId
