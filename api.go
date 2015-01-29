@@ -15,10 +15,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/julienschmidt/httprouter"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/types"
 
-	"github.com/gorilla/mux"
 	"github.com/hashicorp/raft"
 )
 
@@ -67,11 +67,10 @@ func maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body io.ReadClos
 	p.ServeHTTP(w, r)
 }
 
-func session(r *http.Request) (*ircserver.Session, types.RobustId, error) {
+func session(r *http.Request, ps httprouter.Params) (*ircserver.Session, types.RobustId, error) {
 	var sessionid types.RobustId
 
-	idstr := mux.Vars(r)["sessionid"]
-	id, err := strconv.ParseInt(idstr, 0, 64)
+	id, err := strconv.ParseInt(ps[0].Value, 0, 64)
 	if err != nil {
 		return nil, sessionid, fmt.Errorf("invalid session: %v", err)
 	}
@@ -94,8 +93,8 @@ func session(r *http.Request) (*ircserver.Session, types.RobustId, error) {
 	return session, sessionid, nil
 }
 
-func sessionOrProxy(w http.ResponseWriter, r *http.Request) (*ircserver.Session, types.RobustId, error) {
-	session, sessionid, err := session(r)
+func sessionOrProxy(w http.ResponseWriter, r *http.Request, ps httprouter.Params) (*ircserver.Session, types.RobustId, error) {
+	session, sessionid, err := session(r, ps)
 	if err == ircserver.ErrSessionNotYetSeen {
 		// The session might exist on the leader, so we must proxy.
 		maybeProxyToLeader(w, r, r.Body)
@@ -111,8 +110,8 @@ func sessionOrProxy(w http.ResponseWriter, r *http.Request) (*ircserver.Session,
 // handlePostMessage is called by the robustirc-brigde whenever a message should be
 // posted. The handler blocks until either the data was written or an error
 // occurred. If successful, it returns the unique id of the message.
-func handlePostMessage(w http.ResponseWriter, r *http.Request) {
-	s, session, err := sessionOrProxy(w, r)
+func handlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	s, session, err := sessionOrProxy(w, r, ps)
 	if err != nil {
 		return
 	}
@@ -202,10 +201,10 @@ func handleSnapshot(res http.ResponseWriter, req *http.Request) {
 	log.Println("snapshotted")
 }
 
-func handleGetMessages(w http.ResponseWriter, r *http.Request) {
+func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Avoid sessionOrProxy() because GetMessages can be answered on any raft
 	// node, it’s a read-only request.
-	s, session, err := session(r)
+	s, session, err := session(r, ps)
 	if err != nil {
 		if err == ircserver.ErrSessionNotYetSeen {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -293,7 +292,11 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleCreateSession(w http.ResponseWriter, r *http.Request) {
+func handleCreateSession(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	if ps[0].Value != "session" {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
 	b := make([]byte, 128)
 	if _, err := rand.Read(b); err != nil {
 		http.Error(w, fmt.Sprintf("Cannot generate SessionAuth cookie: %v", err), http.StatusInternalServerError)
@@ -329,8 +332,8 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleDeleteSession(w http.ResponseWriter, r *http.Request) {
-	_, session, err := sessionOrProxy(w, r)
+func handleDeleteSession(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	_, session, err := sessionOrProxy(w, r, ps)
 	if err != nil {
 		return
 	}

@@ -22,13 +22,13 @@ import (
 
 	"bitbucket.org/kardianos/osext"
 
+	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/types"
 
 	auth "github.com/abbot/go-http-auth"
-	"github.com/gorilla/mux"
 	"github.com/hashicorp/raft"
 	"github.com/sorcix/irc"
 
@@ -547,22 +547,22 @@ func main() {
 	// TODO: observeleaderchanges?
 	// TODO: observenexttime?
 
-	privaterouter := mux.NewRouter()
-	privaterouter.HandleFunc("/", handleStatus)
-	privaterouter.HandleFunc("/irclog", handleIrclog)
-	privaterouter.PathPrefix("/raft/").Handler(transport)
-	privaterouter.HandleFunc("/join", handleJoin)
-	privaterouter.HandleFunc("/snapshot", handleSnapshot)
-	privaterouter.HandleFunc("/leader", handleLeader)
-	privaterouter.HandleFunc("/executablehash", handleHash)
-	privaterouter.HandleFunc("/quit", handleQuit)
-	privaterouter.Handle("/metrics", prometheus.Handler())
+	privaterouter := httprouter.New()
+	privaterouter.HandlerFunc("GET", "/", handleStatus)
+	privaterouter.HandlerFunc("GET", "/irclog", handleIrclog)
+	privaterouter.Handler("POST", "/raft/*rest", transport)
+	privaterouter.HandlerFunc("POST", "/join", handleJoin)
+	privaterouter.HandlerFunc("GET", "/snapshot", handleSnapshot)
+	privaterouter.HandlerFunc("GET", "/leader", handleLeader)
+	privaterouter.HandlerFunc("GET", "/executablehash", handleHash)
+	privaterouter.HandlerFunc("POST", "/quit", handleQuit)
+	privaterouter.Handler("GET", "/metrics", prometheus.Handler())
 
-	publicrouter := mux.NewRouter()
-	publicrouter.HandleFunc("/robustirc/v1/session", handleCreateSession).Methods("POST")
-	publicrouter.HandleFunc("/robustirc/v1/{sessionid:0x[0-9a-f]+}", handleDeleteSession).Methods("DELETE")
-	publicrouter.HandleFunc("/robustirc/v1/{sessionid:0x[0-9a-f]+}/message", handlePostMessage).Methods("POST")
-	publicrouter.HandleFunc("/robustirc/v1/{sessionid:0x[0-9a-f]+}/messages", handleGetMessages).Methods("GET")
+	publicrouter := httprouter.New()
+	publicrouter.Handle("POST", "/robustirc/v1/:sessionid", handleCreateSession)
+	publicrouter.Handle("POST", "/robustirc/v1/:sessionid/message", handlePostMessage)
+	publicrouter.Handle("GET", "/robustirc/v1/:sessionid/messages", handleGetMessages)
+	publicrouter.Handle("DELETE", "/robustirc/v1/:sessionid", handleDeleteSession)
 
 	a := auth.NewBasicAuthenticator("robustirc", func(user, realm string) string {
 		if user == "robustirc" {
