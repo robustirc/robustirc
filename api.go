@@ -17,6 +17,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/outputstream"
 	"github.com/robustirc/robustirc/types"
 
 	"github.com/hashicorp/raft"
@@ -262,28 +263,30 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	enc := json.NewEncoder(w)
 	var msgcopy types.RobustMessage
 	for {
-		msg := ircserver.GetMessage(lastSeen)
+		msgs := outputstream.GetNext(lastSeen)
 		s, err := ircserver.GetSession(session)
 		if err != nil {
 			// Session was deleted in the meanwhile.
 			break
 		}
 
-		lastSeen = msg.Id
+		lastSeen = msgs[0].Id
 
-		if !s.InterestedIn(msg) {
-			continue
-		}
+		for _, msg := range msgs {
+			if !s.InterestedIn(msg) {
+				continue
+			}
 
-		// Remove the ClientMessageId before sending, just in case it contains
-		// sensitive information (e.g. the random values leaking state of the
-		// PRNG).
-		msgcopy = *msg
-		msgcopy.ClientMessageId = 0
+			// Remove the ClientMessageId before sending, just in case it contains
+			// sensitive information (e.g. the random values leaking state of the
+			// PRNG).
+			msgcopy = *msg
+			msgcopy.ClientMessageId = 0
 
-		if err := enc.Encode(&msgcopy); err != nil {
-			log.Printf("Error encoding JSON: %v\n", err)
-			return
+			if err := enc.Encode(&msgcopy); err != nil {
+				log.Printf("Error encoding JSON: %v\n", err)
+				return
+			}
 		}
 
 		if f, ok := w.(http.Flusher); ok {

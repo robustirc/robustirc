@@ -49,6 +49,8 @@ func mustMatchMsg(t *testing.T, got []*irc.Message, want string) {
 }
 
 func TestSessionInitialization(t *testing.T) {
+	ClearState()
+
 	id := types.RobustId{Id: time.Now().UnixNano()}
 
 	CreateSession(id, "authbytes")

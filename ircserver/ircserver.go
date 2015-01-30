@@ -4,14 +4,13 @@ package ircserver
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/robustirc/robustirc/outputstream"
 	"github.com/robustirc/robustirc/types"
 	"github.com/sorcix/irc"
 )
@@ -49,11 +48,6 @@ var (
 	Sessions       = make(map[types.RobustId]*Session)
 	channels       map[string]*channel
 	ServerPrefix   *irc.Prefix
-
-	ircOutputMu sync.Mutex
-	ircOutput   []types.RobustMessage
-	idToIdx     map[types.RobustId]int
-	newMessage  = sync.NewCond(&sync.Mutex{})
 
 	lastProcessed types.RobustId
 
@@ -169,8 +163,7 @@ type channel struct {
 func ClearState() {
 	channels = make(map[string]*channel)
 	Sessions = make(map[types.RobustId]*Session)
-	idToIdx = make(map[types.RobustId]int)
-	idToIdx[types.RobustId{}] = -1
+	outputstream.Reset()
 }
 
 // UpdateLastMessage stores the clientmessageid of the last message in the
@@ -188,14 +181,10 @@ func UpdateLastMessage(msg *types.RobustMessage, serialized []byte) error {
 
 // CreateSession creates a new session (equivalent to an IRC connection).
 func CreateSession(id types.RobustId, auth string) {
-	var lastSeen types.RobustId
-	if len(ircOutput) > 0 {
-		lastSeen = ircOutput[len(ircOutput)-1].Id
-	}
 	Sessions[id] = &Session{
 		Id:           id,
 		Auth:         auth,
-		StartId:      lastSeen,
+		StartId:      outputstream.LastSeen(),
 		Channels:     make(map[string]bool),
 		LastActivity: time.Unix(0, id.Id),
 	}
@@ -273,9 +262,13 @@ func ProcessMessage(session types.RobustId, message *irc.Message) []*irc.Message
 }
 
 func SendMessages(replies []*irc.Message, session types.RobustId, id int64) {
-	ircOutputMu.Lock()
-	defer ircOutputMu.Unlock()
 	lastProcessed = types.RobustId{Id: id}
+
+	if len(replies) == 0 {
+		return
+	}
+
+	robustreplies := make([]*types.RobustMessage, len(replies))
 	for idx, reply := range replies {
 		robustmsg := types.NewRobustMessage(types.RobustIRCToClient, session, string(reply.Bytes()))
 		// The IDs must be the same across servers.
@@ -283,19 +276,13 @@ func SendMessages(replies []*irc.Message, session types.RobustId, id int64) {
 			Id:    id,
 			Reply: int64(idx + 1),
 		}
-		idToIdx[robustmsg.Id] = len(ircOutput)
-		log.Printf("Writing id %v as idx %d: %v\n", robustmsg.Id, len(ircOutput), robustmsg)
-		ircOutput = append(ircOutput, *robustmsg)
+		robustreplies[idx] = robustmsg
 	}
 
-	if len(replies) > 0 {
-		newMessage.Broadcast()
-	}
+	outputstream.Add(robustreplies)
 }
 
 func SendPing(master net.Addr, peers []net.Addr) {
-	ircOutputMu.Lock()
-	defer ircOutputMu.Unlock()
 	pingmsg := types.NewRobustMessage(types.RobustPing, types.RobustId{}, "")
 	for _, peer := range peers {
 		pingmsg.Servers = append(pingmsg.Servers, peer.String())
@@ -303,33 +290,12 @@ func SendPing(master net.Addr, peers []net.Addr) {
 	if master != nil {
 		pingmsg.Currentmaster = master.String()
 	}
-	idToIdx[pingmsg.Id] = len(ircOutput)
-	ircOutput = append(ircOutput, *pingmsg)
-	newMessage.Broadcast()
+	outputstream.Add([]*types.RobustMessage{pingmsg})
 }
 
 func GetMessageNonBlocking(lastseen types.RobustId) *types.RobustMessage {
-	idx, _ := idToIdx[lastseen]
-	if idx+1 >= len(ircOutput) {
-		return nil
-	}
-	return &ircOutput[idx+1]
-}
-
-// GetMessage returns the IRC message with index 'idx', possibly blocking until
-// that message appears.
-func GetMessage(lastseen types.RobustId) *types.RobustMessage {
-	var idx int
-	newMessage.L.Lock()
-	defer newMessage.L.Unlock()
-	// Sleep until processMessage() wakes us up for a new message.
-	for {
-		idx = idToIdx[lastseen] + 1
-		if idx < len(ircOutput) {
-			return &ircOutput[idx]
-		}
-		newMessage.Wait()
-	}
+	// TODO(secure): fix
+	return nil
 }
 
 func GetSession(id types.RobustId) (*Session, error) {
