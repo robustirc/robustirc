@@ -262,35 +262,75 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 
 	enc := json.NewEncoder(w)
 	var msgcopy types.RobustMessage
-	for {
-		msgs := outputstream.GetNext(lastSeen)
-		s, err := ircserver.GetSession(session)
-		if err != nil {
-			// Session was deleted in the meanwhile.
-			break
-		}
-
-		lastSeen = msgs[0].Id
-
-		for _, msg := range msgs {
-			if !s.InterestedIn(msg) {
-				continue
-			}
-
-			// Remove the ClientMessageId before sending, just in case it contains
-			// sensitive information (e.g. the random values leaking state of the
-			// PRNG).
-			msgcopy = *msg
-			msgcopy.ClientMessageId = 0
-
-			if err := enc.Encode(&msgcopy); err != nil {
-				log.Printf("Error encoding JSON: %v\n", err)
+	flushTimer := time.NewTimer(1 * time.Second)
+	flushTimer.Stop()
+	var lastFlush time.Time
+	willFlush := false
+	msgschan := make(chan []*types.RobustMessage)
+	done := make(chan bool)
+	go func() {
+		var msgs []*types.RobustMessage
+		for {
+			select {
+			case <-done:
+				close(msgschan)
 				return
+			default:
 			}
+			msgs = outputstream.GetNext(lastSeen)
+			lastSeen = msgs[0].Id
+			msgschan <- msgs
 		}
+	}()
+	defer func() {
+		done <- true
+		for _ = range msgschan {
+		}
+	}()
+	for {
+		select {
+		case msgs := <-msgschan:
+			s, err := ircserver.GetSession(session)
+			if err != nil {
+				// Session was deleted in the meanwhile.
+				break
+			}
 
-		if f, ok := w.(http.Flusher); ok {
-			f.Flush()
+			for _, msg := range msgs {
+				if !s.InterestedIn(msg) {
+					continue
+				}
+
+				// Remove the ClientMessageId before sending, just in case it contains
+				// sensitive information (e.g. the random values leaking state of the
+				// PRNG).
+				msgcopy = *msg
+				msgcopy.ClientMessageId = 0
+
+				if err := enc.Encode(&msgcopy); err != nil {
+					log.Printf("Error encoding JSON: %v\n", err)
+					return
+				}
+			}
+
+			if time.Since(lastFlush) > 100*time.Millisecond {
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				}
+				lastFlush = time.Now()
+			} else if !willFlush {
+				// Delay flushing by 10ms to avoid flushing too often, which
+				// results in lots of write() syscall.
+				flushTimer.Reset(10 * time.Millisecond)
+				willFlush = true
+			}
+
+		case <-flushTimer.C:
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			willFlush = false
+			lastFlush = time.Now()
 		}
 	}
 }
