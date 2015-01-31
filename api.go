@@ -26,6 +26,11 @@ import (
 var (
 	GetMessageRequests    = make(map[string]GetMessageStats)
 	getMessagesRequestsMu sync.Mutex
+
+	// To avoid setting up a new proxy on every request, we cache the proxies
+	// for each node (since the current leader might change abruptly).
+	nodeProxies   = make(map[string]*httputil.ReverseProxy)
+	nodeProxiesMu sync.RWMutex
 )
 
 type GetMessageStats struct {
@@ -54,16 +59,30 @@ func maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body io.ReadClos
 			http.StatusInternalServerError)
 		return
 	}
-	u, err := url.Parse("https://" + leader.String())
-	if err != nil {
-		http.Error(w, fmt.Sprintf("url.Parse(): %v", err), http.StatusInternalServerError)
-		return
+
+	nodeProxiesMu.RLock()
+	p, ok := nodeProxies[leader.String()]
+	nodeProxiesMu.RUnlock()
+
+	if !ok {
+		u, err := url.Parse("https://" + leader.String())
+		if err != nil {
+			http.Error(w, fmt.Sprintf("url.Parse(): %v", err), http.StatusInternalServerError)
+			return
+		}
+		p = httputil.NewSingleHostReverseProxy(u)
+		p.Transport = robustTransport()
+
+		// Races are okay, i.e. overwriting the proxy a different goroutine set up.
+		nodeProxiesMu.Lock()
+		nodeProxies[leader.String()] = p
+		nodeProxiesMu.Unlock()
 	}
-	log.Printf("Proxying request to leader %q\n", leader.String())
+
 	location := *r.URL
 	location.Host = leader.String()
 	w.Header().Set("Content-Location", location.String())
-	p := httputil.NewSingleHostReverseProxy(u)
+	log.Printf("Proxying request (%q) to leader %q\n", r.URL.Path, leader.String())
 	r.Body = body
 	p.ServeHTTP(w, r)
 }
