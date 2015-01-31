@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"bitbucket.org/kardianos/osext"
@@ -477,6 +478,10 @@ func main() {
 	}
 
 	log.Printf("Initializing RobustIRC…\n")
+
+	if os.Getenv("GOMAXPROCS") == "" {
+		runtime.GOMAXPROCS(runtime.NumCPU())
+	}
 
 	if *networkPassword == "" {
 		*networkPassword = os.Getenv("ROBUSTIRC_NETWORK_PASSWORD")
