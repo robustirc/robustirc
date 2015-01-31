@@ -107,6 +107,7 @@ func (t *Transport) send(url string, in, out interface{}) error {
 	if buf, err = ioutil.ReadAll(res.Body); err != nil {
 		return fmt.Errorf("could not read response body: %v", err)
 	}
+	res.Body.Close()
 	if err = json.Unmarshal(buf, out); err != nil {
 		return fmt.Errorf("could not unmarshal InstallShnapshotResponse: %v", err)
 	}
