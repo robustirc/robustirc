@@ -5,7 +5,6 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -25,6 +24,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/robustirc/rafthttp"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/types"
@@ -332,33 +332,12 @@ func joinMaster(addr string, peerStore *raft.JSONPeers) []net.Addr {
 		buf = bytes.NewBuffer(data)
 	}
 
-	// TODO(secure): refactor this so that there is no duplication with raft_transport.go
-	var client *http.Client
-	if *tlsCAFile != "" {
-		roots := x509.NewCertPool()
-		contents, err := ioutil.ReadFile(*tlsCAFile)
-		if err != nil {
-			log.Fatalf("Could not read cert.pem: %v", err)
-		}
-		if !roots.AppendCertsFromPEM(contents) {
-			log.Fatalf("Could not parse %q, try deleting it", *tlsCAFile)
-		}
-
-		client = &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{RootCAs: roots},
-			},
-		}
-	} else {
-		client = http.DefaultClient
-	}
-
+	client := robustClient()
 	req, err := http.NewRequest("POST", fmt.Sprintf("https://%s/join", addr), buf)
 	if err != nil {
 		log.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.SetBasicAuth("robustirc", *networkPassword)
 	if res, err := client.Do(req); err != nil {
 		log.Fatal("Could not send join request:", err)
 	} else if res.StatusCode > 399 {
@@ -506,7 +485,11 @@ func main() {
 	ircserver.ClearState()
 	ircserver.NetworkPassword = *networkPassword
 
-	transport := NewTransport(&dnsAddr{*peerAddr}, *networkPassword, *tlsCAFile)
+	transport := rafthttp.NewHTTPTransport(
+		&dnsAddr{*peerAddr},
+		robustClient(),
+		nil,
+		"")
 
 	peerStore = raft.NewJSONPeers(*raftDir, transport)
 
