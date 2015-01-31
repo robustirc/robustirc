@@ -30,6 +30,7 @@ import (
 	"github.com/robustirc/robustirc/types"
 
 	auth "github.com/abbot/go-http-auth"
+	"github.com/armon/go-metrics"
 	"github.com/hashicorp/raft"
 	"github.com/sorcix/irc"
 	"github.com/stapelberg/glog"
@@ -525,6 +526,14 @@ func main() {
 	// It could be that the heartbeat goroutine is not scheduled for a while,
 	// so relax the default of 500ms.
 	config.LeaderLeaseTimeout = 1 * time.Second
+
+	// We use prometheus, so hook up the metrics package (used by raft) to
+	// prometheus as well.
+	sink, err := metrics.NewPrometheusSink()
+	if err != nil {
+		log.Fatal(err)
+	}
+	metrics.NewGlobal(metrics.DefaultConfig("raftmetrics"), sink)
 
 	logStore, err := raft_store.NewLevelDBStore(filepath.Join(*raftDir, "raftlog"))
 	if err != nil {
