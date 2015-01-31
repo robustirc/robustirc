@@ -41,6 +41,10 @@ var (
 	delete_tempdirs = flag.Bool("delete_tempdirs",
 		true,
 		"If false, temporary directories are left behind for manual inspection")
+
+	port = flag.Int("port",
+		-1,
+		"Port to (try to) use for the first RobustIRC server. If in use, another will be tried.")
 )
 
 var (
@@ -360,7 +364,11 @@ func main() {
 	// (Try to) use a random port in the dynamic port range.
 	// NOTE: 55535 instead of 65535 is intentional, so that the
 	// startircserver() can increase the port to find a higher unused port.
-	randomPort = 49152 + rand.Intn(55535-49152)
+	if *port > -1 {
+		randomPort = *port
+	} else {
+		randomPort = 49152 + rand.Intn(55535-49152)
+	}
 
 	networkPassword = os.Getenv("ROBUSTIRC_NETWORK_PASSWORD")
 	if networkPassword == "" {
