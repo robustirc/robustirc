@@ -524,6 +524,14 @@ func main() {
 	// number of messages/s.
 	config.SnapshotInterval = 1 * time.Second
 
+	// Batch as many messages as possible into a single appendEntries RPC.
+	// There is no downside to setting this too high.
+	config.MaxAppendEntries = 1024
+
+	// It could be that the heartbeat goroutine is not scheduled for a while,
+	// so relax the default of 500ms.
+	config.LeaderLeaseTimeout = 1 * time.Second
+
 	logStore, err := raft_store.NewLevelDBStore(filepath.Join(*raftDir, "raftlog"))
 	if err != nil {
 		log.Fatal(err)
