@@ -22,6 +22,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -134,9 +135,10 @@ func startircserver(singlenode bool) {
 	}
 
 	fmt.Fprintf(f, "#!/bin/sh\n")
-	fmt.Fprintf(f, "PATH=%q ROBUSTIRC_NETWORK_PASSWORD=%q robustirc %s >>%q 2>>%q\n",
+	fmt.Fprintf(f, "PATH=%q ROBUSTIRC_NETWORK_PASSWORD=%q GOMAXPROCS=%d robustirc %s >>%q 2>>%q\n",
 		os.Getenv("PATH"),
 		networkPassword,
+		runtime.NumCPU(),
 		strings.Join(quotedargs, " "),
 		filepath.Join(tempdir, "stdout.txt"),
 		filepath.Join(tempdir, "stderr.txt"))
@@ -149,7 +151,9 @@ func startircserver(singlenode bool) {
 
 	log.Printf("Starting %q\n", "robustirc "+strings.Join(args, " "))
 	cmd := exec.Command("robustirc", args...)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("ROBUSTIRC_NETWORK_PASSWORD=%s", networkPassword))
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("ROBUSTIRC_NETWORK_PASSWORD=%s", networkPassword),
+		fmt.Sprintf("GOMAXPROCS=%d", runtime.NumCPU()))
 	stdout, err := os.Create(filepath.Join(tempdir, "stdout.txt"))
 	if err != nil {
 		log.Panic(err)
@@ -231,6 +235,8 @@ func startbridge() {
 
 	log.Printf("Starting %q\n", "robustirc-bridge "+strings.Join(args, " "))
 	cmd := exec.Command("robustirc-bridge", args...)
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("GOMAXPROCS=%d", runtime.NumCPU()))
 
 	stdout, err := os.Create(filepath.Join(tempdir, "stdout.txt"))
 	if err != nil {
