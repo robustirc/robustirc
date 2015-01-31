@@ -340,6 +340,17 @@ func main() {
 
 	rand.Seed(time.Now().Unix())
 
+	// Raise the NOFILE soft limit to the hard limit. This is necessary for
+	// testing a high number of sessions.
+	var rlimit syscall.Rlimit
+	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rlimit); err != nil {
+		log.Fatal(err)
+	}
+	rlimit.Cur = rlimit.Max
+	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rlimit); err != nil {
+		log.Fatal(err)
+	}
+
 	// (Try to) use a random port in the dynamic port range.
 	// NOTE: 55535 instead of 65535 is intentional, so that the
 	// startircserver() can increase the port to find a higher unused port.
