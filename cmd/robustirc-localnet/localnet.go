@@ -120,6 +120,7 @@ func startircserver(singlenode bool) {
 		log.Fatal(err)
 	}
 	args = append(args, "-raftdir="+tempdir)
+	args = append(args, "-log_dir="+tempdir)
 	if err := recordResource("tempdir", tempdir); err != nil {
 		log.Panicf("Could not record tempdir: %v", err)
 	}

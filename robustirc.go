@@ -32,6 +32,7 @@ import (
 	auth "github.com/abbot/go-http-auth"
 	"github.com/hashicorp/raft"
 	"github.com/sorcix/irc"
+	"github.com/stapelberg/glog"
 
 	_ "net/http/pprof"
 )
@@ -451,6 +452,10 @@ func main() {
 	}
 	flag.Parse()
 
+	defer glog.Flush()
+	glog.MaxSize = 64 * 1024 * 1024
+	glog.CopyStandardLogTo("INFO")
+
 	if *version {
 		log.Printf("RobustIRC %s\n", Version)
 		return
@@ -496,6 +501,7 @@ func main() {
 	var p []net.Addr
 
 	config := raft.DefaultConfig()
+	config.Logger = log.New(glog.LogBridgeFor("INFO"), "", log.Lshortfile)
 	if *singleNode {
 		config.EnableSingleNode = true
 	}
