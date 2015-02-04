@@ -542,8 +542,23 @@ func main() {
 		printDefault(flag.Lookup("raftdir"))
 		printDefault(flag.Lookup("tls_ca_file"))
 		printDefault(flag.Lookup("version"))
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "The following flags are optional and provided by glog:\n")
+		printDefault(flag.Lookup("alsologtostderr"))
+		printDefault(flag.Lookup("log_backtrace_at"))
+		printDefault(flag.Lookup("log_dir"))
+		printDefault(flag.Lookup("log_total_bytes"))
+		printDefault(flag.Lookup("logtostderr"))
+		printDefault(flag.Lookup("stderrthreshold"))
+		printDefault(flag.Lookup("v"))
+		printDefault(flag.Lookup("vmodule"))
 	}
 	flag.Parse()
+
+	// Store logs in -raftdir, unless otherwise specified.
+	if flag.Lookup("log_dir").Value.String() == "" {
+		flag.Set("log_dir", *raftDir)
+	}
 
 	defer glog.Flush()
 	glog.MaxSize = 64 * 1024 * 1024
