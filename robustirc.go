@@ -569,6 +569,16 @@ func main() {
 		return
 	}
 
+	if _, err := os.Stat(filepath.Join(*raftDir, "deletestate")); err == nil {
+		if err := os.RemoveAll(*raftDir); err != nil {
+			log.Fatal(err)
+		}
+		if err := os.Mkdir(*raftDir, 0700); err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("Deleted %q because %q existed\n", *raftDir, filepath.Join(*raftDir, "deletestate"))
+	}
+
 	log.Printf("Initializing RobustIRC…\n")
 
 	if os.Getenv("GOMAXPROCS") == "" {

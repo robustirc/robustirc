@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -438,5 +440,13 @@ func handleHash(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleQuit(w http.ResponseWriter, r *http.Request) {
+	if r.FormValue("deletestate") == "yes" {
+		f, err := os.Create(filepath.Join(*raftDir, "deletestate"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		f.Close()
+	}
 	log.Fatalf("Exiting because %v triggered /quit", r.RemoteAddr)
 }
