@@ -1,6 +1,7 @@
 package ircserver
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -213,6 +214,8 @@ func cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 		}
 		nicks = append(nicks, prefix+nick)
 	}
+
+	sort.Strings(nicks)
 
 	var replies []*irc.Message
 
