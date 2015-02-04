@@ -112,7 +112,10 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 			</div>
 
 			<div class="row">
-				<h2>Raft Log Entries (index={{ .First }} to index={{ .Last}})</h2>
+			    <a name="irclog"></a>
+				<h2>IRC Log Entries (index={{ .First }} to index={{ .Last}})</h2>
+				<a href="/?offset={{ .PrevOffset }}#irclog">Prev</a>
+				<a href="/?offset={{ .NextOffset }}#irclog">Next</a>
 				<table class="table table-striped">
 					<thead>
 						<tr>

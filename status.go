@@ -30,6 +30,24 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// Show the last 50 messages by default.
+	if hi > 50 && hi-50 > lo {
+		lo = hi - 50
+	}
+
+	if offsetStr := req.FormValue("offset"); offsetStr != "" {
+		offset, err := strconv.ParseInt(offsetStr, 0, 64)
+		if err != nil {
+			http.Error(res, err.Error(), http.StatusBadRequest)
+			return
+		}
+		lo = uint64(offset)
+	}
+
+	if hi > lo+50 {
+		hi = lo + 50
+	}
+
 	var entries []*raft.Log
 	if lo != 0 && hi != 0 {
 		for i := lo; i <= hi; i++ {
@@ -44,6 +62,11 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	prevOffset := int64(lo) - 50
+	if prevOffset < 0 {
+		prevOffset = 1
+	}
+
 	args := struct {
 		Addr               string
 		State              raft.RaftState
@@ -55,6 +78,8 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		Stats              map[string]string
 		Sessions           map[types.RobustId]*ircserver.Session
 		GetMessageRequests map[string]GetMessageStats
+		PrevOffset         int64
+		NextOffset         uint64
 	}{
 		*peerAddr,
 		node.State(),
@@ -66,6 +91,8 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		node.Stats(),
 		ircserver.Sessions,
 		GetMessageRequests,
+		prevOffset,
+		lo + 50,
 	}
 
 	statusTpl.Execute(res, args)
