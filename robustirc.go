@@ -120,13 +120,135 @@ type robustSnapshot struct {
 	firstIndex uint64
 	lastIndex  uint64
 	store      *raft_store.LevelDBStore
+	del        map[uint64]bool
+}
+
+func (s *robustSnapshot) canCompact(elog *raft.Log) (bool, error) {
+	// TODO: compact raft messages as well, so that peer changes are not kept forever
+	if elog.Type != raft.LogCommand {
+		return false, nil
+	}
+
+	msg := types.NewRobustMessageFromBytes(elog.Data)
+
+	// TODO: compact the other RobustIRC message types as well
+	if msg.Type != types.RobustIRCFromClient {
+		return false, nil
+	}
+
+	if time.Since(time.Unix(0, msg.Id.Id)) < 7*24*time.Hour {
+		return false, nil
+	}
+
+	// We rather check if session != nil in StillRelevant callbacks where
+	// necessary (some commands don’t need a session to still be relevant).
+	session, _ := ircserver.GetSession(msg.Session)
+
+	// The prev and next functions are cursors, see ircserver’s StillRelevant
+	// function. They return the previous message (or next message,
+	// respectively).
+	get := func(index uint64) (*irc.Message, error) {
+		if s.del[index] {
+			return nil, nil
+		}
+
+		var nlog raft.Log
+		if err := s.store.GetLog(index, &nlog); err != nil {
+			return nil, err
+		}
+
+		if nlog.Type != raft.LogCommand {
+			return nil, nil
+		}
+		nmsg := types.NewRobustMessageFromBytes(nlog.Data)
+		if nmsg.Type != types.RobustIRCFromClient ||
+			nmsg.Session != msg.Session {
+			return nil, nil
+		}
+		return irc.ParseMessage(nmsg.Data), nil
+	}
+
+	prevIndex := elog.Index
+	prev := func() (*irc.Message, error) {
+		for {
+			prevIndex--
+
+			if prevIndex <= s.firstIndex {
+				return nil, ircserver.CursorEOF
+			}
+
+			ircmsg, err := get(prevIndex)
+			if err != nil {
+				return nil, err
+			}
+			if ircmsg != nil {
+				return ircmsg, nil
+			}
+		}
+	}
+
+	nextIndex := elog.Index
+	next := func() (*irc.Message, error) {
+		for {
+			nextIndex++
+
+			if nextIndex > s.lastIndex {
+				return nil, ircserver.CursorEOF
+			}
+
+			ircmsg, err := get(nextIndex)
+			if err != nil {
+				return nil, err
+			}
+			if ircmsg != nil {
+				return ircmsg, nil
+			}
+		}
+	}
+
+	relevant, err := ircserver.StillRelevant(session, irc.ParseMessage(msg.Data), prev, next)
+	return !relevant, err
 }
 
 func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 	log.Printf("Filtering and writing %d indexes\n", s.lastIndex-s.firstIndex)
 
+	// We repeatedly compact, since the result of one compaction can affect the
+	// result of other compactions (see compaction_test.go for examples).
+	changed := true
+	pass := 0
+	for changed {
+		log.Printf("Compaction pass %d\n", pass)
+		pass++
+		changed = false
+		for i := s.firstIndex; i <= s.lastIndex; i++ {
+			if s.del[i] {
+				continue
+			}
+
+			var elog raft.Log
+
+			if err := s.store.GetLog(i, &elog); err != nil {
+				return err
+			}
+
+			canCompact, err := s.canCompact(&elog)
+			if err != nil {
+				return err
+			}
+			if canCompact {
+				s.del[i] = true
+				changed = true
+			}
+		}
+	}
+
 	encoder := json.NewEncoder(sink)
 	for i := s.firstIndex; i <= s.lastIndex; i++ {
+		if s.del[i] {
+			continue
+		}
+
 		var elog raft.Log
 
 		if err := s.store.GetLog(i, &elog); err != nil {
@@ -136,41 +258,6 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 		// TODO(secure): delete entries in s.store as well, otherwise we grow
 		// without bounds. refactor compaction, perhaps moving logic into
 		// ircserver/commands.go
-
-		if elog.Type == raft.LogCommand {
-			msg := types.NewRobustMessageFromBytes(elog.Data)
-			if time.Since(time.Unix(0, msg.Id.Id)) > 7*24*time.Hour &&
-				msg.Type == types.RobustIRCFromClient {
-				ircmsg := irc.ParseMessage(msg.Data)
-				// TODO: MODE (tricky)
-				// Delete messages which don’t modify state.
-				if ircmsg.Command == irc.PRIVMSG ||
-					ircmsg.Command == irc.WHO ||
-					ircmsg.Command == irc.QUIT {
-					continue
-				}
-				if ircmsg.Command == irc.PART {
-					// Delete all PARTs because we only keep JOINs that are still relevant.
-					continue
-				}
-				// TODO: even better for JOIN/NICK: only retain the most recent one
-				if ircmsg.Command == irc.JOIN {
-					if s, err := ircserver.GetSession(msg.Session); err == nil {
-						// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
-						if _, ok := s.Channels[ircmsg.Params[0]]; !ok {
-							continue
-						}
-					}
-				}
-				if ircmsg.Command == irc.NICK {
-					if s, err := ircserver.GetSession(msg.Session); err == nil {
-						if s.Nick != ircmsg.Params[0] {
-							continue
-						}
-					}
-				}
-			}
-		}
 
 		if err := encoder.Encode(elog); err != nil {
 			sink.Cancel()
@@ -276,7 +363,12 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &robustSnapshot{first, last, fsm.ircstore}, err
+	return &robustSnapshot{
+		first,
+		last,
+		fsm.ircstore,
+		make(map[uint64]bool),
+	}, err
 }
 
 func (fsm *FSM) Restore(snap io.ReadCloser) error {

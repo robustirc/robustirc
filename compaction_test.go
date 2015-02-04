@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -42,6 +45,9 @@ func verifyEndState(t *testing.T) {
 	}
 }
 
+// TestCompaction does a full snapshot, persists it to disk, restores it and
+// makes sure the state matches expectations. The other test functions directly
+// test what should be compacted.
 func TestCompaction(t *testing.T) {
 	ircserver.ClearState()
 	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
@@ -79,7 +85,7 @@ func TestCompaction(t *testing.T) {
 	nowId += 1
 	logs = appendLog(logs, `{"Id": {"Id": `+strconv.FormatInt(nowId, 10)+`}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`)
 
-	if err := ircstore.StoreLogs(logs); err != nil {
+	if err := logstore.StoreLogs(logs); err != nil {
 		t.Fatalf("Unexpected error in store.StoreLogs: %v", err)
 	}
 	for _, log := range logs {
@@ -139,4 +145,272 @@ func TestCompaction(t *testing.T) {
 	}
 
 	verifyEndState(t)
+}
+
+type inMemorySink struct {
+	b bytes.Buffer
+}
+
+func (s *inMemorySink) Write(p []byte) (n int, err error) {
+	n, err = s.b.Write(p)
+	return
+}
+
+func (s *inMemorySink) Close() error {
+	return nil
+}
+
+func (s *inMemorySink) ID() string {
+	return "inmemory"
+}
+
+func (s *inMemorySink) Cancel() error {
+	return nil
+}
+
+func applyAndCompact(t *testing.T, input []string) []string {
+	tempdir, err := ioutil.TempDir("", "robust-test-")
+	if err != nil {
+		t.Fatalf("ioutil.TempDir: %v", err)
+	}
+	defer os.RemoveAll(tempdir)
+
+	logstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "raftlog"))
+	if err != nil {
+		t.Fatalf("Unexpected error in NewLevelDBStore: %v", err)
+	}
+	ircstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "irclog"))
+	if err != nil {
+		t.Fatalf("Unexpected error in NewLevelDBStore: %v", err)
+	}
+	fsm := FSM{logstore, ircstore}
+
+	var logs []*raft.Log
+	for _, msg := range input {
+		logs = append(logs, &raft.Log{
+			Type:  raft.LogCommand,
+			Index: uint64(len(logs) + 1),
+			Data:  []byte(msg),
+		})
+	}
+
+	if err := logstore.StoreLogs(logs); err != nil {
+		t.Fatalf("Unexpected error in store.StoreLogs: %v", err)
+	}
+
+	for _, log := range logs {
+		fsm.Apply(log)
+	}
+
+	rawsnap, err := fsm.Snapshot()
+	if err != nil {
+		t.Fatalf("Unexpected error in fsm.Snapshot: %v", err)
+	}
+	s := rawsnap.(*robustSnapshot)
+	sink := inMemorySink{}
+	s.Persist(&sink)
+
+	dec := json.NewDecoder(&sink.b)
+	var output []string
+	for {
+		var l raft.Log
+		if err := dec.Decode(&l); err != nil {
+			if err == io.EOF {
+				break
+			}
+			t.Fatalf("Unexpected error in json.Decode: %v", err)
+		}
+		output = append(output, string(l.Data))
+	}
+
+	return output
+}
+
+func mustMatchStrings(t *testing.T, input []string, got []string, want []string) {
+	if reflect.DeepEqual(got, want) {
+		return
+	}
+
+	t.Logf("input (%d messages):\n", len(input))
+	for _, msg := range input {
+		t.Logf("    %s\n", msg)
+	}
+	t.Logf("output (%d messages):\n", len(got))
+	for _, msg := range got {
+		t.Logf("    %s\n", msg)
+	}
+	t.Logf("expected (%d messages):\n", len(want))
+	for _, msg := range want {
+		t.Logf("    %s\n", msg)
+	}
+	t.Fatalf("compacted output does not match expectation: got %v, want %v\n", got, want)
+}
+
+func TestCompactNickNone(t *testing.T) {
+	ircserver.ClearState()
+	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK secure2"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "TOPIC #chaos-hd :foo"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK secure3"}`,
+	}
+
+	output := applyAndCompact(t, input)
+	// Nothing can be compacted: the first NICK is necessary so that the
+	// session is loggedIn() for further messages, the second NICK is necessary
+	// so that #chaos-hd’s topicNick has the correct value.
+	mustMatchStrings(t, input, output, input)
+}
+
+func TestCompactNickOne(t *testing.T) {
+	ircserver.ClearState()
+	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK secure2"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "TOPIC #chaos-hd :foo"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK secure3"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 1}, "Type": 2, "Data": "TOPIC #chaos-hd :bar"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK secure3"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 1}, "Type": 2, "Data": "TOPIC #chaos-hd :bar"}`,
+	}
+
+	output := applyAndCompact(t, input)
+	// Only the first and third NICK remain.
+	mustMatchStrings(t, input, output, want)
+}
+
+func TestJoinPart(t *testing.T) {
+	ircserver.ClearState()
+	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #chaos-hd"}`,
+	}
+
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+	}
+
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
+func TestCompactTopic(t *testing.T) {
+	ircserver.ClearState()
+	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "TOPIC #chaos-hd :foo"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 1}, "Type": 2, "Data": "TOPIC #chaos-hd :blah"}`,
+	}
+
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 1}, "Type": 2, "Data": "TOPIC #chaos-hd :blah"}`,
+	}
+
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
+func TestJoinTopic(t *testing.T) {
+	ircserver.ClearState()
+	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "PRIVMSG #chaos-hd :blah"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 1}, "Type": 2, "Data": "TOPIC #chaos-hd :foo"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #chaos-hd"}`,
+	}
+
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		// The JOIN must be retained, otherwise TOPIC cannot succeed.
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 1}, "Type": 2, "Data": "TOPIC #chaos-hd :foo"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #chaos-hd"}`,
+	}
+
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
+func TestCompactDoubleJoin(t *testing.T) {
+	ircserver.ClearState()
+	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #chaos-hd"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
+	}
+
+	output := applyAndCompact(t, input)
+	// Only the last JOIN needs to remain.
+	mustMatchStrings(t, input, output, want)
+}
+
+func TestCompactUser(t *testing.T) {
+	ircserver.ClearState()
+	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :bleh"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+	}
+
+	output := applyAndCompact(t, input)
+	// Only the last JOIN needs to remain.
+	mustMatchStrings(t, input, output, want)
 }
