@@ -1,6 +1,7 @@
 package ircserver
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -193,17 +194,28 @@ func cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 	c, ok := channels[channelname]
 	if !ok {
 		c = &channel{
-			nicks: make(map[string]bool),
+			nicks: make(map[string]*[maxChanMemberStatus]bool),
 		}
 		channels[channelname] = c
 	}
-	c.nicks[s.Nick] = true
+	c.nicks[s.Nick] = &[maxChanMemberStatus]bool{}
+	// If the channel did not exist before, the first joining user becomes a
+	// channel operator.
+	if !ok {
+		c.nicks[s.Nick][chanop] = true
+	}
 	s.Channels[channelname] = true
 
 	nicks := make([]string, 0, len(c.nicks))
-	for nick := range c.nicks {
-		nicks = append(nicks, nick)
+	for nick, perms := range c.nicks {
+		var prefix string
+		if perms[chanop] {
+			prefix = prefix + string('@')
+		}
+		nicks = append(nicks, prefix+nick)
 	}
+
+	sort.Strings(nicks)
 
 	var replies []*irc.Message
 
@@ -248,7 +260,7 @@ func cmdPart(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
-	if !c.nicks[s.Nick] {
+	if _, ok := c.nicks[s.Nick]; !ok {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOTONCHANNEL,
 			Params:   []string{s.Nick, channelname},
@@ -343,23 +355,87 @@ func cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 }
 
 func cmdMode(s *Session, msg *irc.Message) []*irc.Message {
-	channel := msg.Params[0]
+	channelname := msg.Params[0]
 	// TODO(secure): properly distinguish between users and channels
-	if s.Channels[channel] {
+	if s.Channels[channelname] {
+		// Channel must exist, the user is in it.
+		c := channels[channelname]
+		var modestr string
+		if len(msg.Params) > 1 {
+			modestr = msg.Params[1]
+		}
+		if strings.HasPrefix(modestr, "+") || strings.HasPrefix(modestr, "-") {
+			if !c.nicks[s.Nick][chanop] && !s.Operator {
+				return []*irc.Message{&irc.Message{
+					Command:  irc.ERR_CHANOPRIVSNEEDED,
+					Params:   []string{s.Nick, channelname},
+					Trailing: "You're not channel operator",
+				}}
+			}
+			var replies []*irc.Message
+			// true for adding a mode, false for removing it
+			newvalue := strings.HasPrefix(modestr, "+")
+			modearg := 2
+			for _, char := range modestr[1:] {
+				switch char {
+				case '+', '-':
+					newvalue = (char == '+')
+				case 't':
+					c.modes[char] = newvalue
+				case 'o':
+					if len(msg.Params) > modearg {
+						nick := msg.Params[modearg]
+						perms, ok := c.nicks[nick]
+						if !ok {
+							replies = append(replies, &irc.Message{
+								Command:  irc.ERR_USERNOTINCHANNEL,
+								Params:   []string{s.Nick, nick, channelname},
+								Trailing: "They aren't on that channel",
+							})
+						} else {
+							// If the user already is a chanop, silently do
+							// nothing (like UnrealIRCd).
+							if perms[chanop] != newvalue {
+								c.nicks[nick][chanop] = newvalue
+							}
+						}
+					}
+					modearg++
+				default:
+					replies = append(replies, &irc.Message{
+						Command:  irc.ERR_UNKNOWNMODE,
+						Params:   []string{s.Nick, string(char)},
+						Trailing: "is unknown mode char to me",
+					})
+				}
+			}
+			replies = append(replies, &irc.Message{
+				Prefix:  &s.ircPrefix,
+				Command: irc.MODE,
+				Params:  msg.Params[:modearg],
+			})
+			return replies
+		}
 		if len(msg.Params) > 1 && msg.Params[1] == "b" {
 			return []*irc.Message{&irc.Message{
 				Command:  irc.RPL_ENDOFBANLIST,
-				Params:   []string{s.Nick, channel},
+				Params:   []string{s.Nick, channelname},
 				Trailing: "End of Channel Ban List",
 			}}
 		} else {
+			modestr := "+"
+			for mode := 'A'; mode < 'z'; mode++ {
+				if c.modes[mode] {
+					modestr += string(mode)
+				}
+			}
 			return []*irc.Message{&irc.Message{
 				Command: irc.RPL_CHANNELMODEIS,
-				Params:  []string{s.Nick, channel, "+"},
+				Params:  []string{s.Nick, channelname, modestr},
 			}}
 		}
 	} else {
-		if channel == s.Nick {
+		if channelname == s.Nick {
 			return []*irc.Message{&irc.Message{
 				Prefix:   &s.ircPrefix,
 				Command:  irc.MODE,
@@ -369,7 +445,7 @@ func cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 		} else {
 			return []*irc.Message{&irc.Message{
 				Command:  irc.ERR_NOTONCHANNEL,
-				Params:   []string{s.Nick, channel},
+				Params:   []string{s.Nick, channelname},
 				Trailing: "You're not on that channel",
 			}}
 		}
@@ -516,6 +592,14 @@ func cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
+	if !s.Channels[channel] {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOTONCHANNEL,
+			Params:   []string{s.Nick, channel},
+			Trailing: "You're not on that channel",
+		}}
+	}
+
 	// “TOPIC”, i.e. get the topic.
 	if msg.Trailing == "" {
 		if c.topicTime.IsZero() {
@@ -543,7 +627,14 @@ func cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 
 	}
 
-	// TODO(secure): check that the user is op if +n is set and send ERR_CHANOPRIVSNEEDED
+	if c.modes['t'] && !c.nicks[s.Nick][chanop] {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_CHANOPRIVSNEEDED,
+			Params:   []string{s.Nick, channel},
+			Trailing: "You're not channel operator",
+		}}
+	}
+
 	c.topicNick = s.Nick
 	c.topicTime = time.Now()
 	c.topic = msg.Trailing
