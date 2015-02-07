@@ -154,17 +154,19 @@ func cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
-	// TODO(secure): add a map for quick nickname lookup.
-	for _, session := range Sessions {
-		if NickToLower(session.Nick) == NickToLower(msg.Params[0]) {
-			return []*irc.Message{&irc.Message{
-				Command:  irc.ERR_NICKNAMEINUSE,
-				Params:   []string{"*", msg.Params[0]},
-				Trailing: "Nickname is already in use.",
-			}}
-		}
+	if _, ok := nicks[NickToLower(msg.Params[0])]; ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NICKNAMEINUSE,
+			Params:   []string{"*", msg.Params[0]},
+			Trailing: "Nickname is already in use.",
+		}}
 	}
+	oldNick := s.Nick
 	s.Nick = msg.Params[0]
+	nicks[NickToLower(s.Nick)] = s
+	if oldNick != "" {
+		delete(nicks, NickToLower(oldNick))
+	}
 	s.updateIrcPrefix()
 	if oldPrefix.String() != "" {
 		return []*irc.Message{&irc.Message{
@@ -449,35 +451,33 @@ func cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
-	// TODO(secure): add a map for quick nickname lookup.
-	for _, session := range Sessions {
-		if NickToLower(session.Nick) == NickToLower(msg.Params[0]) {
-			var replies []*irc.Message
-
-			replies = append(replies, &irc.Message{
-				Prefix:   &s.ircPrefix,
-				Command:  irc.PRIVMSG,
-				Params:   []string{msg.Params[0]},
-				Trailing: msg.Trailing,
-			})
-
-			if session.AwayMsg != "" {
-				replies = append(replies, &irc.Message{
-					Command:  irc.RPL_AWAY,
-					Params:   []string{s.Nick, msg.Params[0]},
-					Trailing: session.AwayMsg,
-				})
-			}
-
-			return replies
-		}
+	session, ok := nicks[NickToLower(msg.Params[0])]
+	if !ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOSUCHNICK,
+			Params:   []string{s.Nick, msg.Params[0]},
+			Trailing: "No such nick/channel",
+		}}
 	}
 
-	return []*irc.Message{&irc.Message{
-		Command:  irc.ERR_NOSUCHNICK,
-		Params:   []string{s.Nick, msg.Params[0]},
-		Trailing: "No such nick/channel",
-	}}
+	var replies []*irc.Message
+
+	replies = append(replies, &irc.Message{
+		Prefix:   &s.ircPrefix,
+		Command:  irc.PRIVMSG,
+		Params:   []string{msg.Params[0]},
+		Trailing: msg.Trailing,
+	})
+
+	if session.AwayMsg != "" {
+		replies = append(replies, &irc.Message{
+			Command:  irc.RPL_AWAY,
+			Params:   []string{s.Nick, msg.Params[0]},
+			Trailing: session.AwayMsg,
+		})
+	}
+
+	return replies
 }
 
 func cmdMode(s *Session, msg *irc.Message) []*irc.Message {
@@ -608,11 +608,8 @@ func cmdWho(s *Session, msg *irc.Message) []*irc.Message {
 		}
 	}
 
-	// TODO(secure): a separate map for quick lookup may be worthwhile for big channels.
-	for _, session := range Sessions {
-		if !session.Channels[channelname] {
-			continue
-		}
+	for nick, _ := range c.nicks {
+		session := nicks[NickToLower(nick)]
 		prefix := session.ircPrefix
 		goneStatus := "H"
 		if session.AwayMsg != "" {
@@ -666,24 +663,21 @@ func cmdKill(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
-	for _, session := range Sessions {
-		if NickToLower(session.Nick) != NickToLower(msg.Params[0]) {
-			continue
-		}
-
-		prefix := session.ircPrefix
-		DeleteSession(session.Id)
+	session, ok := nicks[NickToLower(msg.Params[0])]
+	if !ok {
 		return []*irc.Message{&irc.Message{
-			Prefix:   &prefix,
-			Command:  irc.QUIT,
-			Trailing: "Killed by " + s.Nick + ": " + msg.Trailing,
+			Command:  irc.ERR_NOSUCHNICK,
+			Params:   []string{s.Nick, msg.Params[0]},
+			Trailing: "No such nick/channel",
 		}}
 	}
 
+	prefix := session.ircPrefix
+	DeleteSession(session.Id)
 	return []*irc.Message{&irc.Message{
-		Command:  irc.ERR_NOSUCHNICK,
-		Params:   []string{s.Nick, msg.Params[0]},
-		Trailing: "No such nick/channel",
+		Prefix:   &prefix,
+		Command:  irc.QUIT,
+		Trailing: "Killed by " + s.Nick + ": " + msg.Trailing,
 	}}
 }
 

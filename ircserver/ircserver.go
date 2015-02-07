@@ -47,6 +47,7 @@ var (
 	serverCreation = time.Now()
 	Sessions       = make(map[types.RobustId]*Session)
 	channels       map[string]*channel
+	nicks          map[string]*Session
 	ServerPrefix   *irc.Prefix
 
 	lastProcessed types.RobustId
@@ -184,6 +185,7 @@ type channel struct {
 
 func ClearState() {
 	channels = make(map[string]*channel)
+	nicks = make(map[string]*Session)
 	Sessions = make(map[types.RobustId]*Session)
 	outputstream.Reset()
 }
