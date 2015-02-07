@@ -506,7 +506,7 @@ func cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 				switch char {
 				case '+', '-':
 					newvalue = (char == '+')
-				case 't':
+				case 't', 's':
 					c.modes[char] = newvalue
 				case 'o':
 					if len(msg.Params) > modearg {
@@ -589,27 +589,43 @@ func cmdWho(s *Session, msg *irc.Message) []*irc.Message {
 
 	var replies []*irc.Message
 
-	channel := msg.Params[0]
+	channelname := msg.Params[0]
+
+	lastmsg := &irc.Message{
+		Command:  irc.RPL_ENDOFWHO,
+		Params:   []string{s.Nick, channelname},
+		Trailing: "End of /WHO list",
+	}
+
+	c, ok := channels[channelname]
+	if !ok {
+		return []*irc.Message{lastmsg}
+	}
+
+	if c.modes['s'] {
+		if _, ok := c.nicks[s.Nick]; !ok {
+			return []*irc.Message{lastmsg}
+		}
+	}
+
 	// TODO(secure): a separate map for quick lookup may be worthwhile for big channels.
 	for _, session := range Sessions {
-		if !session.Channels[channel] {
+		if !session.Channels[channelname] {
 			continue
 		}
 		prefix := session.ircPrefix
+		goneStatus := "H"
+		if session.AwayMsg != "" {
+			goneStatus = "G"
+		}
 		replies = append(replies, &irc.Message{
 			Command:  irc.RPL_WHOREPLY,
-			Params:   []string{s.Nick, channel, prefix.User, prefix.Host, ServerPrefix.Name, prefix.Name, "H"},
-			Trailing: "0 Unknown",
+			Params:   []string{s.Nick, channelname, prefix.User, prefix.Host, ServerPrefix.Name, prefix.Name, goneStatus},
+			Trailing: "0 " + session.Realname,
 		})
 	}
 
-	replies = append(replies, &irc.Message{
-		Command:  irc.RPL_ENDOFWHO,
-		Params:   []string{s.Nick, channel},
-		Trailing: "End of /WHO list",
-	})
-
-	return replies
+	return append(replies, lastmsg)
 }
 
 func cmdOper(s *Session, msg *irc.Message) []*irc.Message {
