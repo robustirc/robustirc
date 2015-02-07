@@ -17,7 +17,6 @@ import (
 	"github.com/robustirc/robustirc/types"
 
 	"github.com/hashicorp/raft"
-	"github.com/sorcix/irc"
 )
 
 func appendLog(logs []*raft.Log, msg string) []*raft.Log {
@@ -29,7 +28,7 @@ func appendLog(logs []*raft.Log, msg string) []*raft.Log {
 }
 
 func verifyEndState(t *testing.T) {
-	s, err := ircserver.GetSession(types.RobustId{Id: 1})
+	s, err := ircServer.GetSession(types.RobustId{Id: 1})
 	if err != nil {
 		t.Fatalf("No session found after applying log messages")
 	}
@@ -49,8 +48,7 @@ func verifyEndState(t *testing.T) {
 // makes sure the state matches expectations. The other test functions directly
 // test what should be compacted.
 func TestCompaction(t *testing.T) {
-	ircserver.ClearState()
-	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
+	ircServer = ircserver.NewIRCServer("testnetwork")
 
 	tempdir, err := ioutil.TempDir("", "robust-test-")
 	if err != nil {
@@ -247,8 +245,7 @@ func mustMatchStrings(t *testing.T, input []string, got []string, want []string)
 }
 
 func TestCompactNickNone(t *testing.T) {
-	ircserver.ClearState()
-	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
+	ircServer = ircserver.NewIRCServer("testnetwork")
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -268,8 +265,7 @@ func TestCompactNickNone(t *testing.T) {
 }
 
 func TestCompactNickOne(t *testing.T) {
-	ircserver.ClearState()
-	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
+	ircServer = ircserver.NewIRCServer("testnetwork")
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -296,8 +292,7 @@ func TestCompactNickOne(t *testing.T) {
 }
 
 func TestJoinPart(t *testing.T) {
-	ircserver.ClearState()
-	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
+	ircServer = ircserver.NewIRCServer("testnetwork")
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -318,8 +313,7 @@ func TestJoinPart(t *testing.T) {
 }
 
 func TestCompactTopic(t *testing.T) {
-	ircserver.ClearState()
-	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
+	ircServer = ircserver.NewIRCServer("testnetwork")
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -343,8 +337,7 @@ func TestCompactTopic(t *testing.T) {
 }
 
 func TestJoinTopic(t *testing.T) {
-	ircserver.ClearState()
-	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
+	ircServer = ircserver.NewIRCServer("testnetwork")
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -371,8 +364,7 @@ func TestJoinTopic(t *testing.T) {
 }
 
 func TestCompactDoubleJoin(t *testing.T) {
-	ircserver.ClearState()
-	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
+	ircServer = ircserver.NewIRCServer("testnetwork")
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -395,8 +387,7 @@ func TestCompactDoubleJoin(t *testing.T) {
 }
 
 func TestCompactUser(t *testing.T) {
-	ircserver.ClearState()
-	ircserver.ServerPrefix = &irc.Prefix{Name: "testnetwork"}
+	ircServer = ircserver.NewIRCServer("testnetwork")
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,

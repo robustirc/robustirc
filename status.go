@@ -76,7 +76,7 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		Last               uint64
 		Entries            []*raft.Log
 		Stats              map[string]string
-		Sessions           map[types.RobustId]*ircserver.Session
+		Sessions           map[types.RobustId]ircserver.Session
 		GetMessageRequests map[string]GetMessageStats
 		PrevOffset         int64
 		NextOffset         uint64
@@ -89,7 +89,7 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		hi,
 		entries,
 		node.Stats(),
-		ircserver.Sessions,
+		ircServer.GetSessions(),
 		GetMessageRequests,
 		prevOffset,
 		lo + 50,
@@ -107,7 +107,7 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 
 	session := types.RobustId{Id: id}
 
-	s, err := ircserver.GetSession(session)
+	s, err := ircServer.GetSession(session)
 	if err != nil {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
@@ -147,8 +147,8 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for {
-		if msg := ircserver.GetMessageNonBlocking(lastSeen); msg != nil {
-			if msg.Type == types.RobustIRCToClient && s.InterestedIn(msg) {
+		if msg := ircServer.GetNextNonBlocking(lastSeen); msg != nil {
+			if msg.Type == types.RobustIRCToClient && s.InterestedIn(ircServer.ServerPrefix, msg) {
 				if msg.Id.Reply == 1 {
 					if inputmsg, ok := inputs[types.RobustId{Id: msg.Id.Id}]; ok {
 						messages = append(messages, inputmsg)

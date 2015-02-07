@@ -19,7 +19,6 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/robustirc/robustirc/ircserver"
-	"github.com/robustirc/robustirc/outputstream"
 	"github.com/robustirc/robustirc/types"
 
 	"github.com/hashicorp/raft"
@@ -97,7 +96,7 @@ func session(r *http.Request, ps httprouter.Params) (*ircserver.Session, types.R
 		return nil, sessionid, fmt.Errorf("invalid session: %v", err)
 	}
 
-	session, err := ircserver.GetSession(types.RobustId{Id: id})
+	session, err := ircServer.GetSession(types.RobustId{Id: id})
 	if err != nil {
 		return session, sessionid, err
 	}
@@ -298,7 +297,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 				return
 			default:
 			}
-			msgs = outputstream.GetNext(lastSeen)
+			msgs = ircServer.GetNext(lastSeen)
 			lastSeen = msgs[0].Id
 			msgschan <- msgs
 		}
@@ -311,14 +310,14 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	for {
 		select {
 		case msgs := <-msgschan:
-			s, err := ircserver.GetSession(session)
+			s, err := ircServer.GetSession(session)
 			if err != nil {
 				// Session was deleted in the meanwhile.
 				break
 			}
 
 			for _, msg := range msgs {
-				if !s.InterestedIn(msg) {
+				if !s.InterestedIn(ircServer.ServerPrefix, msg) {
 					continue
 				}
 

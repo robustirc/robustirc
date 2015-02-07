@@ -90,6 +90,7 @@ var (
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
 	ircStore  *raft_store.LevelDBStore
+	ircServer *ircserver.IRCServer
 
 	executablehash string = executableHash()
 
@@ -110,10 +111,22 @@ var (
 			}
 		},
 	)
+
+	sessionsGauge = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Subsystem: "irc",
+			Name:      "sessions",
+			Help:      "Number of IRC sessions",
+		},
+		func() float64 {
+			return float64(ircServer.NumSessions())
+		},
+	)
 )
 
 func init() {
 	prometheus.MustRegister(isLeaderGauge)
+	prometheus.MustRegister(sessionsGauge)
 }
 
 type robustSnapshot struct {
@@ -142,7 +155,7 @@ func (s *robustSnapshot) canCompact(elog *raft.Log) (bool, error) {
 
 	// We rather check if session != nil in StillRelevant callbacks where
 	// necessary (some commands don’t need a session to still be relevant).
-	session, _ := ircserver.GetSession(msg.Session)
+	session, _ := ircServer.GetSession(msg.Session)
 
 	// The prev and next functions are cursors, see ircserver’s StillRelevant
 	// function. They return the previous message (or next message,
@@ -206,7 +219,7 @@ func (s *robustSnapshot) canCompact(elog *raft.Log) (bool, error) {
 		}
 	}
 
-	relevant, err := ircserver.StillRelevant(session, irc.ParseMessage(msg.Data), prev, next)
+	relevant, err := ircServer.StillRelevant(session, irc.ParseMessage(msg.Data), prev, next)
 	return !relevant, err
 }
 
@@ -295,16 +308,16 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 	switch msg.Type {
 	case types.RobustMessageOfDeath:
 		// To prevent the message from being accepted again.
-		ircserver.UpdateLastMessage(&msg, l.Data)
+		ircServer.UpdateLastMessage(&msg, l.Data)
 		log.Printf("Skipped message of death.\n")
 
 	case types.RobustCreateSession:
-		ircserver.CreateSession(msg.Id, msg.Data)
+		ircServer.CreateSession(msg.Id, msg.Data)
 
 	case types.RobustDeleteSession:
-		replies := ircserver.ProcessMessage(msg.Session, irc.ParseMessage("QUIT :"+string(msg.Data)))
-		ircserver.SendMessages(replies, msg.Session, msg.Id.Id)
-		ircserver.DeleteSession(msg.Session)
+		replies := ircServer.ProcessMessage(msg.Session, irc.ParseMessage("QUIT :"+string(msg.Data)))
+		ircServer.SendMessages(replies, msg.Session, msg.Id.Id)
+		ircServer.DeleteSession(msg.Session)
 
 	case types.RobustIRCFromClient:
 		defer func() {
@@ -334,11 +347,11 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 
 		// Need to do this first, because ircserver.ProcessMessage could delete
 		// the session, e.g. by using KILL or QUIT.
-		if err := ircserver.UpdateLastMessage(&msg, l.Data); err != nil {
+		if err := ircServer.UpdateLastMessage(&msg, l.Data); err != nil {
 			log.Printf("Error updating the last message for session: %v\n", err)
 		}
-		replies := ircserver.ProcessMessage(msg.Session, irc.ParseMessage(string(msg.Data)))
-		ircserver.SendMessages(replies, msg.Session, msg.Id.Id)
+		replies := ircServer.ProcessMessage(msg.Session, irc.ParseMessage(string(msg.Data)))
+		ircServer.SendMessages(replies, msg.Session, msg.Id.Id)
 	}
 
 	return nil
@@ -390,7 +403,7 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 		return err
 	}
 
-	ircserver.ClearState()
+	ircServer = ircserver.NewIRCServer(*network)
 
 	decoder := json.NewDecoder(snap)
 	for {
@@ -598,14 +611,13 @@ func main() {
 	if *network == "" {
 		log.Fatalf("-network_name not set, but required.\n")
 	}
-	ircserver.ServerPrefix = &irc.Prefix{Name: *network}
 
 	if *peerAddr == "" {
 		log.Printf("-peer_addr not set, initializing to %q. Make sure %q is a host:port string that other raft nodes can connect to!\n", *listen, *listen)
 		*peerAddr = *listen
 	}
 
-	ircserver.ClearState()
+	ircServer = ircserver.NewIRCServer(*network)
 	ircserver.NetworkPassword = *networkPassword
 
 	transport := rafthttp.NewHTTPTransport(
@@ -754,7 +766,7 @@ func main() {
 			if err != nil {
 				log.Fatalf("Could not get peers: %v (Peer file corrupted on disk?)\n", err)
 			}
-			ircserver.SendPing(node.Leader(), peers)
+			ircServer.SendPing(node.Leader(), peers)
 
 		case <-expireSessionsTimer:
 			expireSessionsTimer = time.After(expireSessionsInterval)
@@ -767,17 +779,9 @@ func main() {
 				continue
 			}
 
-			for id, s := range ircserver.Sessions {
-				if time.Since(s.LastActivity) <= *sessionExpiration {
-					continue
-				}
-
-				log.Printf("Expiring session %v\n", id)
-
-				msg := types.NewRobustMessage(types.RobustDeleteSession, id, fmt.Sprintf("Ping timeout (%v)", *sessionExpiration))
+			for _, msg := range ircServer.ExpireSessions(*sessionExpiration) {
 				// Cannot fail, no user input.
 				msgbytes, _ := json.Marshal(msg)
-
 				f := node.Apply(msgbytes, 10*time.Second)
 				if err := f.Error(); err != nil {
 					log.Printf("Apply(): %v\n", err)

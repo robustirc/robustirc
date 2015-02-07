@@ -19,9 +19,9 @@ func alwaysRelevant(s *Session, m *irc.Message, prev, next logCursor) (bool, err
 
 func init() {
 	// Keep this list ordered the same way the functions below are ordered.
-	commands["PING"] = &ircCommand{Func: cmdPing}
+	commands["PING"] = &ircCommand{Func: (*IRCServer).cmdPing}
 	commands["NICK"] = &ircCommand{
-		Func: cmdNick,
+		Func: (*IRCServer).cmdNick,
 		Interesting: func(s *Session, msg *irc.Message) bool {
 			// TODO(secure): does it make sense to restrict this to Sessions which
 			// have a channel in common? noting this because it doesn’t handle the
@@ -32,24 +32,24 @@ func init() {
 		StillRelevant: relevantNick,
 	}
 	commands["USER"] = &ircCommand{
-		Func:          cmdUser,
+		Func:          (*IRCServer).cmdUser,
 		MinParams:     3,
 		StillRelevant: relevantUser,
 	}
 	commands["JOIN"] = &ircCommand{
-		Func:          cmdJoin,
+		Func:          (*IRCServer).cmdJoin,
 		MinParams:     1,
 		Interesting:   interestJoin,
 		StillRelevant: relevantJoin,
 	}
 	commands["PART"] = &ircCommand{
-		Func:          cmdPart,
+		Func:          (*IRCServer).cmdPart,
 		MinParams:     1,
 		Interesting:   interestPart,
 		StillRelevant: relevantPart,
 	}
 	commands["QUIT"] = &ircCommand{
-		Func: cmdQuit,
+		Func: (*IRCServer).cmdQuit,
 		Interesting: func(s *Session, msg *irc.Message) bool {
 			// TODO(secure): does it make sense to restrict this to Sessions which
 			// have a channel in common? noting this because it doesn’t handle the
@@ -61,29 +61,29 @@ func init() {
 		StillRelevant: neverRelevant,
 	}
 	commands["PRIVMSG"] = &ircCommand{
-		Func:          cmdPrivmsg,
+		Func:          (*IRCServer).cmdPrivmsg,
 		Interesting:   interestPrivmsg,
 		StillRelevant: neverRelevant,
 	}
 	commands["MODE"] = &ircCommand{
-		Func:        cmdMode,
+		Func:        (*IRCServer).cmdMode,
 		MinParams:   1,
 		Interesting: commonChannelOrDirect,
 	}
 	commands["WHO"] = &ircCommand{
-		Func:          cmdWho,
+		Func:          (*IRCServer).cmdWho,
 		StillRelevant: neverRelevant,
 	}
-	commands["OPER"] = &ircCommand{Func: cmdOper, MinParams: 2}
-	commands["KILL"] = &ircCommand{Func: cmdKill, MinParams: 1}
-	commands["AWAY"] = &ircCommand{Func: cmdAway}
+	commands["OPER"] = &ircCommand{Func: (*IRCServer).cmdOper, MinParams: 2}
+	commands["KILL"] = &ircCommand{Func: (*IRCServer).cmdKill, MinParams: 1}
+	commands["AWAY"] = &ircCommand{Func: (*IRCServer).cmdAway}
 	commands["TOPIC"] = &ircCommand{
-		Func:          cmdTopic,
+		Func:          (*IRCServer).cmdTopic,
 		MinParams:     1,
 		Interesting:   interestTopic,
 		StillRelevant: relevantTopic,
 	}
-	commands["MOTD"] = &ircCommand{Func: cmdMotd}
+	commands["MOTD"] = &ircCommand{Func: (*IRCServer).cmdMotd}
 }
 
 // commonChannelOrDirect returns true when msg’s first parameter is a channel
@@ -92,7 +92,7 @@ func commonChannelOrDirect(s *Session, msg *irc.Message) bool {
 	return s.Channels[msg.Params[0]] || msg.Params[0] == s.Nick
 }
 
-func cmdPing(s *Session, msg *irc.Message) []*irc.Message {
+func (i *IRCServer) cmdPing(s *Session, msg *irc.Message) []*irc.Message {
 	if len(msg.Params) < 1 {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOORIGIN,
@@ -136,7 +136,7 @@ func relevantNick(s *Session, msg *irc.Message, prev, next logCursor) (bool, err
 	return true, nil
 }
 
-func cmdNick(s *Session, msg *irc.Message) []*irc.Message {
+func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 	oldPrefix := s.ircPrefix
 
 	if len(msg.Params) < 1 {
@@ -154,7 +154,7 @@ func cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
-	if _, ok := nicks[NickToLower(msg.Params[0])]; ok {
+	if _, ok := i.nicks[NickToLower(msg.Params[0])]; ok {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NICKNAMEINUSE,
 			Params:   []string{"*", msg.Params[0]},
@@ -163,9 +163,9 @@ func cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 	}
 	oldNick := s.Nick
 	s.Nick = msg.Params[0]
-	nicks[NickToLower(s.Nick)] = s
+	i.nicks[NickToLower(s.Nick)] = s
 	if oldNick != "" {
-		delete(nicks, NickToLower(oldNick))
+		delete(i.nicks, NickToLower(oldNick))
 	}
 	s.updateIrcPrefix()
 	if oldPrefix.String() != "" {
@@ -188,20 +188,20 @@ func cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 	replies = append(replies, &irc.Message{
 		Command:  irc.RPL_YOURHOST,
 		Params:   []string{s.Nick},
-		Trailing: "Your host is " + ServerPrefix.Name,
+		Trailing: "Your host is " + i.ServerPrefix.Name,
 	})
 
 	replies = append(replies, &irc.Message{
 		Command:  irc.RPL_CREATED,
 		Params:   []string{s.Nick},
-		Trailing: "This server was created " + serverCreation.String(),
+		Trailing: "This server was created " + i.serverCreation.String(),
 	})
 
 	replies = append(replies, &irc.Message{
 		Command: irc.RPL_MYINFO,
 		Params:  []string{s.Nick},
 		// TODO(secure): actually support these modes.
-		Trailing: ServerPrefix.Name + " v1 i nst",
+		Trailing: i.ServerPrefix.Name + " v1 i nst",
 	})
 
 	// send ISUPPORT as per http://www.irc.org/tech_docs/draft-brocklesby-irc-isupport-03.txt
@@ -217,7 +217,7 @@ func cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 		Trailing: "are supported by this server",
 	})
 
-	replies = append(replies, cmdMotd(s, msg)...)
+	replies = append(replies, i.cmdMotd(s, msg)...)
 
 	return replies
 }
@@ -244,7 +244,7 @@ func relevantUser(s *Session, msg *irc.Message, prev, next logCursor) (bool, err
 	return true, nil
 }
 
-func cmdUser(s *Session, msg *irc.Message) []*irc.Message {
+func (i *IRCServer) cmdUser(s *Session, msg *irc.Message) []*irc.Message {
 	// We keep the username (so that bans are more effective) and realname
 	// (some people actually set it and look at it).
 	s.Username = msg.Params[0]
@@ -286,7 +286,7 @@ func relevantJoin(s *Session, msg *irc.Message, prev, next logCursor) (bool, err
 	return true, nil
 }
 
-func cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
+func (i *IRCServer) cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 	// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
 	channelname := msg.Params[0]
 	if !IsValidChannel(channelname) {
@@ -296,12 +296,12 @@ func cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 			Trailing: "No such channel",
 		}}
 	}
-	c, ok := channels[channelname]
+	c, ok := i.channels[channelname]
 	if !ok {
 		c = &channel{
 			nicks: make(map[string]*[maxChanMemberStatus]bool),
 		}
-		channels[channelname] = c
+		i.channels[channelname] = c
 	}
 	c.nicks[s.Nick] = &[maxChanMemberStatus]bool{}
 	// If the channel did not exist before, the first joining user becomes a
@@ -330,7 +330,7 @@ func cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 		Trailing: channelname,
 	})
 	// Integrate the topic response by simulating a TOPIC command.
-	replies = append(replies, cmdTopic(s, &irc.Message{Command: irc.TOPIC, Params: []string{channelname}})...)
+	replies = append(replies, i.cmdTopic(s, &irc.Message{Command: irc.TOPIC, Params: []string{channelname}})...)
 	// TODO(secure): why the = param?
 	replies = append(replies, &irc.Message{
 		Command:  irc.RPL_NAMREPLY,
@@ -375,11 +375,11 @@ func relevantPart(s *Session, msg *irc.Message, prev, next logCursor) (bool, err
 	return false, nil
 }
 
-func cmdPart(s *Session, msg *irc.Message) []*irc.Message {
+func (i *IRCServer) cmdPart(s *Session, msg *irc.Message) []*irc.Message {
 	// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
 	channelname := msg.Params[0]
 
-	c, ok := channels[channelname]
+	c, ok := i.channels[channelname]
 	if !ok {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOSUCHCHANNEL,
@@ -398,7 +398,7 @@ func cmdPart(s *Session, msg *irc.Message) []*irc.Message {
 
 	delete(c.nicks, s.Nick)
 	if len(c.nicks) == 0 {
-		delete(channels, channelname)
+		delete(i.channels, channelname)
 	}
 	delete(s.Channels, channelname)
 	return []*irc.Message{&irc.Message{
@@ -408,7 +408,7 @@ func cmdPart(s *Session, msg *irc.Message) []*irc.Message {
 	}}
 }
 
-func cmdQuit(s *Session, msg *irc.Message) []*irc.Message {
+func (i *IRCServer) cmdQuit(s *Session, msg *irc.Message) []*irc.Message {
 	return []*irc.Message{&irc.Message{
 		Prefix:   &s.ircPrefix,
 		Command:  irc.QUIT,
@@ -425,7 +425,7 @@ func interestPrivmsg(s *Session, msg *irc.Message) bool {
 	return commonChannelOrDirect(s, msg)
 }
 
-func cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
+func (i *IRCServer) cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 	if len(msg.Params) < 1 {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NORECIPIENT,
@@ -451,7 +451,7 @@ func cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
-	session, ok := nicks[NickToLower(msg.Params[0])]
+	session, ok := i.nicks[NickToLower(msg.Params[0])]
 	if !ok {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOSUCHNICK,
@@ -480,12 +480,12 @@ func cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 	return replies
 }
 
-func cmdMode(s *Session, msg *irc.Message) []*irc.Message {
+func (i *IRCServer) cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 	channelname := msg.Params[0]
 	// TODO(secure): properly distinguish between users and channels
 	if s.Channels[channelname] {
 		// Channel must exist, the user is in it.
-		c := channels[channelname]
+		c := i.channels[channelname]
 		var modestr string
 		if len(msg.Params) > 1 {
 			modestr = msg.Params[1]
@@ -578,7 +578,7 @@ func cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 	}
 }
 
-func cmdWho(s *Session, msg *irc.Message) []*irc.Message {
+func (i *IRCServer) cmdWho(s *Session, msg *irc.Message) []*irc.Message {
 	if len(msg.Params) < 1 {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.RPL_ENDOFWHO,
@@ -597,7 +597,7 @@ func cmdWho(s *Session, msg *irc.Message) []*irc.Message {
 		Trailing: "End of /WHO list",
 	}
 
-	c, ok := channels[channelname]
+	c, ok := i.channels[channelname]
 	if !ok {
 		return []*irc.Message{lastmsg}
 	}
@@ -608,8 +608,15 @@ func cmdWho(s *Session, msg *irc.Message) []*irc.Message {
 		}
 	}
 
+	nicks := make([]string, 0, len(c.nicks))
 	for nick, _ := range c.nicks {
-		session := nicks[NickToLower(nick)]
+		nicks = append(nicks, nick)
+	}
+
+	sort.Strings(nicks)
+
+	for _, nick := range nicks {
+		session := i.nicks[NickToLower(nick)]
 		prefix := session.ircPrefix
 		goneStatus := "H"
 		if session.AwayMsg != "" {
@@ -617,7 +624,7 @@ func cmdWho(s *Session, msg *irc.Message) []*irc.Message {
 		}
 		replies = append(replies, &irc.Message{
 			Command:  irc.RPL_WHOREPLY,
-			Params:   []string{s.Nick, channelname, prefix.User, prefix.Host, ServerPrefix.Name, prefix.Name, goneStatus},
+			Params:   []string{s.Nick, channelname, prefix.User, prefix.Host, i.ServerPrefix.Name, prefix.Name, goneStatus},
 			Trailing: "0 " + session.Realname,
 		})
 	}
@@ -625,7 +632,7 @@ func cmdWho(s *Session, msg *irc.Message) []*irc.Message {
 	return append(replies, lastmsg)
 }
 
-func cmdOper(s *Session, msg *irc.Message) []*irc.Message {
+func (i *IRCServer) cmdOper(s *Session, msg *irc.Message) []*irc.Message {
 	// TODO(secure): implement restriction to certain hosts once we have a
 	// configuration file. (ERR_NOOPERHOST)
 
@@ -646,7 +653,7 @@ func cmdOper(s *Session, msg *irc.Message) []*irc.Message {
 	}}
 }
 
-func cmdKill(s *Session, msg *irc.Message) []*irc.Message {
+func (i *IRCServer) cmdKill(s *Session, msg *irc.Message) []*irc.Message {
 	if strings.TrimSpace(msg.Trailing) == "" {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NEEDMOREPARAMS,
@@ -663,7 +670,7 @@ func cmdKill(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
-	session, ok := nicks[NickToLower(msg.Params[0])]
+	session, ok := i.nicks[NickToLower(msg.Params[0])]
 	if !ok {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOSUCHNICK,
@@ -673,7 +680,7 @@ func cmdKill(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	prefix := session.ircPrefix
-	DeleteSession(session.Id)
+	i.DeleteSession(session.Id)
 	return []*irc.Message{&irc.Message{
 		Prefix:   &prefix,
 		Command:  irc.QUIT,
@@ -681,7 +688,7 @@ func cmdKill(s *Session, msg *irc.Message) []*irc.Message {
 	}}
 }
 
-func cmdAway(s *Session, msg *irc.Message) []*irc.Message {
+func (i *IRCServer) cmdAway(s *Session, msg *irc.Message) []*irc.Message {
 	s.AwayMsg = strings.TrimSpace(msg.Trailing)
 	if s.AwayMsg != "" {
 		return []*irc.Message{&irc.Message{
@@ -727,9 +734,9 @@ func relevantTopic(s *Session, msg *irc.Message, prev, next logCursor) (bool, er
 	return true, nil
 }
 
-func cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
+func (i *IRCServer) cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 	channel := msg.Params[0]
-	c, ok := channels[channel]
+	c, ok := i.channels[channel]
 	if !ok {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOSUCHCHANNEL,
@@ -808,12 +815,12 @@ func cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 	}}
 }
 
-func cmdMotd(s *Session, msg *irc.Message) []*irc.Message {
+func (i *IRCServer) cmdMotd(s *Session, msg *irc.Message) []*irc.Message {
 	return []*irc.Message{
 		&irc.Message{
 			Command:  irc.RPL_MOTDSTART,
 			Params:   []string{s.Nick},
-			Trailing: "- " + ServerPrefix.Name + " Message of the day - ",
+			Trailing: "- " + i.ServerPrefix.Name + " Message of the day - ",
 		},
 		// TODO(secure): make motd configurable
 		&irc.Message{

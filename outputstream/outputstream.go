@@ -30,47 +30,54 @@ type messageBatch struct {
 	nextId int64
 }
 
-var (
+type OutputStream struct {
 	// messagesMu guards messages and lastseen (pointer into messages).
 	messagesMu sync.RWMutex
-	newMessage = sync.NewCond(&messagesMu)
+	newMessage *sync.Cond
 
 	// The uint64 represents the Id (not the Reply) of a types.RobustId. We use
 	// an uint64 directly because then we can use the Go runtime’s
 	// mapaccessN_fast64 code path.
 	messages map[int64]*messageBatch
 	lastseen *messageBatch
-)
+}
+
+func NewOutputStream() *OutputStream {
+	os := &OutputStream{}
+	os.newMessage = sync.NewCond(&os.messagesMu)
+	os.Reset()
+	return os
+}
 
 // Reset deletes all messages.
-func Reset() {
-	messagesMu.Lock()
-	defer messagesMu.Unlock()
+func (os *OutputStream) Reset() {
+	os.messagesMu.Lock()
+	defer os.messagesMu.Unlock()
 
-	messages = make(map[int64]*messageBatch)
-	lastseen = &messageBatch{nextId: math.MaxInt64}
-	messages[0] = lastseen
+	os.messages = make(map[int64]*messageBatch)
+	os.lastseen = &messageBatch{nextId: math.MaxInt64}
+	os.messages[0] = os.lastseen
 }
 
 // Add adds messages to the output stream. The Id.Id field of all messages must
 // be identical, i.e. they must all be replies to the same input IRC message.
-func Add(msgs []*types.RobustMessage) {
-	messagesMu.Lock()
-	defer messagesMu.Unlock()
-	lastseen.nextId = msgs[0].Id.Id
-	lastseen = &messageBatch{
+func (os *OutputStream) Add(msgs []*types.RobustMessage) {
+	os.messagesMu.Lock()
+	defer os.messagesMu.Unlock()
+	os.lastseen.nextId = msgs[0].Id.Id
+	os.lastseen = &messageBatch{
 		Messages: msgs,
 		nextId:   math.MaxInt64,
 	}
-	messages[msgs[0].Id.Id] = lastseen
-	newMessage.Broadcast()
+	os.messages[msgs[0].Id.Id] = os.lastseen
+	os.newMessage.Broadcast()
 }
 
-func LastSeen() types.RobustId {
-	messagesMu.RLock()
-	defer messagesMu.RUnlock()
-	if len(lastseen.Messages) > 0 {
-		return lastseen.Messages[0].Id
+func (os *OutputStream) LastSeen() types.RobustId {
+	os.messagesMu.RLock()
+	defer os.messagesMu.RUnlock()
+	if len(os.lastseen.Messages) > 0 {
+		return os.lastseen.Messages[0].Id
 	} else {
 		return types.RobustId{Id: 0}
 	}
@@ -78,34 +85,34 @@ func LastSeen() types.RobustId {
 
 // Delete deletes all IRC output messages that were generated in reply to the
 // input message with inputId.
-func Delete(inputId types.RobustId) {
-	messagesMu.Lock()
-	defer messagesMu.Unlock()
-	if messages[inputId.Id] == lastseen {
-		if len(messages) == 1 {
+func (os *OutputStream) Delete(inputId types.RobustId) {
+	os.messagesMu.Lock()
+	defer os.messagesMu.Unlock()
+	if os.messages[inputId.Id] == os.lastseen {
+		if len(os.messages) == 1 {
 			// We should always have the first message (RobustId{Id: 0}).
 			log.Panicf("Delete() called on _all_ messages")
 		}
 		// When deleting the last message, lastseen needs to be set to the
 		// previous message to avoid blocking in GetNext() forever.
-		keys := make([]int64, len(messages))
+		keys := make([]int64, len(os.messages))
 		var i int
-		for key, _ := range messages {
+		for key, _ := range os.messages {
 			keys[i] = key
 			i++
 		}
 		sort.Sort(int64Slice(keys))
-		lastseen = messages[keys[len(keys)-2]]
-		lastseen.nextId = math.MaxInt64
+		os.lastseen = os.messages[keys[len(keys)-2]]
+		os.lastseen.nextId = math.MaxInt64
 	}
-	delete(messages, inputId.Id)
+	delete(os.messages, inputId.Id)
 }
 
 // GetNext returns the next IRC output message after lastseen, even if lastseen
 // was deleted in the meanwhile. In case there is no next message yet,
 // GetNext blocks until it appears.
 // GetNext(types.RobustId{Id: 0}) returns the first message.
-func GetNext(lastseen types.RobustId) []*types.RobustMessage {
+func (os *OutputStream) GetNext(lastseen types.RobustId) []*types.RobustMessage {
 	// GetNext handles 4 different cases:
 	//
 	// ┌──────────────────┬───────────┬───────────────────────────────────────┐
@@ -120,12 +127,12 @@ func GetNext(lastseen types.RobustId) []*types.RobustMessage {
 	// Note that binary search may fall-through to blocking in case it cannot
 	// find a more recent message.
 
-	messagesMu.RLock()
-	current, ok := messages[lastseen.Id]
+	os.messagesMu.RLock()
+	current, ok := os.messages[lastseen.Id]
 	if ok && current.nextId < math.MaxInt64 {
-		next, okNext := messages[current.nextId]
+		next, okNext := os.messages[current.nextId]
 		if okNext {
-			messagesMu.RUnlock()
+			os.messagesMu.RUnlock()
 			return next.Messages
 		}
 		// nextId points to a deleted message, fall back to binary search.
@@ -136,9 +143,9 @@ func GetNext(lastseen types.RobustId) []*types.RobustMessage {
 		// We don’t keep a sorted version of the keys around because this code
 		// path is rarely taken.
 		// TODO: add a counter
-		keys := make([]int64, len(messages))
+		keys := make([]int64, len(os.messages))
 		var i int
-		for key, _ := range messages {
+		for key, _ := range os.messages {
 			keys[i] = key
 			i++
 		}
@@ -148,25 +155,25 @@ func GetNext(lastseen types.RobustId) []*types.RobustMessage {
 		})
 		// There is an output message which is more recent than lastseen.
 		if nextIdx < len(keys) {
-			msg := messages[keys[nextIdx]]
-			messagesMu.RUnlock()
+			msg := os.messages[keys[nextIdx]]
+			os.messagesMu.RUnlock()
 			return msg.Messages
 		}
 		// There is no message which is more recent than lastseen, so just take
 		// the last message and fallthrough into the code path that waits for
 		// newer messages.
-		current = messages[keys[len(keys)-1]]
+		current = os.messages[keys[len(keys)-1]]
 	}
-	messagesMu.RUnlock()
+	os.messagesMu.RUnlock()
 
 	// Wait until a new message appears.
-	messagesMu.Lock()
+	os.messagesMu.Lock()
 	for {
-		next, ok := messages[current.nextId]
+		next, ok := os.messages[current.nextId]
 		if ok {
-			messagesMu.Unlock()
+			os.messagesMu.Unlock()
 			return next.Messages
 		}
-		newMessage.Wait()
+		os.newMessage.Wait()
 	}
 }
