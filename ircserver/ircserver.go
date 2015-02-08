@@ -54,8 +54,6 @@ var (
 )
 
 var (
-	commands = make(map[string]*ircCommand)
-
 	// TODO(secure): remove this once OPER uses custom (configured) passwords.
 	NetworkPassword string
 
@@ -78,22 +76,6 @@ func init() {
 // _before_ the current message and a separate cursor returning all
 // messages _after_ the current message.
 type logCursor func() (*irc.Message, error)
-
-type ircCommand struct {
-	Func func(*IRCServer, *Session, *irc.Message) []*irc.Message
-
-	// Interesting returns true if the message should be sent to the session.
-	Interesting func(*Session, *irc.Message) bool
-
-	// StillRelevant is used during compaction. If it returns true, the message
-	// is kept, otherwise it will be deleted.
-	StillRelevant func(*Session, *irc.Message, logCursor, logCursor) (bool, error)
-
-	// MinParams ensures that enough parameters were specified.
-	// irc.ERR_NEEDMOREPARAMS is returned in case less than MinParams
-	// parameters were found, otherwise, Func is called.
-	MinParams int
-}
 
 type Session struct {
 	Id           types.RobustId

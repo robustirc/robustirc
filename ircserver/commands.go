@@ -9,12 +9,24 @@ import (
 	"github.com/sorcix/irc"
 )
 
-func neverRelevant(s *Session, m *irc.Message, prev, next logCursor) (bool, error) {
-	return false, nil
-}
+var (
+	commands = make(map[string]*ircCommand)
+)
 
-func alwaysRelevant(s *Session, m *irc.Message, prev, next logCursor) (bool, error) {
-	return true, nil
+type ircCommand struct {
+	Func func(*IRCServer, *Session, *irc.Message) []*irc.Message
+
+	// Interesting returns true if the message should be sent to the session.
+	Interesting func(*Session, *irc.Message) bool
+
+	// StillRelevant is used during compaction. If it returns true, the message
+	// is kept, otherwise it will be deleted.
+	StillRelevant func(*Session, *irc.Message, logCursor, logCursor) (bool, error)
+
+	// MinParams ensures that enough parameters were specified.
+	// irc.ERR_NEEDMOREPARAMS is returned in case less than MinParams
+	// parameters were found, otherwise, Func is called.
+	MinParams int
 }
 
 func init() {
@@ -84,6 +96,14 @@ func init() {
 		StillRelevant: relevantTopic,
 	}
 	commands["MOTD"] = &ircCommand{Func: (*IRCServer).cmdMotd}
+}
+
+func neverRelevant(s *Session, m *irc.Message, prev, next logCursor) (bool, error) {
+	return false, nil
+}
+
+func alwaysRelevant(s *Session, m *irc.Message, prev, next logCursor) (bool, error) {
+	return true, nil
 }
 
 // commonChannelOrDirect returns true when msg’s first parameter is a channel
