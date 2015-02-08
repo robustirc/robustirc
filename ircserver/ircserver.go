@@ -407,7 +407,15 @@ func (i *IRCServer) GetSession(id types.RobustId) (*Session, error) {
 
 // StillRelevant returns true if and only if ircmsg is still relevant, i.e.
 // needs to be kept in the IRC server input in order to arrive at exactly the
-// same state when replaying the input.
+// same state when replaying the input. State refers to ircserver state except
+// for outputstream.
+//
+// As an example, PRIVMSGs are never relevant, as they never modify ircserver
+// state. Also, if there are two NICK messages in the same session directly one
+// after the other, the first NICK message is obsoleted by the following NICK
+// message, i.e. not relevant anymore. Once there are other messages in between
+// the two NICK messages, though, it is not that simple anymore. Refer to
+// relevantNick() for how it works.
 //
 // 'prev' and 'next' are cursors with which the message-specific handler can
 // look at other messages to figure out whether the message is still relevant.
