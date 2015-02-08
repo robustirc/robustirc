@@ -176,7 +176,7 @@ type channel struct {
 
 type IRCServer struct {
 	// sessions contains all sessions, i.e. nickname, away message, whether the
-	// session is an IRC operator, etc. In contrary to nicks, this is keyed by
+	// session is an IRC operator, etc. In contrast to nicks, this is keyed by
 	// the session id.
 	sessions map[types.RobustId]*Session
 
