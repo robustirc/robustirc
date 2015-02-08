@@ -221,7 +221,7 @@ func NewIRCServer(networkname string) *IRCServer {
 
 // UpdateLastMessage stores the clientmessageid of the last message in the
 // corresponding session, so that duplicate messages are not persisted twice.
-func (i *IRCServer) UpdateLastMessage(msg *types.RobustMessage, serialized []byte) error {
+func (i *IRCServer) UpdateLastClientMessageID(msg *types.RobustMessage, serialized []byte) error {
 	session, err := i.GetSession(msg.Session)
 	if err != nil {
 		return err

@@ -308,7 +308,7 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 	switch msg.Type {
 	case types.RobustMessageOfDeath:
 		// To prevent the message from being accepted again.
-		ircServer.UpdateLastMessage(&msg, l.Data)
+		ircServer.UpdateLastClientMessageID(&msg, l.Data)
 		log.Printf("Skipped message of death.\n")
 
 	case types.RobustCreateSession:
@@ -347,7 +347,7 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 
 		// Need to do this first, because ircserver.ProcessMessage could delete
 		// the session, e.g. by using KILL or QUIT.
-		if err := ircServer.UpdateLastMessage(&msg, l.Data); err != nil {
+		if err := ircServer.UpdateLastClientMessageID(&msg, l.Data); err != nil {
 			log.Printf("Error updating the last message for session: %v\n", err)
 		}
 		replies := ircServer.ProcessMessage(msg.Session, irc.ParseMessage(string(msg.Data)))
