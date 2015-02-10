@@ -351,9 +351,10 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		// the session, e.g. by using KILL or QUIT.
 		if err := ircServer.UpdateLastClientMessageID(&msg, l.Data); err != nil {
 			log.Printf("Error updating the last message for session: %v\n", err)
+		} else {
+			replies := ircServer.ProcessMessage(msg.Session, irc.ParseMessage(string(msg.Data)))
+			ircServer.SendMessages(replies, msg.Session, msg.Id.Id)
 		}
-		replies := ircServer.ProcessMessage(msg.Session, irc.ParseMessage(string(msg.Data)))
-		ircServer.SendMessages(replies, msg.Session, msg.Id.Id)
 	}
 
 	return nil
