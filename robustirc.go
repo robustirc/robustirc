@@ -315,9 +315,9 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		ircServer.CreateSession(msg.Id, msg.Data)
 
 	case types.RobustDeleteSession:
-		replies := ircServer.ProcessMessage(msg.Session, irc.ParseMessage("QUIT :"+string(msg.Data)))
-		ircServer.SendMessages(replies, msg.Session, msg.Id.Id)
 		if s, err := ircServer.GetSession(msg.Session); err == nil {
+			replies := ircServer.ProcessMessage(msg.Session, irc.ParseMessage("QUIT :"+string(msg.Data)))
+			ircServer.SendMessages(replies, msg.Session, msg.Id.Id)
 			ircServer.DeleteSession(s)
 		}
 
