@@ -506,4 +506,50 @@ func TestWho(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 352 mero #test blah robust/0x13b5aa0a2bcfb8ad robustirc.net sECuRE G :0 Michael Stapelberg"),
 			irc.ParseMessage(":robustirc.net 315 mero #test :End of /WHO list"),
 		})
+
+	i.ProcessMessage(ids["secure"], irc.ParseMessage("NICK secore"))
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("WHO #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 352 mero #test foo robust/0x13b5aa0a2bcfb8ae robustirc.net mero H :0 Axel Wagner"),
+			irc.ParseMessage(":robustirc.net 352 mero #test blah robust/0x13b5aa0a2bcfb8ad robustirc.net secore G :0 Michael Stapelberg"),
+			irc.ParseMessage(":robustirc.net 315 mero #test :End of /WHO list"),
+		})
+}
+
+func TestQuit(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(ids["mero"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(ids["xeen"], irc.ParseMessage("JOIN #test"))
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("WHO #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 352 mero #test foo robust/0x13b5aa0a2bcfb8ae robustirc.net mero H :0 Axel Wagner"),
+			irc.ParseMessage(":robustirc.net 352 mero #test blah robust/0x13b5aa0a2bcfb8ad robustirc.net sECuRE H :0 Michael Stapelberg"),
+			irc.ParseMessage(":robustirc.net 352 mero #test baz robust/0x13b5aa0a2bcfb8af robustirc.net xeen H :0 Iks Enn"),
+			irc.ParseMessage(":robustirc.net 315 mero #test :End of /WHO list"),
+		})
+
+	i.ProcessMessage(ids["secure"], irc.ParseMessage("quit :bye bye"))
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("WHO #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 352 mero #test foo robust/0x13b5aa0a2bcfb8ae robustirc.net mero H :0 Axel Wagner"),
+			irc.ParseMessage(":robustirc.net 352 mero #test baz robust/0x13b5aa0a2bcfb8af robustirc.net xeen H :0 Iks Enn"),
+			irc.ParseMessage(":robustirc.net 315 mero #test :End of /WHO list"),
+		})
+
+	i.ProcessMessage(ids["xeen"], irc.ParseMessage("part #test"))
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("WHO #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 352 mero #test foo robust/0x13b5aa0a2bcfb8ae robustirc.net mero H :0 Axel Wagner"),
+			irc.ParseMessage(":robustirc.net 315 mero #test :End of /WHO list"),
+		})
 }

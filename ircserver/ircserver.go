@@ -228,8 +228,12 @@ func (i *IRCServer) CreateSession(id types.RobustId, auth string) {
 // DeleteSession deletes the specified session. Called from the IRC server
 // itself (when processing QUIT or KILL) or from the API (DELETE request coming
 // from the bridge).
-func (i *IRCServer) DeleteSession(id types.RobustId) {
-	delete(i.sessions, id)
+func (i *IRCServer) DeleteSession(s *Session) {
+	for _, c := range i.channels {
+		delete(c.nicks, s.Nick)
+	}
+	delete(i.nicks, NickToLower(s.Nick))
+	delete(i.sessions, s.Id)
 }
 
 // ExpireSessions returns RobustDeleteSession RobustMessages for all sessions

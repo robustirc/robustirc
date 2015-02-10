@@ -186,6 +186,10 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 	i.nicks[NickToLower(s.Nick)] = s
 	if oldNick != "" {
 		delete(i.nicks, NickToLower(oldNick))
+		for _, c := range i.channels {
+			c.nicks[s.Nick] = c.nicks[oldNick]
+			delete(c.nicks, oldNick)
+		}
 	}
 	s.updateIrcPrefix()
 	if oldPrefix.String() != "" {
@@ -429,8 +433,10 @@ func (i *IRCServer) cmdPart(s *Session, msg *irc.Message) []*irc.Message {
 }
 
 func (i *IRCServer) cmdQuit(s *Session, msg *irc.Message) []*irc.Message {
+	prefix := s.ircPrefix
+	i.DeleteSession(s)
 	return []*irc.Message{&irc.Message{
-		Prefix:   &s.ircPrefix,
+		Prefix:   &prefix,
 		Command:  irc.QUIT,
 		Trailing: msg.Trailing,
 	}}
@@ -700,7 +706,7 @@ func (i *IRCServer) cmdKill(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	prefix := session.ircPrefix
-	i.DeleteSession(session.Id)
+	i.DeleteSession(session)
 	return []*irc.Message{&irc.Message{
 		Prefix:   &prefix,
 		Command:  irc.QUIT,
