@@ -116,7 +116,7 @@ func session(r *http.Request, ps httprouter.Params) (*ircserver.Session, types.R
 
 func sessionOrProxy(w http.ResponseWriter, r *http.Request, ps httprouter.Params) (*ircserver.Session, types.RobustId, error) {
 	session, sessionid, err := session(r, ps)
-	if err == ircserver.ErrSessionNotYetSeen {
+	if err == ircserver.ErrSessionNotYetSeen && node.State() != raft.Leader {
 		// The session might exist on the leader, so we must proxy.
 		maybeProxyToLeader(w, r, r.Body)
 		return session, sessionid, err
