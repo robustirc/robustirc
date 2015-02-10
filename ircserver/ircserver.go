@@ -278,24 +278,25 @@ func NickToLower(nick string) string {
 func (i *IRCServer) ProcessMessage(session types.RobustId, message *irc.Message) []*irc.Message {
 	// alias for convenience
 	s := i.sessions[session]
+	command := strings.ToUpper(message.Command)
 
-	messagesProcessed.WithLabelValues(message.Command).Inc()
+	messagesProcessed.WithLabelValues(command).Inc()
 
-	if !s.loggedIn() && message.Command != irc.NICK && message.Command != irc.USER {
+	if !s.loggedIn() && command != irc.NICK && command != irc.USER {
 		return []*irc.Message{&irc.Message{
 			Prefix:   i.ServerPrefix,
 			Command:  irc.ERR_NOTREGISTERED,
-			Params:   []string{message.Command},
+			Params:   []string{command},
 			Trailing: "You have not registered",
 		}}
 	}
 
-	cmd, ok := commands[strings.ToUpper(message.Command)]
+	cmd, ok := commands[command]
 	if !ok {
 		return []*irc.Message{&irc.Message{
 			Prefix:   i.ServerPrefix,
 			Command:  irc.ERR_UNKNOWNCOMMAND,
-			Params:   []string{s.Nick, message.Command},
+			Params:   []string{s.Nick, command},
 			Trailing: "Unknown command",
 		}}
 	}
@@ -304,7 +305,7 @@ func (i *IRCServer) ProcessMessage(session types.RobustId, message *irc.Message)
 		return []*irc.Message{&irc.Message{
 			Prefix:   i.ServerPrefix,
 			Command:  irc.ERR_NEEDMOREPARAMS,
-			Params:   []string{s.Nick, message.Command},
+			Params:   []string{s.Nick, command},
 			Trailing: "Not enough parameters",
 		}}
 	}
