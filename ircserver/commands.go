@@ -187,7 +187,10 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 	if oldNick != "" {
 		delete(i.nicks, NickToLower(oldNick))
 		for _, c := range i.channels {
-			c.nicks[s.Nick] = c.nicks[oldNick]
+			// Check ok to ensure we never assign the default value (<nil>).
+			if modes, ok := c.nicks[oldNick]; ok {
+				c.nicks[s.Nick] = modes
+			}
 			delete(c.nicks, oldNick)
 		}
 	}

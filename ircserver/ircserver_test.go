@@ -516,6 +516,17 @@ func TestWho(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 352 mero #test blah robust/0x13b5aa0a2bcfb8ad robustirc.net secore G :0 Michael Stapelberg"),
 			irc.ParseMessage(":robustirc.net 315 mero #test :End of /WHO list"),
 		})
+
+	i.ProcessMessage(ids["xeen"], irc.ParseMessage("join #test"))
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("WHO #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 352 mero #test foo robust/0x13b5aa0a2bcfb8ae robustirc.net mero H :0 Axel Wagner"),
+			irc.ParseMessage(":robustirc.net 352 mero #test blah robust/0x13b5aa0a2bcfb8ad robustirc.net secore G :0 Michael Stapelberg"),
+			irc.ParseMessage(":robustirc.net 352 mero #test baz robust/0x13b5aa0a2bcfb8af robustirc.net xeen H :0 Iks Enn"),
+			irc.ParseMessage(":robustirc.net 315 mero #test :End of /WHO list"),
+		})
 }
 
 func TestQuit(t *testing.T) {
@@ -550,6 +561,16 @@ func TestQuit(t *testing.T) {
 		i.ProcessMessage(ids["mero"], irc.ParseMessage("WHO #test")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 352 mero #test foo robust/0x13b5aa0a2bcfb8ae robustirc.net mero H :0 Axel Wagner"),
+			irc.ParseMessage(":robustirc.net 315 mero #test :End of /WHO list"),
+		})
+
+	i.ProcessMessage(ids["xeen"], irc.ParseMessage("join #test"))
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("WHO #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 352 mero #test foo robust/0x13b5aa0a2bcfb8ae robustirc.net mero H :0 Axel Wagner"),
+			irc.ParseMessage(":robustirc.net 352 mero #test baz robust/0x13b5aa0a2bcfb8af robustirc.net xeen H :0 Iks Enn"),
 			irc.ParseMessage(":robustirc.net 315 mero #test :End of /WHO list"),
 		})
 }
