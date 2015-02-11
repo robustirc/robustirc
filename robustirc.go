@@ -160,25 +160,25 @@ func (s *robustSnapshot) canCompact(elog *raft.Log) (bool, error) {
 	// The prev and next functions are cursors, see ircserver’s StillRelevant
 	// function. They return the previous message (or next message,
 	// respectively).
-	get := func(index uint64) (*irc.Message, error) {
+	get := func(index uint64) *irc.Message {
 		if s.del[index] {
-			return nil, nil
+			return nil
 		}
 
 		var nlog raft.Log
 		if err := s.store.GetLog(index, &nlog); err != nil {
-			return nil, err
+			return nil
 		}
 
 		if nlog.Type != raft.LogCommand {
-			return nil, nil
+			return nil
 		}
 		nmsg := types.NewRobustMessageFromBytes(nlog.Data)
 		if nmsg.Type != types.RobustIRCFromClient ||
 			nmsg.Session != msg.Session {
-			return nil, nil
+			return nil
 		}
-		return irc.ParseMessage(nmsg.Data), nil
+		return irc.ParseMessage(nmsg.Data)
 	}
 
 	prevIndex := elog.Index
@@ -190,11 +190,7 @@ func (s *robustSnapshot) canCompact(elog *raft.Log) (bool, error) {
 				return nil, ircserver.CursorEOF
 			}
 
-			ircmsg, err := get(prevIndex)
-			if err != nil {
-				return nil, err
-			}
-			if ircmsg != nil {
+			if ircmsg := get(prevIndex); ircmsg != nil {
 				return ircmsg, nil
 			}
 		}
@@ -209,11 +205,7 @@ func (s *robustSnapshot) canCompact(elog *raft.Log) (bool, error) {
 				return nil, ircserver.CursorEOF
 			}
 
-			ircmsg, err := get(nextIndex)
-			if err != nil {
-				return nil, err
-			}
-			if ircmsg != nil {
+			if ircmsg := get(nextIndex); ircmsg != nil {
 				return ircmsg, nil
 			}
 		}
@@ -242,11 +234,13 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 			var elog raft.Log
 
 			if err := s.store.GetLog(i, &elog); err != nil {
-				return err
+				s.del[i] = true
+				continue
 			}
 
 			canCompact, err := s.canCompact(&elog)
 			if err != nil {
+				sink.Cancel()
 				return err
 			}
 			if canCompact {
@@ -265,7 +259,7 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 		var elog raft.Log
 
 		if err := s.store.GetLog(i, &elog); err != nil {
-			return err
+			continue
 		}
 
 		// TODO(secure): delete entries in s.store as well, otherwise we grow
