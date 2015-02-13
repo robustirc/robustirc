@@ -31,7 +31,10 @@ type ircCommand struct {
 
 func init() {
 	// Keep this list ordered the same way the functions below are ordered.
-	commands["PING"] = &ircCommand{Func: (*IRCServer).cmdPing}
+	commands["PING"] = &ircCommand{
+		Func:          (*IRCServer).cmdPing,
+		StillRelevant: neverRelevant,
+	}
 	commands["NICK"] = &ircCommand{
 		Func: (*IRCServer).cmdNick,
 		Interesting: func(s *Session, msg *irc.Message) bool {
@@ -95,7 +98,10 @@ func init() {
 		Interesting:   interestTopic,
 		StillRelevant: relevantTopic,
 	}
-	commands["MOTD"] = &ircCommand{Func: (*IRCServer).cmdMotd}
+	commands["MOTD"] = &ircCommand{
+		Func:          (*IRCServer).cmdMotd,
+		StillRelevant: neverRelevant,
+	}
 }
 
 func neverRelevant(s *Session, m *irc.Message, prev, next logCursor) (bool, error) {
