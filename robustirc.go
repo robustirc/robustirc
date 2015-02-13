@@ -262,10 +262,6 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 			continue
 		}
 
-		// TODO(secure): delete entries in s.store as well, otherwise we grow
-		// without bounds. refactor compaction, perhaps moving logic into
-		// ircserver/commands.go
-
 		if err := encoder.Encode(elog); err != nil {
 			sink.Cancel()
 			return err
@@ -273,6 +269,29 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 	}
 
 	sink.Close()
+
+	for idx, del := range s.del {
+		if !del {
+			continue
+		}
+
+		var nlog raft.Log
+		if err := s.store.GetLog(idx, &nlog); err != nil {
+			return nil
+		}
+
+		if nlog.Type != raft.LogCommand {
+			return nil
+		}
+		nmsg := types.NewRobustMessageFromBytes(nlog.Data)
+		if nmsg.Type != types.RobustIRCFromClient {
+			return nil
+		}
+		log.Printf("Compacting index %d, ircmsg %q\n", idx, nmsg.Data)
+
+		// TODO: delete msg in s.store
+	}
+
 	return nil
 }
 
