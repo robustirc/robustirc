@@ -2,7 +2,6 @@ package ircserver
 
 import (
 	"bytes"
-	"strconv"
 	"testing"
 	"time"
 
@@ -327,9 +326,7 @@ func TestTopic(t *testing.T) {
 		[]*irc.Message{
 			&irc.Message{Prefix: &sMero.ircPrefix, Command: irc.JOIN, Trailing: "#test"},
 			irc.ParseMessage(":robustirc.net 332 mero #test :yeah, this is a topic."),
-			// TODO: the following line is flaky. We should set a defined time
-			// on the server for testing instead of the server using time.Now().
-			irc.ParseMessage(":robustirc.net 333 mero #test sECuRE " + strconv.FormatInt(time.Now().Unix(), 10)),
+			irc.ParseMessage(":robustirc.net 333 mero #test sECuRE 1420228218"),
 			irc.ParseMessage(":robustirc.net 353 mero = #test :@sECuRE mero"),
 			irc.ParseMessage(":robustirc.net 366 mero #test :End of /NAMES list."),
 		})
@@ -338,9 +335,7 @@ func TestTopic(t *testing.T) {
 		i.ProcessMessage(ids["mero"], irc.ParseMessage("TOPIC #test")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 332 mero #test :yeah, this is a topic."),
-			// TODO: the following line is flaky. We should set a defined time
-			// on the server for testing instead of the server using time.Now().
-			irc.ParseMessage(":robustirc.net 333 mero #test sECuRE " + strconv.FormatInt(time.Now().Unix(), 10)),
+			irc.ParseMessage(":robustirc.net 333 mero #test sECuRE 1420228218"),
 		})
 
 	mustMatchIrcmsg(t,

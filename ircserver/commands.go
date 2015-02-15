@@ -839,7 +839,7 @@ func (i *IRCServer) cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	c.topicNick = s.Nick
-	c.topicTime = time.Now()
+	c.topicTime = s.LastActivity
 	c.topic = msg.Trailing
 
 	return []*irc.Message{&irc.Message{
