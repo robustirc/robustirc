@@ -85,7 +85,27 @@ func TestDeleteMiddle(t *testing.T) {
 
 	os.Delete(types.RobustId{Id: 2, Reply: 0})
 
-	msgs := os.GetNext(types.RobustId{Id: 2, Reply: 1})
+	// Verify we get the expected messages when using Get directly with the
+	// input IDs.
+	msgs, ok := os.Get(types.RobustId{Id: 3})
+	if !ok {
+		t.Fatalf("got false, want true")
+	}
+	if want := (types.RobustId{Id: 3, Reply: 1}); msgs[0].Id != want {
+		t.Fatalf("got %v, want %v", msgs[0].Id, want)
+	}
+
+	// Verify getting an invalid message works as expected
+	msgs, ok = os.Get(types.RobustId{Id: 23})
+	if ok {
+		t.Fatalf("got true, want false")
+	}
+	if msgs != nil {
+		t.Fatalf("got %v, want nil", msgs)
+	}
+
+	// Now get the same messages using GetNext
+	msgs = os.GetNext(types.RobustId{Id: 2, Reply: 1})
 	if want := (types.RobustId{Id: 3, Reply: 1}); msgs[0].Id != want {
 		t.Fatalf("got %v, want %v", msgs[0].Id, want)
 	}

@@ -449,3 +449,50 @@ func handleQuit(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Fatalf("Exiting because %v triggered /quit", r.RemoteAddr)
 }
+
+// handleCanaryLog streams the entire input log and the corresponding output
+// messages, so that a new robustirc version can be run in canary mode (process
+// all the messages of a real IRC network and display any differences).
+func handleCanaryLog(w http.ResponseWriter, r *http.Request) {
+	// TODO(secure): is it okay to compact during handleCanaryLog or should we introduce a mutex?
+	first, err := ircStore.FirstIndex()
+	if err != nil {
+		return
+	}
+
+	last, err := ircStore.LastIndex()
+	if err != nil {
+		return
+	}
+
+	type canaryMessage struct {
+		Index  uint64
+		Input  *types.RobustMessage
+		Output []*types.RobustMessage
+	}
+
+	encoder := json.NewEncoder(w)
+
+	// Useful for the client to implement a progress indicator.
+	w.Header().Set("X-RobustIRC-Canary-Messages", fmt.Sprintf("%d", last-first))
+	// Necessary for the client to avoid differences in the 001 message.
+	w.Header().Set("X-RobustIRC-Canary-ServerCreation", fmt.Sprintf("%d", ircServer.ServerCreation.UnixNano()))
+
+	for i := first; i <= last; i++ {
+		var elog raft.Log
+		if err := ircStore.GetLog(i, &elog); err != nil {
+			continue
+		}
+		if elog.Type != raft.LogCommand {
+			continue
+		}
+
+		msg := types.NewRobustMessageFromBytes(elog.Data)
+		output, _ := ircServer.Get(msg.Id)
+
+		if err := encoder.Encode(canaryMessage{Index: i, Input: &msg, Output: output}); err != nil {
+			log.Printf("Aborting handleCanaryLog: %v\n", err)
+			return
+		}
+	}
+}

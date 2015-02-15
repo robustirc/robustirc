@@ -67,6 +67,9 @@ var (
 	join = flag.String("join",
 		"",
 		"host:port of an existing raft node in the network that should be joined. Will also be loaded from -raftdir.")
+	canaryReport = flag.String("canary_report",
+		"",
+		"If specified, all messages on the node specified by -join will be processed locally and a report about the differences is stored in the path given by -canary_report")
 
 	network = flag.String("network_name",
 		"",
@@ -567,6 +570,7 @@ func main() {
 		printDefault(flag.Lookup("singlenode"))
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "The following flags are optional:\n")
+		printDefault(flag.Lookup("canary_report"))
 		printDefault(flag.Lookup("listen"))
 		printDefault(flag.Lookup("raftdir"))
 		printDefault(flag.Lookup("tls_ca_file"))
@@ -595,6 +599,11 @@ func main() {
 
 	if *version {
 		log.Printf("RobustIRC %s\n", Version)
+		return
+	}
+
+	if *canaryReport != "" {
+		canary()
 		return
 	}
 
@@ -711,6 +720,7 @@ func main() {
 	privaterouter.HandlerFunc("GET", "/snapshot", handleSnapshot)
 	privaterouter.HandlerFunc("GET", "/leader", handleLeader)
 	privaterouter.HandlerFunc("GET", "/executablehash", handleHash)
+	privaterouter.HandlerFunc("GET", "/canarylog", handleCanaryLog)
 	privaterouter.HandlerFunc("POST", "/quit", handleQuit)
 	privaterouter.Handler("GET", "/metrics", prometheus.Handler())
 

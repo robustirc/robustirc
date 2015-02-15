@@ -177,3 +177,14 @@ func (os *OutputStream) GetNext(lastseen types.RobustId) []*types.RobustMessage 
 		os.newMessage.Wait()
 	}
 }
+
+// Get returns the next IRC output message for 'input', if present.
+func (os *OutputStream) Get(input types.RobustId) ([]*types.RobustMessage, bool) {
+	os.messagesMu.RLock()
+	defer os.messagesMu.RUnlock()
+	output, ok := os.messages[input.Id]
+	if !ok {
+		return nil, ok
+	}
+	return output.Messages, ok
+}

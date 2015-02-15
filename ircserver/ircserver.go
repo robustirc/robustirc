@@ -444,3 +444,9 @@ func (i *IRCServer) NumSessions() int {
 func (i *IRCServer) GetNext(lastseen types.RobustId) []*types.RobustMessage {
 	return i.output.GetNext(lastseen)
 }
+
+// Get wraps outputstream.Get to avoid making the outputstream instance
+// public. All other methods should not be used, which is enforced this way.
+func (i *IRCServer) Get(input types.RobustId) ([]*types.RobustMessage, bool) {
+	return i.output.Get(input)
+}
