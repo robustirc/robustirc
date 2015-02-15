@@ -227,7 +227,7 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 	replies = append(replies, &irc.Message{
 		Command:  irc.RPL_CREATED,
 		Params:   []string{s.Nick},
-		Trailing: "This server was created " + i.serverCreation.String(),
+		Trailing: "This server was created " + i.ServerCreation.UTC().String(),
 	})
 
 	replies = append(replies, &irc.Message{

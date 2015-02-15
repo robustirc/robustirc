@@ -186,18 +186,18 @@ type IRCServer struct {
 
 	// serverCreation is the time at which the IRCServer object was created.
 	// Used for the RPL_CREATED message.
-	serverCreation time.Time
+	ServerCreation time.Time
 }
 
 // NewIRCServer returns a new IRC server.
-func NewIRCServer(networkname string) *IRCServer {
+func NewIRCServer(networkname string, serverCreation time.Time) *IRCServer {
 	return &IRCServer{
 		channels:       make(map[string]*channel),
 		nicks:          make(map[string]*Session),
 		sessions:       make(map[types.RobustId]*Session),
 		output:         outputstream.NewOutputStream(),
 		ServerPrefix:   &irc.Prefix{Name: networkname},
-		serverCreation: time.Now(),
+		ServerCreation: serverCreation,
 	}
 }
 

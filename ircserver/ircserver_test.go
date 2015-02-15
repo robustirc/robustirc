@@ -12,7 +12,7 @@ import (
 )
 
 func stdIRCServer() (*IRCServer, map[string]types.RobustId) {
-	i := NewIRCServer("robustirc.net")
+	i := NewIRCServer("robustirc.net", time.Now())
 
 	NetworkPassword = "foo"
 
@@ -74,7 +74,7 @@ func mustMatchMsg(t *testing.T, got []*irc.Message, want string) {
 }
 
 func TestSessionInitialization(t *testing.T) {
-	i := NewIRCServer("robustirc.net")
+	i := NewIRCServer("robustirc.net", time.Now())
 
 	id := types.RobustId{Id: time.Now().UnixNano()}
 

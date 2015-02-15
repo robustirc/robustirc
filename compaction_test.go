@@ -48,7 +48,7 @@ func verifyEndState(t *testing.T) {
 // makes sure the state matches expectations. The other test functions directly
 // test what should be compacted.
 func TestCompaction(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork")
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 
 	tempdir, err := ioutil.TempDir("", "robust-test-")
 	if err != nil {
@@ -245,7 +245,7 @@ func mustMatchStrings(t *testing.T, input []string, got []string, want []string)
 }
 
 func TestCompactNickNone(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork")
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -265,7 +265,7 @@ func TestCompactNickNone(t *testing.T) {
 }
 
 func TestCompactNickOne(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork")
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -292,7 +292,7 @@ func TestCompactNickOne(t *testing.T) {
 }
 
 func TestJoinPart(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork")
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -313,7 +313,7 @@ func TestJoinPart(t *testing.T) {
 }
 
 func TestCompactTopic(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork")
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -337,7 +337,7 @@ func TestCompactTopic(t *testing.T) {
 }
 
 func TestJoinTopic(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork")
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -364,7 +364,7 @@ func TestJoinTopic(t *testing.T) {
 }
 
 func TestCompactDoubleJoin(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork")
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -387,7 +387,7 @@ func TestCompactDoubleJoin(t *testing.T) {
 }
 
 func TestCompactUser(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork")
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,

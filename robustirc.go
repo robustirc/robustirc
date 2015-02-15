@@ -419,7 +419,7 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 		return err
 	}
 
-	ircServer = ircserver.NewIRCServer(*network)
+	ircServer = ircserver.NewIRCServer(*network, time.Now())
 
 	decoder := json.NewDecoder(snap)
 	for {
@@ -633,7 +633,7 @@ func main() {
 		*peerAddr = *listen
 	}
 
-	ircServer = ircserver.NewIRCServer(*network)
+	ircServer = ircserver.NewIRCServer(*network, time.Now())
 	ircserver.NetworkPassword = *networkPassword
 
 	transport := rafthttp.NewHTTPTransport(
