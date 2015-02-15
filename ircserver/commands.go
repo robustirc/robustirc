@@ -855,7 +855,7 @@ func (i *IRCServer) cmdMotd(s *Session, msg *irc.Message) []*irc.Message {
 		&irc.Message{
 			Command:  irc.RPL_MOTDSTART,
 			Params:   []string{s.Nick},
-			Trailing: "- " + i.ServerPrefix.Name + " Message of the day - ",
+			Trailing: "- " + i.ServerPrefix.Name + " Message of the day -",
 		},
 		// TODO(secure): make motd configurable
 		&irc.Message{
