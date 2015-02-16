@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/types"
 	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/sorcix/irc"
@@ -55,7 +56,7 @@ func canary() {
 
 	log.Printf("Creating canary report in %q from %s\n", *canaryReport, *join)
 
-	client := robustClient()
+	client := robusthttp.Client(*networkPassword)
 	url := fmt.Sprintf("https://%s/canarylog", *join)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {

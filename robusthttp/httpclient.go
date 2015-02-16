@@ -1,8 +1,9 @@
-package main
+package robusthttp
 
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"flag"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -10,17 +11,26 @@ import (
 	"github.com/robustirc/rafthttp"
 )
 
-type robustDoer http.Client
+var (
+	tlsCAFile = flag.String("tls_ca_file",
+		"",
+		"Use the specified file as trusted CA instead of the system CAs. Useful for testing.")
+)
+
+type robustDoer struct {
+	client   http.Client
+	password string
+}
 
 func (r *robustDoer) Do(req *http.Request) (*http.Response, error) {
-	req.SetBasicAuth("robustirc", *networkPassword)
-	resp, err := (*http.Client)(r).Do(req)
+	req.SetBasicAuth("robustirc", r.password)
+	resp, err := r.client.Do(req)
 	// TODO(secure): add a flag for delay for benchmarking
 	return resp, err
 }
 
-// robustTransport returns an *http.Transport respecting the *tlsCAFile flag.
-func robustTransport() *http.Transport {
+// Transport returns an *http.Transport respecting the *tlsCAFile flag.
+func Transport() *http.Transport {
 	if *tlsCAFile == "" {
 		return http.DefaultTransport.(*http.Transport)
 	}
@@ -37,9 +47,12 @@ func robustTransport() *http.Transport {
 	}
 }
 
-// robustClient returns a net/http.Client which will set the network password
+// Client returns a net/http.Client which will set the network password
 // in Do(), respects the *tlsCAFile flag and tracks the latency of requests.
-func robustClient() rafthttp.Doer {
-	doer := robustDoer(http.Client{Transport: robustTransport()})
+func Client(password string) rafthttp.Doer {
+	doer := robustDoer{
+		client:   http.Client{Transport: Transport()},
+		password: password,
+	}
 	return &doer
 }

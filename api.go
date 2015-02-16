@@ -19,6 +19,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/types"
 
 	"github.com/hashicorp/raft"
@@ -72,7 +73,7 @@ func maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body io.ReadClos
 			return
 		}
 		p = httputil.NewSingleHostReverseProxy(u)
-		p.Transport = robustTransport()
+		p.Transport = robusthttp.Transport()
 
 		// Races are okay, i.e. overwriting the proxy a different goroutine set up.
 		nodeProxiesMu.Lock()

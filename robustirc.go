@@ -27,6 +27,7 @@ import (
 	"github.com/robustirc/rafthttp"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/raft_store"
+	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/types"
 
 	auth "github.com/abbot/go-http-auth"
@@ -83,9 +84,6 @@ var (
 	tlsKeyPath = flag.String("tls_key_path",
 		"",
 		"Path to a .pem file containing the TLS private key.")
-	tlsCAFile = flag.String("tls_ca_file",
-		"",
-		"Use the specified file as trusted CA instead of the system CAs. Useful for testing.")
 	networkPassword = flag.String("network_password",
 		"",
 		"A secure password to protect the communication between raft nodes. Use pwgen(1) or similar. If empty, the ROBUSTIRC_NETWORK_PASSWORD environment variable is used.")
@@ -458,7 +456,7 @@ func joinMaster(addr string, peerStore *raft.JSONPeers) []net.Addr {
 		buf = bytes.NewBuffer(data)
 	}
 
-	client := robustClient()
+	client := robusthttp.Client(*networkPassword)
 	req, err := http.NewRequest("POST", fmt.Sprintf("https://%s/join", addr), buf)
 	if err != nil {
 		log.Fatal(err)
@@ -647,7 +645,7 @@ func main() {
 
 	transport := rafthttp.NewHTTPTransport(
 		&dnsAddr{*peerAddr},
-		robustClient(),
+		robusthttp.Client(*networkPassword),
 		nil,
 		"")
 
