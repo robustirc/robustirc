@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/types"
@@ -21,11 +22,13 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 	// robustirc-rollingrestart wants a machine-readable version of the status.
 	if req.Header.Get("Accept") == "application/json" {
 		type jsonStatus struct {
-			State        string
-			Leader       string
-			Peers        []net.Addr
-			AppliedIndex uint64
-			CommitIndex  uint64
+			State          string
+			Leader         string
+			Peers          []net.Addr
+			AppliedIndex   uint64
+			CommitIndex    uint64
+			LastContact    time.Time
+			ExecutableHash string
 		}
 		res.Header().Set("Content-Type", "application/json")
 		leaderStr := ""
@@ -45,11 +48,13 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 		if err := json.NewEncoder(res).Encode(jsonStatus{
-			State:        node.State().String(),
-			Leader:       leaderStr,
-			AppliedIndex: appliedIndex,
-			CommitIndex:  commitIndex,
-			Peers:        p,
+			State:          node.State().String(),
+			Leader:         leaderStr,
+			AppliedIndex:   appliedIndex,
+			CommitIndex:    commitIndex,
+			Peers:          p,
+			LastContact:    node.LastContact(),
+			ExecutableHash: executablehash,
 		}); err != nil {
 			log.Printf("%v\n", err)
 			http.Error(res, err.Error(), http.StatusInternalServerError)
