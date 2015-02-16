@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net"
 	"net/http"
@@ -16,6 +17,45 @@ import (
 
 func handleStatus(res http.ResponseWriter, req *http.Request) {
 	p, _ := peerStore.Peers()
+
+	// robustirc-rollingrestart wants a machine-readable version of the status.
+	if req.Header.Get("Accept") == "application/json" {
+		type jsonStatus struct {
+			State        string
+			Leader       string
+			Peers        []net.Addr
+			AppliedIndex uint64
+			CommitIndex  uint64
+		}
+		res.Header().Set("Content-Type", "application/json")
+		leaderStr := ""
+		leader := node.Leader()
+		if leader != nil {
+			leaderStr = leader.String()
+		}
+		stats := node.Stats()
+		appliedIndex, err := strconv.ParseUint(stats["applied_index"], 0, 64)
+		if err != nil {
+			http.Error(res, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		commitIndex, err := strconv.ParseUint(stats["commit_index"], 0, 64)
+		if err != nil {
+			http.Error(res, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := json.NewEncoder(res).Encode(jsonStatus{
+			State:        node.State().String(),
+			Leader:       leaderStr,
+			AppliedIndex: appliedIndex,
+			CommitIndex:  commitIndex,
+			Peers:        p,
+		}); err != nil {
+			log.Printf("%v\n", err)
+			http.Error(res, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
 
 	lo, err := ircStore.FirstIndex()
 	if err != nil {
