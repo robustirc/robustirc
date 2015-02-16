@@ -201,7 +201,7 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 		}
 	}
 	s.updateIrcPrefix()
-	if oldPrefix.String() != "" {
+	if oldNick != "" {
 		return []*irc.Message{&irc.Message{
 			Prefix:   &oldPrefix,
 			Command:  irc.NICK,

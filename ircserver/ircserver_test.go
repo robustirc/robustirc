@@ -76,7 +76,6 @@ func TestSessionInitialization(t *testing.T) {
 	i := NewIRCServer("robustirc.net", time.Now())
 
 	id := types.RobustId{Id: time.Now().UnixNano()}
-
 	i.CreateSession(id, "authbytes")
 
 	s, err := i.GetSession(id)
@@ -96,6 +95,42 @@ func TestSessionInitialization(t *testing.T) {
 	}
 
 	if !s.loggedIn() {
+		t.Fatalf("session.loggedIn() still false after sending NICK and USER")
+	}
+
+	// Now connect again with the same nickname and verify the server behaves
+	// correctly in that scenario.
+
+	idSecond := types.RobustId{Id: time.Now().UnixNano()}
+	i.CreateSession(idSecond, "authbytes")
+
+	sSecond, err := i.GetSession(idSecond)
+	if err != nil {
+		t.Fatalf("GetSession(%v) did not return a session", id)
+	}
+
+	if sSecond.loggedIn() {
+		t.Fatalf("session.loggedIn() true before sending NICK")
+	}
+
+	mustMatchMsg(t,
+		i.ProcessMessage(idSecond, irc.ParseMessage("NICK secure")),
+		":robustirc.net 433 * secure :Nickname is already in use.")
+	if sSecond.Nick != "" {
+		t.Fatalf("session.Nick: got %q, want %q", s.Nick, "")
+	}
+	i.ProcessMessage(idSecond, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
+
+	got := i.ProcessMessage(idSecond, irc.ParseMessage("NICK secure_"))
+	if len(got) < 1 || got[0].Command != irc.RPL_WELCOME {
+		t.Fatalf("got %v, want irc.RPL_WELCOME", got)
+	}
+
+	if sSecond.Nick != "secure_" {
+		t.Fatalf("session.Nick: got %q, want %q", s.Nick, "secure")
+	}
+
+	if !sSecond.loggedIn() {
 		t.Fatalf("session.loggedIn() still false after sending NICK and USER")
 	}
 }
