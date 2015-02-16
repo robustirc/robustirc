@@ -362,14 +362,6 @@ func (i *IRCServer) SendPing(master net.Addr, peers []net.Addr) {
 	i.output.Add([]*types.RobustMessage{pingmsg})
 }
 
-// GetNextNonBlocking is used for the irclog handler and is equivalent to
-// GetNext, except that it doesn’t block until new messages are available when
-// there are no more messages to get.
-func (i *IRCServer) GetNextNonBlocking(lastseen types.RobustId) *types.RobustMessage {
-	// TODO(secure): fix
-	return nil
-}
-
 // GetSession returns a pointer to the session specified by 'id'.
 //
 // It returns ErrNoSuchSession when the session definitely does not exist

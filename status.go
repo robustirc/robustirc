@@ -107,25 +107,9 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 
 	session := types.RobustId{Id: id}
 
-	s, err := ircServer.GetSession(session)
-	if err != nil {
-		http.Error(w, "Session not found", http.StatusNotFound)
-		return
-	}
-
 	// TODO(secure): pagination
 
-	lastSeen := s.StartId
 	var messages []*types.RobustMessage
-	// TODO(secure): input messages (i.e. raft log entries) which don’t result
-	// in an output message in the current session (e.g. PRIVMSGs) don’t show
-	// up in here at all.
-	// XXX: The following code is pretty horrible. It iterates through _all_
-	// log messages to create a map from id to decoded message, in order to add
-	// them to the messages slice in the second loop. We should come up with a
-	// better way that is lighter on resources. Perhaps store the processed
-	// indexes in the session?
-	inputs := make(map[types.RobustId]*types.RobustMessage)
 	first, _ := ircStore.FirstIndex()
 	last, _ := ircStore.LastIndex()
 	for idx := first; idx <= last; idx++ {
@@ -143,22 +127,10 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 		if msg.Session.Id != session.Id {
 			continue
 		}
-		inputs[msg.Id] = &msg
-	}
-
-	for {
-		if msg := ircServer.GetNextNonBlocking(lastSeen); msg != nil {
-			if msg.Type == types.RobustIRCToClient && s.InterestedIn(ircServer.ServerPrefix, msg) {
-				if msg.Id.Reply == 1 {
-					if inputmsg, ok := inputs[types.RobustId{Id: msg.Id.Id}]; ok {
-						messages = append(messages, inputmsg)
-					}
-				}
-				messages = append(messages, msg)
-			}
-			lastSeen = msg.Id
-		} else {
-			break
+		messages = append(messages, &msg)
+		output, ok := ircServer.Get(msg.Id)
+		if ok {
+			messages = append(messages, output...)
 		}
 	}
 
