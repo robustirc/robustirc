@@ -87,6 +87,10 @@ func TestSessionInitialization(t *testing.T) {
 		t.Fatalf("session.loggedIn() true before sending NICK")
 	}
 
+	mustMatchMsg(t,
+		i.ProcessMessage(id, irc.ParseMessage("JOIN #test")),
+		":robustirc.net 451 JOIN :You have not registered")
+
 	i.ProcessMessage(id, irc.ParseMessage("NICK secure"))
 	i.ProcessMessage(id, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
 
@@ -97,6 +101,10 @@ func TestSessionInitialization(t *testing.T) {
 	if !s.loggedIn() {
 		t.Fatalf("session.loggedIn() still false after sending NICK and USER")
 	}
+
+	mustMatchMsg(t,
+		i.ProcessMessage(id, irc.ParseMessage("JOINT #test")),
+		":robustirc.net 421 secure JOINT :Unknown command")
 
 	// Now connect again with the same nickname and verify the server behaves
 	// correctly in that scenario.
