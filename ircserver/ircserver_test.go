@@ -143,6 +143,55 @@ func TestSessionInitialization(t *testing.T) {
 	}
 }
 
+// TestPlumbing exercises the code paths for storing messages in outputstream
+// and getting them from multiple sessions.
+func TestPlumbing(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	msgid := types.RobustId{Id: time.Now().UnixNano()}
+	replies := i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.SendMessages(replies, ids["secure"], msgid.Id)
+	got, ok := i.Get(msgid)
+	if !ok {
+		t.Fatalf("_, ok := Get(%d); got false, want true", msgid.Id)
+	}
+	if len(got) != len(replies) {
+		t.Fatalf("len(got): got %d, want %d", len(got), len(replies))
+	}
+	if got[0].Data != string(replies[0].Bytes()) {
+		t.Fatalf("message 0: got %v, want %v", got[0].Data, string(replies[0].Bytes()))
+	}
+
+	nextid := types.RobustId{Id: time.Now().UnixNano()}
+	replies = i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #foobar"))
+	i.SendMessages(replies, ids["secure"], nextid.Id)
+	got = i.GetNext(msgid)
+	if !ok {
+		t.Fatalf("_, ok := Get(%d); got false, want true", msgid.Id)
+	}
+	if len(got) != len(replies) {
+		t.Fatalf("len(got): got %d, want %d", len(got), len(replies))
+	}
+	if got[0].Data != string(replies[0].Bytes()) {
+		t.Fatalf("message 0: got %v, want %v", got[0].Data, string(replies[0].Bytes()))
+	}
+
+	sMero, _ := i.GetSession(ids["mero"])
+	if sMero.InterestedIn(i.ServerPrefix, got[0]) {
+		t.Fatalf("sMero interestedIn JOIN to #foobar, expected false")
+	}
+
+	i.ProcessMessage(ids["mero"], irc.ParseMessage("JOIN #baz"))
+
+	msgid = types.RobustId{Id: time.Now().UnixNano()}
+	replies = i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #baz"))
+	i.SendMessages(replies, ids["secure"], msgid.Id)
+	got, _ = i.Get(msgid)
+	if !sMero.InterestedIn(i.ServerPrefix, got[0]) {
+		t.Fatalf("sMero not interestedIn JOIN to #baz, expected true")
+	}
+}
+
 func TestNickCollision(t *testing.T) {
 	var got []*irc.Message
 
