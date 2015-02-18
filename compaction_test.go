@@ -393,7 +393,7 @@ func TestCompactUser(t *testing.T) {
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
 		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
-		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :bleh"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :bleh"}`,
 	}
 	want := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -402,6 +402,28 @@ func TestCompactUser(t *testing.T) {
 	}
 
 	output := applyAndCompact(t, input)
-	// Only the last JOIN needs to remain.
+	mustMatchStrings(t, input, output, want)
+}
+
+func TestCompactInvalid(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "USER"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 1}, "Type": 2, "Data": "PART"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 1}, "Type": 2, "Data": "TOPIC"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+	}
+
+	output := applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
 }
