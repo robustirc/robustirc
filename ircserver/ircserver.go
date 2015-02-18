@@ -97,6 +97,9 @@ type Session struct {
 	LastPostMessageReply []byte
 
 	ircPrefix irc.Prefix
+	// deleted gets set by DeleteSession and used by SendMessages. Refer to the
+	// DeleteSession comment.
+	deleted bool
 }
 
 func (s *Session) loggedIn() bool {
@@ -112,30 +115,6 @@ func (s *Session) updateIrcPrefix() {
 		// support this format.
 		Host: fmt.Sprintf("robust/0x%x", s.Id.Id),
 	}
-}
-
-// InterestedIn returns true if the session should receive the specified 'msg'.
-// As an example, InterestedIn returns true for PRIVMSGs if the session is in
-// the channel to which the PRIVMSG was sent.
-func (s *Session) InterestedIn(serverPrefix *irc.Prefix, msg *types.RobustMessage) bool {
-	if msg.Type == types.RobustPing {
-		return true
-	}
-	ircmsg := irc.ParseMessage(msg.Data)
-
-	// Everything the server sends directly is interesting to the client.
-	if *ircmsg.Prefix == *serverPrefix && msg.Session == s.Id {
-		return true
-	}
-
-	// No strings.ToUpper(ircmsg.Command) because we generate all messages,
-	// thus they are well-formed.
-	cmd, ok := commands[ircmsg.Command]
-	if !ok || cmd.Interesting == nil {
-		return false
-	}
-
-	return cmd.Interesting(s, ircmsg)
 }
 
 const (
@@ -233,7 +212,11 @@ func (i *IRCServer) DeleteSession(s *Session) {
 		delete(c.nicks, s.Nick)
 	}
 	delete(i.nicks, NickToLower(s.Nick))
-	delete(i.sessions, s.Id)
+	// Instead of deleting the session here, we defer that to SendMessages, as
+	// SendMessages calls the Interesting function of each reply (such as a
+	// QUIT reply) and that function might still need access to the session to
+	// determine where the reply should be sent to.
+	s.deleted = true
 }
 
 // ExpireSessions returns RobustDeleteSession RobustMessages for all sessions
@@ -342,10 +325,32 @@ func (i *IRCServer) SendMessages(replies []*irc.Message, session types.RobustId,
 			Id:    id,
 			Reply: int64(idx + 1),
 		}
+
+		// Everything the server sends directly is interesting to the client.
+		if *reply.Prefix == *i.ServerPrefix {
+			robustmsg.InterestingFor = make(map[int64]bool)
+			robustmsg.InterestingFor[session.Id] = true
+			robustreplies[idx] = robustmsg
+			continue
+		}
+
+		// No strings.ToUpper(ircmsg.Command) because we generate all messages,
+		// thus they are well-formed.
+		cmd, ok := commands[reply.Command]
+		if !ok || cmd.Interesting == nil {
+			robustmsg.InterestingFor = make(map[int64]bool)
+			robustreplies[idx] = robustmsg
+			continue
+		}
+
+		robustmsg.InterestingFor = cmd.Interesting(i, session, reply)
 		robustreplies[idx] = robustmsg
 	}
 
 	i.output.Add(robustreplies)
+	if s, ok := i.sessions[session]; ok && s.deleted {
+		delete(i.sessions, session)
+	}
 }
 
 // SendPing appends a ping message to the output, including the current servers
@@ -398,7 +403,7 @@ func (i *IRCServer) GetSession(id types.RobustId) (*Session, error) {
 //
 // 'prev' and 'next' are cursors with which the message-specific handler can
 // look at other messages to figure out whether the message is still relevant.
-func (i *IRCServer) StillRelevant(session *Session, ircmsg *irc.Message, prev, next logCursor) (bool, error) {
+func (i *IRCServer) StillRelevant(ircmsg *irc.Message, prev, next logCursor) (bool, error) {
 	if ircmsg == nil {
 		return true, nil
 	}
@@ -413,7 +418,7 @@ func (i *IRCServer) StillRelevant(session *Session, ircmsg *irc.Message, prev, n
 		return true, nil
 	}
 
-	return c.StillRelevant(session, ircmsg, prev, next)
+	return c.StillRelevant(ircmsg, prev, next)
 }
 
 // GetSessions returns a copy of sessions that can be used in the status

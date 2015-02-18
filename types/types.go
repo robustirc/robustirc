@@ -35,6 +35,12 @@ type RobustMessage struct {
 	Type    RobustType
 	Data    string
 
+	// InterestingFor is a map from session ids (only the Id part of a
+	// RobustId, since Reply is always unset for sessions) to a bool that
+	// signals whether the session is interested in the message.
+	// InterestingFor gets set once in SendMessages and stays constant.
+	InterestingFor map[int64]bool `json:"-"`
+
 	// List of all servers currently in the network. Only present when Type == RobustPing.
 	Servers []string `json:",omitempty"`
 

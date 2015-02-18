@@ -311,14 +311,13 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	for {
 		select {
 		case msgs := <-msgschan:
-			s, err := ircServer.GetSession(session)
-			if err != nil {
+			if _, err := ircServer.GetSession(session); err != nil {
 				// Session was deleted in the meanwhile.
 				break
 			}
 
 			for _, msg := range msgs {
-				if !s.InterestedIn(ircServer.ServerPrefix, msg) {
+				if msg.Type != types.RobustPing && !msg.InterestingFor[session.Id] {
 					continue
 				}
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/robustirc/robustirc/types"
 	"github.com/sorcix/irc"
 )
 
@@ -16,12 +17,13 @@ var (
 type ircCommand struct {
 	Func func(*IRCServer, *Session, *irc.Message) []*irc.Message
 
-	// Interesting returns true if the message should be sent to the session.
-	Interesting func(*Session, *irc.Message) bool
+	// Interesting returns a map that determines to which session a message
+	// should be sent.
+	Interesting func(*IRCServer, types.RobustId, *irc.Message) map[int64]bool
 
 	// StillRelevant is used during compaction. If it returns true, the message
 	// is kept, otherwise it will be deleted.
-	StillRelevant func(*Session, *irc.Message, logCursor, logCursor) (bool, error)
+	StillRelevant func(*irc.Message, logCursor, logCursor) (bool, error)
 
 	// MinParams ensures that enough parameters were specified.
 	// irc.ERR_NEEDMOREPARAMS is returned in case less than MinParams
@@ -36,14 +38,8 @@ func init() {
 		StillRelevant: neverRelevant,
 	}
 	commands["NICK"] = &ircCommand{
-		Func: (*IRCServer).cmdNick,
-		Interesting: func(s *Session, msg *irc.Message) bool {
-			// TODO(secure): does it make sense to restrict this to Sessions which
-			// have a channel in common? noting this because it doesn’t handle the
-			// query-only use-case. if there’s no downside (except for the privacy
-			// aspect), perhaps leave it as-is?
-			return true
-		},
+		Func:          (*IRCServer).cmdNick,
+		Interesting:   (*IRCServer).interestNick,
 		StillRelevant: relevantNick,
 	}
 	commands["USER"] = &ircCommand{
@@ -54,36 +50,30 @@ func init() {
 	commands["JOIN"] = &ircCommand{
 		Func:          (*IRCServer).cmdJoin,
 		MinParams:     1,
-		Interesting:   interestJoin,
+		Interesting:   (*IRCServer).interestJoin,
 		StillRelevant: relevantJoin,
 	}
 	commands["PART"] = &ircCommand{
 		Func:          (*IRCServer).cmdPart,
 		MinParams:     1,
-		Interesting:   interestPart,
+		Interesting:   (*IRCServer).interestPart,
 		StillRelevant: relevantPart,
 	}
 	commands["QUIT"] = &ircCommand{
-		Func: (*IRCServer).cmdQuit,
-		Interesting: func(s *Session, msg *irc.Message) bool {
-			// TODO(secure): does it make sense to restrict this to Sessions which
-			// have a channel in common? noting this because it doesn’t handle the
-			// query-only use-case. if there’s no downside (except for the privacy
-			// aspect), perhaps leave it as-is?
-			return true
-		},
+		Func:        (*IRCServer).cmdQuit,
+		Interesting: (*IRCServer).interestQuit,
 		// TODO: the bridge always sends DestroySession, but third-party clients may not. so, better keep QUITs?
 		StillRelevant: neverRelevant,
 	}
 	commands["PRIVMSG"] = &ircCommand{
 		Func:          (*IRCServer).cmdPrivmsg,
-		Interesting:   interestPrivmsg,
+		Interesting:   (*IRCServer).interestPrivmsg,
 		StillRelevant: neverRelevant,
 	}
 	commands["MODE"] = &ircCommand{
 		Func:        (*IRCServer).cmdMode,
 		MinParams:   1,
-		Interesting: commonChannelOrDirect,
+		Interesting: (*IRCServer).interestMode,
 	}
 	commands["WHO"] = &ircCommand{
 		Func:          (*IRCServer).cmdWho,
@@ -95,7 +85,7 @@ func init() {
 	commands["TOPIC"] = &ircCommand{
 		Func:          (*IRCServer).cmdTopic,
 		MinParams:     1,
-		Interesting:   interestTopic,
+		Interesting:   (*IRCServer).interestTopic,
 		StillRelevant: relevantTopic,
 	}
 	commands["MOTD"] = &ircCommand{
@@ -104,18 +94,8 @@ func init() {
 	}
 }
 
-func neverRelevant(s *Session, m *irc.Message, prev, next logCursor) (bool, error) {
+func neverRelevant(m *irc.Message, prev, next logCursor) (bool, error) {
 	return false, nil
-}
-
-func alwaysRelevant(s *Session, m *irc.Message, prev, next logCursor) (bool, error) {
-	return true, nil
-}
-
-// commonChannelOrDirect returns true when msg’s first parameter is a channel
-// name of 's' or when the first parameter is the nickname of 's'.
-func commonChannelOrDirect(s *Session, msg *irc.Message) bool {
-	return s.Channels[msg.Params[0]] || msg.Params[0] == s.Nick
 }
 
 func (i *IRCServer) cmdPing(s *Session, msg *irc.Message) []*irc.Message {
@@ -132,7 +112,7 @@ func (i *IRCServer) cmdPing(s *Session, msg *irc.Message) []*irc.Message {
 	}}
 }
 
-func relevantNick(s *Session, msg *irc.Message, prev, next logCursor) (bool, error) {
+func relevantNick(msg *irc.Message, prev, next logCursor) (bool, error) {
 	if len(msg.Params) < 1 {
 		return false, nil
 	}
@@ -160,6 +140,22 @@ func relevantNick(s *Session, msg *irc.Message, prev, next logCursor) (bool, err
 	}
 
 	return true, nil
+}
+
+func (i *IRCServer) interestNick(sessionid types.RobustId, msg *irc.Message) map[int64]bool {
+	// everyone who is in any of the channels the nick is in
+	result := make(map[int64]bool)
+
+	s := i.sessions[sessionid]
+
+	for channelname, _ := range s.Channels {
+		channel := i.channels[channelname]
+		for nick, _ := range channel.nicks {
+			result[i.nicks[NickToLower(nick)].Id.Id] = true
+		}
+	}
+
+	return result
 }
 
 func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
@@ -255,7 +251,7 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 	return replies
 }
 
-func relevantUser(s *Session, msg *irc.Message, prev, next logCursor) (bool, error) {
+func relevantUser(msg *irc.Message, prev, next logCursor) (bool, error) {
 	if len(msg.Params) < 1 {
 		return false, nil
 	}
@@ -286,14 +282,18 @@ func (i *IRCServer) cmdUser(s *Session, msg *irc.Message) []*irc.Message {
 	return []*irc.Message{}
 }
 
-func interestJoin(s *Session, msg *irc.Message) bool {
-	return s.Channels[msg.Trailing]
+func (i *IRCServer) interestJoin(sessionid types.RobustId, msg *irc.Message) map[int64]bool {
+	// everyone who currently is in the channel
+	result := make(map[int64]bool)
+	channel := i.channels[msg.Trailing]
+	for nick, _ := range channel.nicks {
+		result[i.nicks[NickToLower(nick)].Id.Id] = true
+	}
+
+	return result
 }
 
-func relevantJoin(s *Session, msg *irc.Message, prev, next logCursor) (bool, error) {
-	if s == nil {
-		return true, nil
-	}
+func relevantJoin(msg *irc.Message, prev, next logCursor) (bool, error) {
 	if len(msg.Params) < 1 {
 		return false, nil
 	}
@@ -379,13 +379,22 @@ func (i *IRCServer) cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 	return replies
 }
 
-func interestPart(s *Session, msg *irc.Message) bool {
+func (i *IRCServer) interestPart(sessionid types.RobustId, msg *irc.Message) map[int64]bool {
+	result := make(map[int64]bool)
+	channel, ok := i.channels[msg.Params[0]]
+	if ok {
+		for nick, _ := range channel.nicks {
+			result[i.nicks[NickToLower(nick)].Id.Id] = true
+		}
+	}
+
 	// Do send PART messages back to the sender (who, by now, is not in the
 	// channel anymore).
-	return s.ircPrefix == *msg.Prefix || s.Channels[msg.Params[0]]
+	result[sessionid.Id] = true
+	return result
 }
 
-func relevantPart(s *Session, msg *irc.Message, prev, next logCursor) (bool, error) {
+func relevantPart(msg *irc.Message, prev, next logCursor) (bool, error) {
 	if len(msg.Params) < 1 {
 		return false, nil
 	}
@@ -441,6 +450,25 @@ func (i *IRCServer) cmdPart(s *Session, msg *irc.Message) []*irc.Message {
 	}}
 }
 
+func (i *IRCServer) interestQuit(sessionid types.RobustId, msg *irc.Message) map[int64]bool {
+	// everyone who is in any of the channels the nick is in
+	result := make(map[int64]bool)
+
+	s := i.sessions[sessionid]
+
+	for channelname, _ := range s.Channels {
+		channel := i.channels[channelname]
+		for nick, _ := range channel.nicks {
+			result[i.nicks[NickToLower(nick)].Id.Id] = true
+		}
+	}
+
+	// Do send QUIT messages back to the sender (who, by now, is not in the
+	// channel anymore).
+	result[sessionid.Id] = true
+	return result
+}
+
 func (i *IRCServer) cmdQuit(s *Session, msg *irc.Message) []*irc.Message {
 	prefix := s.ircPrefix
 	i.DeleteSession(s)
@@ -451,13 +479,28 @@ func (i *IRCServer) cmdQuit(s *Session, msg *irc.Message) []*irc.Message {
 	}}
 }
 
-func interestPrivmsg(s *Session, msg *irc.Message) bool {
-	// Don’t send messages back to the sender.
-	if s.ircPrefix == *msg.Prefix {
-		return false
+func (i *IRCServer) interestPrivmsg(sessionid types.RobustId, msg *irc.Message) map[int64]bool {
+	result := make(map[int64]bool)
+
+	channel, ok := i.channels[msg.Params[0]]
+	if !ok {
+		// It MUST either be a channel or a nick, otherwise no PRIVMSG reply is
+		// generated. Hence no error checking.
+		s, _ := i.nicks[msg.Params[0]]
+		result[s.Id.Id] = true
+		return result
 	}
 
-	return commonChannelOrDirect(s, msg)
+	for nick, _ := range channel.nicks {
+		session := i.nicks[NickToLower(nick)].Id
+		// Senders do not see their own messages.
+		if session == sessionid {
+			continue
+		}
+		result[session.Id] = true
+	}
+
+	return result
 }
 
 func (i *IRCServer) cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
@@ -513,6 +556,25 @@ func (i *IRCServer) cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	return replies
+}
+
+func (i *IRCServer) interestMode(sessionid types.RobustId, msg *irc.Message) map[int64]bool {
+	result := make(map[int64]bool)
+
+	channel, ok := i.channels[msg.Params[0]]
+	if !ok {
+		// It MUST either be a channel or a nick, otherwise no PRIVMSG reply is
+		// generated. Hence no error checking.
+		s, _ := i.nicks[msg.Params[0]]
+		result[s.Id.Id] = true
+		return result
+	}
+
+	for nick, _ := range channel.nicks {
+		result[i.nicks[NickToLower(nick)].Id.Id] = true
+	}
+
+	return result
 }
 
 func (i *IRCServer) cmdMode(s *Session, msg *irc.Message) []*irc.Message {
@@ -743,14 +805,7 @@ func (i *IRCServer) cmdAway(s *Session, msg *irc.Message) []*irc.Message {
 	}
 }
 
-func interestTopic(s *Session, msg *irc.Message) bool {
-	return s.Channels[msg.Params[0]]
-}
-
-func relevantTopic(s *Session, msg *irc.Message, prev, next logCursor) (bool, error) {
-	if s == nil {
-		return true, nil
-	}
+func relevantTopic(msg *irc.Message, prev, next logCursor) (bool, error) {
 	if len(msg.Params) < 1 {
 		return false, nil
 	}
@@ -770,6 +825,18 @@ func relevantTopic(s *Session, msg *irc.Message, prev, next logCursor) (bool, er
 	}
 
 	return true, nil
+}
+
+func (i *IRCServer) interestTopic(sessionid types.RobustId, msg *irc.Message) map[int64]bool {
+	// everyone who is in the channel whose topic was changed
+	result := make(map[int64]bool)
+
+	channel := i.channels[msg.Params[0]]
+	for nick, _ := range channel.nicks {
+		result[i.nicks[NickToLower(nick)].Id.Id] = true
+	}
+
+	return result
 }
 
 func (i *IRCServer) cmdTopic(s *Session, msg *irc.Message) []*irc.Message {

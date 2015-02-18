@@ -154,10 +154,6 @@ func (s *robustSnapshot) canCompact(elog *raft.Log) (bool, error) {
 		return false, nil
 	}
 
-	// We rather check if session != nil in StillRelevant callbacks where
-	// necessary (some commands don’t need a session to still be relevant).
-	session, _ := ircServer.GetSession(msg.Session)
-
 	// The prev and next functions are cursors, see ircserver’s StillRelevant
 	// function. They return the previous message (or next message,
 	// respectively).
@@ -212,7 +208,7 @@ func (s *robustSnapshot) canCompact(elog *raft.Log) (bool, error) {
 		}
 	}
 
-	relevant, err := ircServer.StillRelevant(session, irc.ParseMessage(msg.Data), prev, next)
+	relevant, err := ircServer.StillRelevant(irc.ParseMessage(msg.Data), prev, next)
 	return !relevant, err
 }
 

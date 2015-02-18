@@ -180,8 +180,7 @@ func TestPlumbing(t *testing.T) {
 		t.Fatalf("message 0: got %v, want %v", got[0].Data, string(replies[0].Bytes()))
 	}
 
-	sMero, _ := i.GetSession(ids["mero"])
-	if sMero.InterestedIn(i.ServerPrefix, got[0]) {
+	if got[0].InterestingFor[ids["mero"].Id] {
 		t.Fatalf("sMero interestedIn JOIN to #foobar, expected false")
 	}
 
@@ -191,9 +190,121 @@ func TestPlumbing(t *testing.T) {
 	replies = i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #baz"))
 	i.SendMessages(replies, ids["secure"], msgid.Id)
 	got, _ = i.Get(msgid)
-	if !sMero.InterestedIn(i.ServerPrefix, got[0]) {
+	if !got[0].InterestingFor[ids["mero"].Id] {
 		t.Fatalf("sMero not interestedIn JOIN to #baz, expected true")
 	}
+}
+
+func mustMatchInterestedMsgs(t *testing.T, i *IRCServer, msg *irc.Message, msgs []*types.RobustMessage, sessions []types.RobustId, want []bool) {
+	if len(want) != len(sessions) {
+		panic("bug: len(want) != len(sessions)")
+	}
+
+	failed := false
+	got := make([]bool, len(want))
+	for idx, sessionid := range sessions {
+		// TODO(secure): We might need to refactor this to do a finer-grained
+		// comparison instead of just the first message.
+		got[idx] = msgs[0].InterestingFor[sessionid.Id]
+		if got[idx] != want[idx] {
+			failed = true
+		}
+	}
+
+	if failed {
+		t.Logf("mismatch for input %q, output %v:\n", msg, msgs)
+		for idx, sessionid := range sessions {
+			s, err := i.GetSession(sessionid)
+			nick := "<quitted>"
+			if err == nil {
+				nick = s.Nick
+			}
+			t.Logf("  %s got = %v, want = %v\n", nick, got[idx], want[idx])
+		}
+		t.Fatalf("InterestedIn() mismatch")
+	}
+}
+
+func mustMatchInterested(t *testing.T, i *IRCServer, sessionid types.RobustId, msg *irc.Message, sessions []types.RobustId, want []bool) {
+	msgid := types.RobustId{Id: time.Now().UnixNano()}
+	replies := i.ProcessMessage(sessionid, msg)
+	i.SendMessages(replies, sessionid, msgid.Id)
+	msgs, _ := i.Get(msgid)
+	mustMatchInterestedMsgs(t, i, msg, msgs, sessions, want)
+}
+
+func TestInterestedIn(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(ids["mero"], irc.ParseMessage("JOIN #test"))
+
+	mustMatchInterested(t, i,
+		ids["secure"], irc.ParseMessage("NICK secore"),
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{true, true, false})
+
+	mustMatchInterested(t, i,
+		ids["secure"], irc.ParseMessage("TOPIC #test :foobar"),
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{true, true, false})
+
+	mustMatchInterested(t, i,
+		ids["secure"], irc.ParseMessage("PRIVMSG #test :foobar"),
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{false, true, false})
+
+	mustMatchInterested(t, i,
+		ids["secure"], irc.ParseMessage("MODE #test +o mero"),
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{true, true, false})
+
+	mustMatchInterested(t, i,
+		ids["secure"], irc.ParseMessage("MODE secore +i"),
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{true, false, false})
+
+	mustMatchInterested(t, i,
+		ids["secure"], irc.ParseMessage("PRIVMSG xeen :foobar"),
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{false, false, true})
+
+	mustMatchInterested(t, i,
+		ids["secure"], irc.ParseMessage("PART #test"),
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{true, true, false})
+
+	mustMatchInterested(t, i,
+		ids["secure"], irc.ParseMessage("QUIT :bye"),
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{true, false, false})
+
+	i.ProcessMessage(ids["xeen"], irc.ParseMessage("JOIN #test"))
+
+	mustMatchInterested(t, i,
+		ids["mero"], irc.ParseMessage("QUIT :bye"),
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{false, true, true})
+}
+
+func TestInterestedInDelayed(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(ids["mero"], irc.ParseMessage("JOIN #test"))
+
+	msg := irc.ParseMessage("NICK secore")
+	msgid := types.RobustId{Id: time.Now().UnixNano()}
+	replies := i.ProcessMessage(ids["secure"], msg)
+	i.SendMessages(replies, ids["secure"], msgid.Id)
+	msgs, _ := i.Get(msgid)
+
+	i.ProcessMessage(ids["mero"], irc.ParseMessage("PART #test"))
+
+	mustMatchInterestedMsgs(t, i,
+		msg, msgs,
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{true, true, false})
 }
 
 func TestNickCollision(t *testing.T) {
@@ -367,9 +478,14 @@ func TestKill(t *testing.T) {
 		i.ProcessMessage(ids["mero"], irc.ParseMessage("KILL socoro :die")),
 		":robustirc.net 401 mero socoro :No such nick/channel")
 
+	replies := i.ProcessMessage(ids["mero"], irc.ParseMessage("KILL sECuRE :die now, will you?"))
 	mustMatchMsg(t,
-		i.ProcessMessage(ids["mero"], irc.ParseMessage("KILL sECuRE :die now, will you?")),
+		replies,
 		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad QUIT :Killed by mero: die now, will you?")
+	// SendMessages will actually delete the session, as it may still be
+	// required within SendMessages to determine where a message should be sent
+	// to (the QUIT message itself, notably).
+	i.SendMessages(replies, ids["secure"], time.Now().UnixNano())
 
 	if _, err := i.GetSession(ids["secure"]); err == nil {
 		t.Fatalf("GetSession(%v) returned a session after KILL", ids["secure"])
