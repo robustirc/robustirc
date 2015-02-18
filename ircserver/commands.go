@@ -570,6 +570,9 @@ func (i *IRCServer) cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 					})
 				}
 			}
+			if len(replies) > 0 {
+				return replies
+			}
 			replies = append(replies, &irc.Message{
 				Prefix:  &s.ircPrefix,
 				Command: irc.MODE,
