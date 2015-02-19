@@ -434,10 +434,6 @@ func handleLeader(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleHash(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte(executablehash))
-}
-
 func handleQuit(w http.ResponseWriter, r *http.Request) {
 	if r.FormValue("deletestate") == "yes" {
 		f, err := os.Create(filepath.Join(*raftDir, "deletestate"))

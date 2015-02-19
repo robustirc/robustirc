@@ -719,7 +719,6 @@ func main() {
 	privaterouter.HandlerFunc("POST", "/join", handleJoin)
 	privaterouter.HandlerFunc("GET", "/snapshot", handleSnapshot)
 	privaterouter.HandlerFunc("GET", "/leader", handleLeader)
-	privaterouter.HandlerFunc("GET", "/executablehash", handleHash)
 	privaterouter.HandlerFunc("GET", "/canarylog", handleCanaryLog)
 	privaterouter.HandlerFunc("POST", "/quit", handleQuit)
 	privaterouter.Handler("GET", "/metrics", prometheus.Handler())
