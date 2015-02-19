@@ -154,7 +154,7 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	//
 	// We save a copy of the request in case we need to proxy it to the leader.
 	var body bytes.Buffer
-	rd := io.TeeReader(&io.LimitedReader{r.Body, 1024}, &body)
+	rd := io.TeeReader(http.MaxBytesReader(w, r.Body, 1024), &body)
 	if err := json.NewDecoder(rd).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
