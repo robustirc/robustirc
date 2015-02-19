@@ -131,6 +131,7 @@ func canary() {
 			i.UpdateLastClientMessageID(&cm.Input, []byte{})
 			ircmsg := irc.ParseMessage(cm.Input.Data)
 			localoutput := i.ProcessMessage(cm.Input.Session, ircmsg)
+			i.SendMessages(localoutput, cm.Input.Session, cm.Input.Id.Id)
 			remoteoutput := make([]*irc.Message, len(cm.Output))
 			for idx, output := range cm.Output {
 				remoteoutput[idx] = irc.ParseMessage(output.Data)
