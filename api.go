@@ -288,7 +288,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	var lastFlush time.Time
 	willFlush := false
 	msgschan := make(chan []*types.RobustMessage)
-	done := make(chan bool)
+	done := make(chan bool, 1)
 	go func() {
 		var msgs []*types.RobustMessage
 		for {
@@ -312,8 +312,8 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		select {
 		case msgs := <-msgschan:
 			if _, err := ircServer.GetSession(session); err != nil {
-				// Session was deleted in the meanwhile.
-				break
+				// Session was deleted in the meanwhile, abort this request.
+				return
 			}
 
 			for _, msg := range msgs {
