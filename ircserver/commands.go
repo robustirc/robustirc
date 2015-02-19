@@ -486,7 +486,7 @@ func (i *IRCServer) interestPrivmsg(sessionid types.RobustId, msg *irc.Message) 
 	if !ok {
 		// It MUST either be a channel or a nick, otherwise no PRIVMSG reply is
 		// generated. Hence no error checking.
-		s, _ := i.nicks[msg.Params[0]]
+		s, _ := i.nicks[NickToLower(msg.Params[0])]
 		result[s.Id.Id] = true
 		return result
 	}
@@ -565,7 +565,7 @@ func (i *IRCServer) interestMode(sessionid types.RobustId, msg *irc.Message) map
 	if !ok {
 		// It MUST either be a channel or a nick, otherwise no PRIVMSG reply is
 		// generated. Hence no error checking.
-		s, _ := i.nicks[msg.Params[0]]
+		s, _ := i.nicks[NickToLower(msg.Params[0])]
 		result[s.Id.Id] = true
 		return result
 	}
