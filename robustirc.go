@@ -137,7 +137,7 @@ type robustSnapshot struct {
 	del        map[uint64]bool
 }
 
-func (s *robustSnapshot) canCompact(elog *raft.Log) (bool, error) {
+func (s *robustSnapshot) canCompact(compactionStart time.Time, elog *raft.Log) (bool, error) {
 	// TODO: compact raft messages as well, so that peer changes are not kept forever
 	if elog.Type != raft.LogCommand {
 		return false, nil
@@ -150,7 +150,7 @@ func (s *robustSnapshot) canCompact(elog *raft.Log) (bool, error) {
 		return false, nil
 	}
 
-	if time.Since(time.Unix(0, msg.Id.Id)) < 7*24*time.Hour {
+	if compactionStart.Sub(time.Unix(0, msg.Id.Id)) < 7*24*time.Hour {
 		return false, nil
 	}
 
@@ -215,6 +215,12 @@ func (s *robustSnapshot) canCompact(elog *raft.Log) (bool, error) {
 func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 	log.Printf("Filtering and writing %d indexes\n", s.lastIndex-s.firstIndex)
 
+	// Get a timestamp and keep it constant, so that we only compact messages
+	// older than n days from compactionStart. If we used time.Since, new
+	// messages would pour into the window on every compaction round, possibly
+	// making the compaction never converge.
+	compactionStart := time.Now()
+
 	// We repeatedly compact, since the result of one compaction can affect the
 	// result of other compactions (see compaction_test.go for examples).
 	changed := true
@@ -235,7 +241,7 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 				continue
 			}
 
-			canCompact, err := s.canCompact(&elog)
+			canCompact, err := s.canCompact(compactionStart, &elog)
 			if err != nil {
 				sink.Cancel()
 				return err
