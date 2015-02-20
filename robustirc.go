@@ -352,14 +352,14 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 				msg.Type = types.RobustMessageOfDeath
 				data, err := json.Marshal(msg)
 				if err != nil {
-					log.Panicf("Could not marshal message: %v", err)
+					glog.Fatalf("Could not marshal message: %v", err)
 				}
 				l.Data = data
 				if err := fsm.store.StoreLog(l); err != nil {
-					log.Panicf("Could not store log while marking message as message of death: %v", err)
+					glog.Fatalf("Could not store log while marking message as message of death: %v", err)
 				}
 				log.Printf("Marked %+v as message of death\n", l)
-				panic(r)
+				glog.Fatalf("%v", r)
 			}
 		}()
 
