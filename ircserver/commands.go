@@ -1,6 +1,7 @@
 package ircserver
 
 import (
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -91,6 +92,14 @@ func init() {
 	commands["MOTD"] = &ircCommand{
 		Func:          (*IRCServer).cmdMotd,
 		StillRelevant: neverRelevant,
+	}
+
+	if os.Getenv("ROBUSTIRC_TESTING_ENABLE_PANIC_COMMAND") == "1" {
+		commands["PANIC"] = &ircCommand{
+			Func: func(i *IRCServer, s *Session, msg *irc.Message) []*irc.Message {
+				panic("PANIC called")
+			},
+		}
 	}
 }
 
