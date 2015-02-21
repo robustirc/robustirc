@@ -4,6 +4,7 @@ import (
 	crypto_rand "crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -421,6 +422,9 @@ func NewLocalnet(port int, dir string) (*localnet, error) {
 		TLSClientConfig: &tls.Config{RootCAs: roots},
 	}
 	result.Httpclient = &http.Client{Transport: tr}
+
+	// -tls_ca_file is used in util
+	flag.Set("tls_ca_file", filepath.Join(result.dir, "cert.pem"))
 
 	return result, nil
 }

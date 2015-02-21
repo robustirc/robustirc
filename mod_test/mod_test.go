@@ -1,7 +1,6 @@
 package mod_test
 
 import (
-	"flag"
 	"io/ioutil"
 	"net/http"
 	"os/exec"
@@ -30,9 +29,6 @@ func TestMessageOfDeath(t *testing.T) {
 		t.Fatalf("Could not start local RobustIRC network: %v", err)
 	}
 	defer l.Kill(true)
-
-	// -tls_ca_file is used in util
-	flag.Set("tls_ca_file", filepath.Join(tempdir, "cert.pem"))
 
 	l.EnablePanicCommand = "1"
 
