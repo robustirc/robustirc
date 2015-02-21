@@ -19,6 +19,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/robustirc/robustirc/util"
 )
 
 func help(binary string) error {
@@ -65,14 +67,19 @@ type localnet struct {
 	dir             string
 	Ports           []int
 	randomPort      int
-	networkPassword string
+	NetworkPassword string
 	// An http.Client which has the generated SSL certificate in its list of root CAs.
-	httpclient *http.Client
+	Httpclient *http.Client
+
+	// EnablePanicCommand is passed to the RobustIRC server processes in the
+	// ROBUSTIRC_TESTING_ENABLE_PANIC_COMMAND environment variable. If set to
+	// "1", the PANIC command is enabled, otherwise disabled.
+	EnablePanicCommand string
 }
 
-// recordResource appends a line to a file in -localnet_dir so that we can
+// RecordResource appends a line to a file in -localnet_dir so that we can
 // clean up resources (tempdirs, pids) when being called with -stop later.
-func (l *localnet) recordResource(rtype string, value string) error {
+func (l *localnet) RecordResource(rtype string, value string) error {
 	f, err := os.OpenFile(filepath.Join(l.dir, rtype+"s"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return err
@@ -83,8 +90,8 @@ func (l *localnet) recordResource(rtype string, value string) error {
 }
 
 func (l *localnet) leader(port int) (string, error) {
-	url := fmt.Sprintf("https://robustirc:%s@localhost:%d/leader", l.networkPassword, port)
-	resp, err := l.httpclient.Get(url)
+	url := fmt.Sprintf("https://robustirc:%s@localhost:%d/leader", l.NetworkPassword, port)
+	resp, err := l.Httpclient.Get(url)
 	if err != nil {
 		return "", err
 	}
@@ -106,34 +113,19 @@ func (l *localnet) Running() bool {
 }
 
 func (l *localnet) Healthy() bool {
-	// TODO(secure): refactor the code out of rollingrestart to avoid duplication
-	leaders := make([]string, len(l.Ports))
-	for idx, port := range l.Ports {
-		l, err := l.leader(port)
-		if err != nil {
-			log.Printf("%v\n", err)
-			continue
-		}
-		leaders[idx] = l
-	}
-
-	if leaders[0] == "" {
-		log.Printf("No leader established yet.\n")
-		return false
-	}
-
-	if leaders[0] != leaders[1] || leaders[0] != leaders[2] {
-		log.Printf("Leader not the same on all servers.\n")
-		return false
-	}
-
-	if strings.HasPrefix(leaders[0], "localhost:") {
-		log.Printf("All nodes agree on %q as the leader.\n", leaders[0])
-	}
-	return true
+	_, err := util.EnsureNetworkHealthy(l.Servers(), l.NetworkPassword)
+	return err == nil
 }
 
-func (l *localnet) StartIRCServer(singlenode bool) {
+func (l *localnet) Servers() []string {
+	var addrs []string
+	for _, port := range l.Ports {
+		addrs = append(addrs, fmt.Sprintf("localhost:%d", port))
+	}
+	return addrs
+}
+
+func (l *localnet) StartIRCServer(singlenode bool) (*exec.Cmd, string, string) {
 	args := []string{
 		"-network_name=localnet.localhost",
 		"-tls_cert_path=" + filepath.Join(l.dir, "cert.pem"),
@@ -151,7 +143,7 @@ func (l *localnet) StartIRCServer(singlenode bool) {
 	}
 	args = append(args, "-raftdir="+tempdir)
 	args = append(args, "-log_dir="+tempdir)
-	if err := l.recordResource("tempdir", tempdir); err != nil {
+	if err := l.RecordResource("tempdir", tempdir); err != nil {
 		log.Panicf("Could not record tempdir: %v", err)
 	}
 
@@ -170,9 +162,10 @@ func (l *localnet) StartIRCServer(singlenode bool) {
 	}
 
 	fmt.Fprintf(f, "#!/bin/sh\n")
-	fmt.Fprintf(f, "PATH=%q ROBUSTIRC_NETWORK_PASSWORD=%q GOMAXPROCS=%d robustirc %s >>%q 2>>%q\n",
+	fmt.Fprintf(f, "PATH=%q ROBUSTIRC_TESTING_ENABLE_PANIC_COMMAND=%s ROBUSTIRC_NETWORK_PASSWORD=%q GOMAXPROCS=%d robustirc %s >>%q 2>>%q\n",
 		os.Getenv("PATH"),
-		l.networkPassword,
+		l.EnablePanicCommand,
+		l.NetworkPassword,
 		runtime.NumCPU(),
 		strings.Join(quotedargs, " "),
 		filepath.Join(tempdir, "stdout.txt"),
@@ -187,8 +180,9 @@ func (l *localnet) StartIRCServer(singlenode bool) {
 	log.Printf("Starting %q\n", "robustirc "+strings.Join(args, " "))
 	cmd := exec.Command("robustirc", args...)
 	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("ROBUSTIRC_NETWORK_PASSWORD=%s", l.networkPassword),
-		fmt.Sprintf("GOMAXPROCS=%d", runtime.NumCPU()))
+		fmt.Sprintf("ROBUSTIRC_NETWORK_PASSWORD=%s", l.NetworkPassword),
+		fmt.Sprintf("GOMAXPROCS=%d", runtime.NumCPU()),
+		fmt.Sprintf("ROBUSTIRC_TESTING_ENABLE_PANIC_COMMAND=%s", l.EnablePanicCommand))
 	stdout, err := os.Create(filepath.Join(tempdir, "stdout.txt"))
 	if err != nil {
 		log.Panic(err)
@@ -207,7 +201,7 @@ func (l *localnet) StartIRCServer(singlenode bool) {
 	if err := cmd.Start(); err != nil {
 		log.Panicf("Could not start robustirc: %v", err)
 	}
-	if err := l.recordResource("pid", strconv.Itoa(cmd.Process.Pid)); err != nil {
+	if err := l.RecordResource("pid", strconv.Itoa(cmd.Process.Pid)); err != nil {
 		log.Panicf("Could not record pid: %v", err)
 	}
 
@@ -215,7 +209,7 @@ func (l *localnet) StartIRCServer(singlenode bool) {
 	try := 0
 	running := false
 	for !running && try < 10 {
-		_, err := l.httpclient.Get(fmt.Sprintf("https://localhost:%d/", l.randomPort))
+		_, err := l.Httpclient.Get(fmt.Sprintf("https://localhost:%d/", l.randomPort))
 		if err != nil {
 			try++
 			time.Sleep(250 * time.Millisecond)
@@ -245,8 +239,12 @@ func (l *localnet) StartIRCServer(singlenode bool) {
 		}
 	}
 
-	log.Printf("Node is available at https://robustirc:%s@localhost:%d/", l.networkPassword, l.randomPort)
+	addr := fmt.Sprintf("https://robustirc:%s@localhost:%d/", l.NetworkPassword, l.randomPort)
+
+	log.Printf("Node is available at %s", addr)
 	l.randomPort++
+
+	return cmd, tempdir, addr
 }
 
 func (l *localnet) StartBridge() {
@@ -264,7 +262,7 @@ func (l *localnet) StartBridge() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := l.recordResource("tempdir", tempdir); err != nil {
+	if err := l.RecordResource("tempdir", tempdir); err != nil {
 		log.Panicf("Could not record tempdir: %v", err)
 	}
 
@@ -291,7 +289,7 @@ func (l *localnet) StartBridge() {
 	if err := cmd.Start(); err != nil {
 		log.Panicf("Could not start robustirc-bridge: %v", err)
 	}
-	if err := l.recordResource("pid", strconv.Itoa(cmd.Process.Pid)); err != nil {
+	if err := l.RecordResource("pid", strconv.Itoa(cmd.Process.Pid)); err != nil {
 		log.Panicf("Could not record pid: %v", err)
 	}
 }
@@ -378,10 +376,10 @@ func NewLocalnet(port int, dir string) (*localnet, error) {
 		result.randomPort = 49152 + rand.Intn(55535-49152)
 	}
 
-	result.networkPassword = os.Getenv("ROBUSTIRC_NETWORK_PASSWORD")
-	if result.networkPassword == "" {
+	result.NetworkPassword = os.Getenv("ROBUSTIRC_NETWORK_PASSWORD")
+	if result.NetworkPassword == "" {
 		var err error
-		result.networkPassword, err = randomPassword(20)
+		result.NetworkPassword, err = randomPassword(20)
 		if err != nil {
 			return nil, fmt.Errorf("Could not generate password: %v")
 		}
@@ -422,7 +420,7 @@ func NewLocalnet(port int, dir string) (*localnet, error) {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{RootCAs: roots},
 	}
-	result.httpclient = &http.Client{Transport: tr}
+	result.Httpclient = &http.Client{Transport: tr}
 
 	return result, nil
 }
