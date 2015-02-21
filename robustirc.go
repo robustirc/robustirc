@@ -123,11 +123,20 @@ var (
 			return float64(ircServer.NumSessions())
 		},
 	)
+
+	appliedMessages = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "applied_messages",
+			Help: "How many raft messages were applied, partitioned by message type",
+		},
+		[]string{"type"},
+	)
 )
 
 func init() {
 	prometheus.MustRegister(isLeaderGauge)
 	prometheus.MustRegister(sessionsGauge)
+	prometheus.MustRegister(appliedMessages)
 }
 
 type robustSnapshot struct {
@@ -372,6 +381,8 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 			ircServer.SendMessages(replies, msg.Session, msg.Id.Id)
 		}
 	}
+
+	appliedMessages.WithLabelValues(types.TypeToString(msg.Type)).Inc()
 
 	return nil
 }

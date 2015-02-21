@@ -29,6 +29,27 @@ const (
 	RobustMessageOfDeath
 )
 
+func TypeToString(t RobustType) string {
+	switch t {
+	case RobustCreateSession:
+		return "create_session"
+	case RobustDeleteSession:
+		return "delete_session"
+	case RobustIRCFromClient:
+		return "irc_from_client"
+	case RobustIRCToClient:
+		return "irc_to_client"
+	case RobustPing:
+		return "ping"
+	case RobustMessageOfDeath:
+		return "message_of_death"
+	default:
+		log.Panicf("TypeToString not updated for type %d", t)
+	}
+	// unreached
+	return ""
+}
+
 type RobustMessage struct {
 	Id      RobustId
 	Session RobustId
