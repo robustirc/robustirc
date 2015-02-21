@@ -1,6 +1,6 @@
 // Based on go/src/crypto/tls/generate_cert.go
 
-package main
+package localnet
 
 import (
 	"crypto/rand"
@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-func generatecert() {
+func generatecert(dir string) {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		log.Panicf("failed to generate private key: %s", err)
@@ -50,7 +50,7 @@ func generatecert() {
 		log.Panicf("Failed to create certificate: %s", err)
 	}
 
-	certOut, err := os.Create(filepath.Join(*localnetDir, "cert.pem"))
+	certOut, err := os.Create(filepath.Join(dir, "cert.pem"))
 	if err != nil {
 		log.Panicf("failed to open cert.pem for writing: %s", err)
 	}
@@ -58,7 +58,7 @@ func generatecert() {
 	certOut.Close()
 	log.Print("written cert.pem\n")
 
-	keyOut, err := os.OpenFile(filepath.Join(*localnetDir, "key.pem"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	keyOut, err := os.OpenFile(filepath.Join(dir, "key.pem"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		log.Print("failed to open key.pem for writing:", err)
 		return
