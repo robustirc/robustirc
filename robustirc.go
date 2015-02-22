@@ -53,9 +53,6 @@ var (
 	listen = flag.String("listen",
 		":443",
 		"[host]:port to listen on. Set to a port in the dynamic port range (49152 to 65535) and use DNS SRV records.")
-	sessionExpiration = flag.Duration("session_expiration",
-		30*time.Minute,
-		"Time interval after which a session without any activity is terminated by the server. The client should send a PING every minute.")
 	postMessageCooloff = flag.Duration("post_message_cooloff",
 		500*time.Millisecond,
 		"Enforced cooloff between two messages sent by a user. Set to 0 to disable throttling.")
@@ -828,7 +825,7 @@ func main() {
 				continue
 			}
 
-			for _, msg := range ircServer.ExpireSessions(*sessionExpiration) {
+			for _, msg := range ircServer.ExpireSessions(netConfig.SessionExpiration) {
 				// Cannot fail, no user input.
 				msgbytes, _ := json.Marshal(msg)
 				f := node.Apply(msgbytes, 10*time.Second)

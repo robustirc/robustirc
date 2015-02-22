@@ -18,13 +18,13 @@ type IRC struct {
 
 // Network is the network configuration, i.e. the top level.
 type Network struct {
-	Revision       int `toml:"-"`
-	IRC            IRC
-	SessionTimeout time.Duration
+	Revision          int `toml:"-"`
+	IRC               IRC
+	SessionExpiration time.Duration
 }
 
 var DefaultConfig = Network{
-	SessionTimeout: 30 * time.Second,
+	SessionExpiration: 30 * time.Minute,
 }
 
 func FromString(input string) (Network, error) {

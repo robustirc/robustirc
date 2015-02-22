@@ -46,8 +46,8 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 					<h2>Config</h2>
 					<table class="table table-condensed table-striped">
 						<tr>
-							<th>SessionTimeout</th>
-							<td>{{.NetConfig.SessionTimeout}}</td>
+							<th>SessionExpiration</th>
+							<td>{{.NetConfig.SessionExpiration}}</td>
 						</tr>
 					</table>
 				</div>
