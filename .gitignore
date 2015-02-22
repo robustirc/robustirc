@@ -1,4 +1,6 @@
 robustirc
 cmd/robustirc-rollingrestart/robustirc-rollingrestart
 cmd/robustirc-localnet/robustirc-localnet
+cmd/robustirc-editconfig/robustirc-editconfig
 ca-certificates.crt
+tags

@@ -27,9 +27,10 @@ const (
 	RobustIRCToClient
 	RobustPing
 	RobustMessageOfDeath
+	RobustConfig
 )
 
-func TypeToString(t RobustType) string {
+func (t RobustType) String() string {
 	switch t {
 	case RobustCreateSession:
 		return "create_session"
@@ -43,8 +44,10 @@ func TypeToString(t RobustType) string {
 		return "ping"
 	case RobustMessageOfDeath:
 		return "message_of_death"
+	case RobustConfig:
+		return "config"
 	default:
-		log.Panicf("TypeToString not updated for type %d", t)
+		log.Panicf("RobustType.String() not updated for type %d", t)
 	}
 	// unreached
 	return ""
@@ -70,6 +73,9 @@ type RobustMessage struct {
 
 	// ClientMessageId sent by client. Only present when Type == RobustIRCFromClient
 	ClientMessageId uint64 `json:",omitempty"`
+
+	// Revision is the config file revision. Only present when Type == RobustConfig
+	Revision int `json:",omitempty"`
 }
 
 func (m *RobustMessage) Timestamp() string {

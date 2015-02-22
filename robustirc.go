@@ -25,6 +25,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robustirc/rafthttp"
+	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/robusthttp"
@@ -92,6 +93,8 @@ var (
 	peerStore *raft.JSONPeers
 	ircStore  *raft_store.LevelDBStore
 	ircServer *ircserver.IRCServer
+
+	netConfig = config.DefaultConfig
 
 	executablehash string = executableHash()
 
@@ -328,7 +331,7 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 	}
 
 	msg := types.NewRobustMessageFromBytes(l.Data)
-	log.Printf("Apply(fmsg.Type=%d)\n", msg.Type)
+	log.Printf("Apply(msg.Type=%s)\n", msg.Type)
 
 	switch msg.Type {
 	case types.RobustMessageOfDeath:
@@ -380,9 +383,17 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 			replies := ircServer.ProcessMessage(msg.Session, irc.ParseMessage(string(msg.Data)))
 			ircServer.SendMessages(replies, msg.Session, msg.Id.Id)
 		}
+
+	case types.RobustConfig:
+		newCfg, err := config.FromString(string(msg.Data))
+		if err != nil {
+			log.Printf("Skipping unexpectedly invalid configuration (%v)\n", err)
+		} else {
+			netConfig = newCfg
+		}
 	}
 
-	appliedMessages.WithLabelValues(types.TypeToString(msg.Type)).Inc()
+	appliedMessages.WithLabelValues(msg.Type.String()).Inc()
 
 	return nil
 }
@@ -732,6 +743,8 @@ func main() {
 	privaterouter.HandlerFunc("GET", "/leader", handleLeader)
 	privaterouter.HandlerFunc("GET", "/canarylog", handleCanaryLog)
 	privaterouter.HandlerFunc("POST", "/quit", handleQuit)
+	privaterouter.HandlerFunc("GET", "/config", handleGetConfig)
+	privaterouter.HandlerFunc("POST", "/config", handlePostConfig)
 	privaterouter.Handler("GET", "/metrics", prometheus.Handler())
 
 	publicrouter := httprouter.New()

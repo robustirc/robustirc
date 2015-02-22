@@ -17,7 +17,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/julienschmidt/httprouter"
+	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/types"
@@ -28,6 +30,8 @@ import (
 var (
 	GetMessageRequests    = make(map[string]GetMessageStats)
 	getMessagesRequestsMu sync.Mutex
+
+	configMu sync.Mutex
 
 	// To avoid setting up a new proxy on every request, we cache the proxies
 	// for each node (since the current leader might change abruptly).
@@ -487,5 +491,61 @@ func handleCanaryLog(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Aborting handleCanaryLog: %v\n", err)
 			return
 		}
+	}
+}
+
+func handleGetConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("X-RobustIRC-Config-Revision", strconv.Itoa(netConfig.Revision))
+
+	if err := toml.NewEncoder(w).Encode(&netConfig); err != nil {
+		log.Printf("Could not send TOML config: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func handlePostConfig(w http.ResponseWriter, r *http.Request) {
+	revision, err := strconv.ParseInt(r.Header.Get("X-RobustIRC-Config-Revision"), 0, 64)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	configMu.Lock()
+
+	if got, want := int(revision), netConfig.Revision; got != want {
+		http.Error(w, fmt.Sprintf("Revision mismatch (got %s, want %s). Try again.", got, want), http.StatusBadRequest)
+		return
+	}
+
+	var unused config.Network
+	var body bytes.Buffer
+	if _, err := toml.DecodeReader(io.TeeReader(r.Body, &body), &unused); err != nil {
+		configMu.Unlock()
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	msg := types.NewRobustMessage(types.RobustConfig, types.RobustId{}, body.String())
+	msg.Revision = int(revision) + 1
+	msgbytes, err := json.Marshal(msg)
+	if err != nil {
+		configMu.Unlock()
+		http.Error(w, fmt.Sprintf("Could not store message, cannot encode it as JSON: %v", err),
+			http.StatusBadRequest)
+		return
+	}
+
+	f := node.Apply(msgbytes, 10*time.Second)
+	err = f.Error()
+	configMu.Unlock()
+	if err != nil {
+		if err == raft.ErrNotLeader {
+			maybeProxyToLeader(w, r, nopCloser{&body})
+			return
+		}
+		http.Error(w, fmt.Sprintf("Apply(): %v", err), http.StatusInternalServerError)
+		return
 	}
 }

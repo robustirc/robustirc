@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/types"
 
@@ -130,6 +131,7 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		GetMessageRequests map[string]GetMessageStats
 		PrevOffset         int64
 		NextOffset         uint64
+		NetConfig          config.Network
 	}{
 		*peerAddr,
 		node.State(),
@@ -143,6 +145,7 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		GetMessageRequests,
 		prevOffset,
 		lo + 50,
+		netConfig,
 	}
 
 	statusTpl.Execute(res, args)
