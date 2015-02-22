@@ -384,6 +384,7 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 			log.Printf("Skipping unexpectedly invalid configuration (%v)\n", err)
 		} else {
 			netConfig = newCfg
+			ircServer.Config = netConfig.IRC
 		}
 	}
 
@@ -659,7 +660,6 @@ func main() {
 	}
 
 	ircServer = ircserver.NewIRCServer(*network, time.Now())
-	ircserver.NetworkPassword = *networkPassword
 
 	transport := rafthttp.NewHTTPTransport(
 		&dnsAddr{*peerAddr},

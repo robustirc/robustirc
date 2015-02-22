@@ -38,5 +38,6 @@ var DefaultConfig = Network{
 func FromString(input string) (Network, error) {
 	var cfg Network
 	_, err := toml.Decode(input, &cfg)
+	// TODO(secure): Use scrypt to hash the ircop passwords to make brute-forcing harder.
 	return cfg, err
 }

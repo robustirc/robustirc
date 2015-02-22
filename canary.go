@@ -12,6 +12,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/types"
@@ -109,7 +110,6 @@ func canary() {
 	decoder := json.NewDecoder(resp.Body)
 	diff := diffmatchpatch.New()
 	i := ircserver.NewIRCServer(*network, time.Unix(0, serverCreation))
-	ircserver.NetworkPassword = *networkPassword
 	diffsFound := false
 
 	for {
@@ -169,6 +169,14 @@ func canary() {
 			// TODO(secure): possibly use DiffCleanupSemanticLossless?
 			fmt.Fprintf(report, `  <span class="output">%s</span><br>`+"\n", diff.DiffPrettyHtml(diff.DiffCleanupSemantic(diffs)))
 			fmt.Fprintf(report, "</span>\n")
+
+		case types.RobustConfig:
+			newCfg, err := config.FromString(string(cm.Input.Data))
+			if err != nil {
+				log.Printf("Skipping unexpectedly invalid configuration (%v)\n", err)
+			} else {
+				i.Config = newCfg.IRC
+			}
 		}
 	}
 

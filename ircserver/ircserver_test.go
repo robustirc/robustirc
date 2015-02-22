@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/types"
 
 	"github.com/sorcix/irc"
@@ -12,8 +13,12 @@ import (
 
 func stdIRCServer() (*IRCServer, map[string]types.RobustId) {
 	i := NewIRCServer("robustirc.net", time.Now())
-
-	NetworkPassword = "foo"
+	i.Config = config.IRC{
+		Operators: []config.IRCOp{
+			config.IRCOp{Name: "mero", Password: "foo"},
+			config.IRCOp{Name: "xeen", Password: "foo"},
+		},
+	}
 
 	ids := make(map[string]types.RobustId)
 

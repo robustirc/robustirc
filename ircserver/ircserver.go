@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/outputstream"
 	"github.com/robustirc/robustirc/types"
 	"github.com/sorcix/irc"
@@ -55,9 +56,6 @@ var (
 )
 
 var (
-	// TODO(secure): remove this once OPER uses custom (configured) passwords.
-	NetworkPassword string
-
 	messagesProcessed = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Subsystem: "irc",
@@ -168,6 +166,9 @@ type IRCServer struct {
 	// serverCreation is the time at which the IRCServer object was created.
 	// Used for the RPL_CREATED message.
 	ServerCreation time.Time
+
+	// Config contains the IRC-related part of the RobustIRC configuration.
+	Config config.IRC
 }
 
 // NewIRCServer returns a new IRC server.

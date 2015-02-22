@@ -742,10 +742,17 @@ func (i *IRCServer) cmdWho(s *Session, msg *irc.Message) []*irc.Message {
 }
 
 func (i *IRCServer) cmdOper(s *Session, msg *irc.Message) []*irc.Message {
-	// TODO(secure): implement restriction to certain hosts once we have a
-	// configuration file. (ERR_NOOPERHOST)
+	name := msg.Params[0]
+	password := msg.Params[1]
+	authenticated := false
+	for _, op := range i.Config.Operators {
+		if op.Name == name && op.Password == password {
+			authenticated = true
+			break
+		}
+	}
 
-	if msg.Params[1] != NetworkPassword {
+	if !authenticated {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_PASSWDMISMATCH,
 			Params:   []string{s.Nick},

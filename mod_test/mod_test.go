@@ -75,7 +75,7 @@ func TestMessageOfDeath(t *testing.T) {
 					for _, m := range applied.GetMetric() {
 						for _, labelpair := range m.GetLabel() {
 							if labelpair.GetName() == "type" &&
-								labelpair.GetValue() == types.RobustMessageOfDeath.String() {
+								labelpair.GetValue() == types.RobustType(types.RobustMessageOfDeath).String() {
 								if m.GetCounter().GetValue() > 0 {
 									skipped <- true
 								}
