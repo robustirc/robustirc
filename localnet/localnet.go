@@ -126,13 +126,15 @@ func (l *localnet) Servers() []string {
 	return addrs
 }
 
+// TODO(secure): add a function to change the configuration so that we can set
+// PostMessageCooloff = 0 for benchmarks.
+
 func (l *localnet) StartIRCServer(singlenode bool) (*exec.Cmd, string, string) {
 	args := []string{
 		"-network_name=localnet.localhost",
 		"-tls_cert_path=" + filepath.Join(l.dir, "cert.pem"),
 		"-tls_ca_file=" + filepath.Join(l.dir, "cert.pem"),
 		"-tls_key_path=" + filepath.Join(l.dir, "key.pem"),
-		"-post_message_cooloff=0",
 	}
 
 	args = append(args, fmt.Sprintf("-listen=localhost:%d", l.randomPort))

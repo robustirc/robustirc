@@ -53,9 +53,6 @@ var (
 	listen = flag.String("listen",
 		":443",
 		"[host]:port to listen on. Set to a port in the dynamic port range (49152 to 65535) and use DNS SRV records.")
-	postMessageCooloff = flag.Duration("post_message_cooloff",
-		500*time.Millisecond,
-		"Enforced cooloff between two messages sent by a user. Set to 0 to disable throttling.")
 	version = flag.Bool("version",
 		false,
 		"Print version and exit")
