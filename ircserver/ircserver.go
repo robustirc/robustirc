@@ -85,7 +85,7 @@ type Session struct {
 	Username     string
 	Realname     string
 	Channels     map[string]bool
-	lastActivity time.Time
+	LastActivity time.Time
 	Operator     bool
 	AwayMsg      string
 
@@ -192,7 +192,7 @@ func (i *IRCServer) UpdateLastClientMessageID(msg *types.RobustMessage, serializ
 	if err != nil {
 		return err
 	}
-	session.lastActivity = time.Unix(0, msg.Id.Id)
+	session.LastActivity = time.Unix(0, msg.Id.Id)
 	session.lastClientMessageId = msg.ClientMessageId
 	session.lastPostMessageReply = serialized
 	return nil
@@ -205,7 +205,7 @@ func (i *IRCServer) CreateSession(id types.RobustId, auth string) {
 		auth:         auth,
 		startId:      i.output.LastSeen(),
 		Channels:     make(map[string]bool),
-		lastActivity: time.Unix(0, id.Id),
+		LastActivity: time.Unix(0, id.Id),
 	}
 }
 
@@ -244,7 +244,7 @@ func (i *IRCServer) ExpireSessions(timeout time.Duration) []*types.RobustMessage
 	defer i.sessionsMu.RUnlock()
 
 	for id, s := range i.sessions {
-		if time.Since(s.lastActivity) <= timeout {
+		if time.Since(s.LastActivity) <= timeout {
 			continue
 		}
 
@@ -452,7 +452,7 @@ func (i *IRCServer) GetLastActivity(sessionid types.RobustId) time.Time {
 	i.sessionsMu.RLock()
 	defer i.sessionsMu.RUnlock()
 	if s, ok := i.sessions[sessionid]; ok {
-		return s.lastActivity
+		return s.LastActivity
 	}
 	return time.Time{}
 }
