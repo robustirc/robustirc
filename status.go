@@ -103,6 +103,11 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 				// messages do not).
 				continue
 			}
+			if l.Type == raft.LogCommand {
+				msg := types.NewRobustMessageFromBytes(l.Data)
+				msg.Data = msg.PrivacyFilter()
+				l.Data, _ = json.Marshal(&msg)
+			}
 			entries = append(entries, l)
 		}
 	}

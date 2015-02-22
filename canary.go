@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/robustirc/robustirc/ircserver"
@@ -17,6 +18,21 @@ import (
 	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/sorcix/irc"
 )
+
+func privacyFilterMsg(message *irc.Message) *irc.Message {
+	if message.Command == irc.PRIVMSG {
+		message.Trailing = "<privacy filtered>"
+	}
+	return message
+}
+
+func privacyFilterMsgs(messages []*irc.Message) []*irc.Message {
+	output := make([]*irc.Message, len(messages))
+	for idx, message := range messages {
+		output[idx] = privacyFilterMsg(message)
+	}
+	return output
+}
 
 func messagesString(messages []*irc.Message) string {
 	output := make([]string, len(messages))
@@ -130,11 +146,11 @@ func canary() {
 			}
 			i.UpdateLastClientMessageID(&cm.Input, []byte{})
 			ircmsg := irc.ParseMessage(cm.Input.Data)
-			localoutput := i.ProcessMessage(cm.Input.Session, ircmsg)
+			localoutput := privacyFilterMsgs(i.ProcessMessage(cm.Input.Session, ircmsg))
 			i.SendMessages(localoutput, cm.Input.Session, cm.Input.Id.Id)
 			remoteoutput := make([]*irc.Message, len(cm.Output))
 			for idx, output := range cm.Output {
-				remoteoutput[idx] = irc.ParseMessage(output.Data)
+				remoteoutput[idx] = privacyFilterMsg(irc.ParseMessage(output.Data))
 			}
 			if ircmsg.Command == irc.PING {
 			}
@@ -148,7 +164,8 @@ func canary() {
 				diffsFound = true
 			}
 			fmt.Fprintf(report, `<span class="message">`+"\n")
-			fmt.Fprintf(report, `  <span class="input">← %s</span><br>`+"\n", irc.ParseMessage(cm.Input.Data).String())
+			fmt.Fprintf(report, `  <span class="input">← %s</span><br>`+"\n",
+				template.HTMLEscapeString(privacyFilterMsg(irc.ParseMessage(cm.Input.Data)).String()))
 			// TODO(secure): possibly use DiffCleanupSemanticLossless?
 			fmt.Fprintf(report, `  <span class="output">%s</span><br>`+"\n", diff.DiffPrettyHtml(diff.DiffCleanupSemantic(diffs)))
 			fmt.Fprintf(report, "</span>\n")
