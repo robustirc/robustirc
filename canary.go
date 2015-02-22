@@ -132,11 +132,11 @@ func canary() {
 			i.CreateSession(cm.Input.Id, cm.Input.Data)
 
 		case types.RobustDeleteSession:
-			if s, err := i.GetSession(cm.Input.Session); err == nil {
+			if _, err := i.GetSession(cm.Input.Session); err == nil {
 				localoutput := i.ProcessMessage(cm.Input.Session, irc.ParseMessage("QUIT :"+cm.Input.Data))
 				log.Printf("localoutput = %v\n", localoutput)
 				// TODO(secure): also diff these lines
-				i.DeleteSession(s)
+				i.DeleteSessionById(cm.Input.Session)
 			}
 
 		case types.RobustIRCFromClient:

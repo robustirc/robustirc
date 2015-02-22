@@ -89,56 +89,56 @@ func maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body io.ReadClos
 	p.ServeHTTP(w, r)
 }
 
-func session(r *http.Request, ps httprouter.Params) (*ircserver.Session, types.RobustId, error) {
+func session(r *http.Request, ps httprouter.Params) (types.RobustId, error) {
 	var sessionid types.RobustId
 
 	id, err := strconv.ParseInt(ps[0].Value, 0, 64)
 	if err != nil {
-		return nil, sessionid, fmt.Errorf("invalid session: %v", err)
-	}
-
-	session, err := ircServer.GetSession(types.RobustId{Id: id})
-	if err != nil {
-		return session, sessionid, err
+		return sessionid, fmt.Errorf("invalid session: %v", err)
 	}
 
 	header := r.Header.Get("X-Session-Auth")
 	if header == "" {
-		return nil, sessionid, fmt.Errorf("no X-Session-Auth header set")
+		return sessionid, fmt.Errorf("no X-Session-Auth header set")
 	}
-	if header != session.Auth {
-		return nil, sessionid, fmt.Errorf("invalid X-Session-Auth header")
+
+	auth, err := ircServer.GetAuth(types.RobustId{Id: id})
+	if err != nil {
+		return sessionid, err
+	}
+	if header != auth {
+		return sessionid, fmt.Errorf("invalid X-Session-Auth header")
 	}
 
 	sessionid.Id = id
 
-	return session, sessionid, nil
+	return sessionid, nil
 }
 
-func sessionOrProxy(w http.ResponseWriter, r *http.Request, ps httprouter.Params) (*ircserver.Session, types.RobustId, error) {
-	session, sessionid, err := session(r, ps)
+func sessionOrProxy(w http.ResponseWriter, r *http.Request, ps httprouter.Params) (types.RobustId, error) {
+	sessionid, err := session(r, ps)
 	if err == ircserver.ErrSessionNotYetSeen && node.State() != raft.Leader {
 		// The session might exist on the leader, so we must proxy.
 		maybeProxyToLeader(w, r, r.Body)
-		return session, sessionid, err
+		return sessionid, err
 	}
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 	}
-	return session, sessionid, err
+	return sessionid, err
 }
 
 // handlePostMessage is called by the robustirc-brigde whenever a message should be
 // posted. The handler blocks until either the data was written or an error
 // occurred. If successful, it returns the unique id of the message.
 func handlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	s, session, err := sessionOrProxy(w, r, ps)
+	session, err := sessionOrProxy(w, r, ps)
 	if err != nil {
 		return
 	}
 
-	t := s.LastActivity.Add(*postMessageCooloff)
+	t := ircServer.GetLastActivity(session).Add(*postMessageCooloff)
 	time.Sleep(t.Sub(time.Now()))
 
 	type postMessageRequest struct {
@@ -161,9 +161,9 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	}
 
 	// If we have already seen this message, we just reply with a canned response.
-	if req.ClientMessageId == s.LastClientMessageId && s.LastPostMessageReply != nil {
+	if id, reply := ircServer.LastPostMessage(session); id == req.ClientMessageId && reply != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(s.LastPostMessageReply)
+		w.Write(reply)
 		return
 	}
 
@@ -185,9 +185,6 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		http.Error(w, fmt.Sprintf("Apply(): %v", err), http.StatusInternalServerError)
 		return
 	}
-
-	s.LastPostMessageReply = msgbytes
-	s.LastClientMessageId = req.ClientMessageId
 }
 
 func handleJoin(w http.ResponseWriter, r *http.Request) {
@@ -226,7 +223,7 @@ func handleSnapshot(res http.ResponseWriter, req *http.Request) {
 func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Avoid sessionOrProxy() because GetMessages can be answered on any raft
 	// node, it’s a read-only request.
-	s, session, err := session(r, ps)
+	session, err := session(r, ps)
 	if err != nil {
 		if err == ircserver.ErrSessionNotYetSeen {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -240,7 +237,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	getMessagesRequestsMu.Lock()
 	GetMessageRequests[remoteAddr] = GetMessageStats{
 		Session: session,
-		Nick:    s.Nick,
+		Nick:    ircServer.GetNick(session),
 		Started: time.Now(),
 	}
 	getMessagesRequestsMu.Unlock()
@@ -250,7 +247,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		getMessagesRequestsMu.Unlock()
 	}()
 
-	lastSeen := s.StartId
+	lastSeen := ircServer.GetStartId(session)
 	lastSeenStr := r.FormValue("lastseen")
 	if lastSeenStr != "0.0" {
 		parts := strings.Split(lastSeenStr, ".")
@@ -396,7 +393,7 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request, ps httprouter.P
 }
 
 func handleDeleteSession(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	_, session, err := sessionOrProxy(w, r, ps)
+	session, err := sessionOrProxy(w, r, ps)
 	if err != nil {
 		return
 	}
