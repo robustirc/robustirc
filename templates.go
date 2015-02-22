@@ -49,6 +49,16 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 							<th>SessionExpiration</th>
 							<td>{{.NetConfig.SessionExpiration}}</td>
 						</tr>
+						<tr>
+							<th>PostMessageCooloff</th>
+							<td>{{.NetConfig.PostMessageCooloff}}</td>
+						</tr>
+						{{ range .NetConfig.IRC.Operators }}
+						<tr>
+							<th>IRC.Operators</th>
+							<td>{{.Name}}/&lt;hidden&gt;</td>
+						</tr>
+						{{ end }}
 					</table>
 				</div>
 

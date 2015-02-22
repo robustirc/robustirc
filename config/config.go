@@ -6,6 +6,8 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+// TODO(secure): use a custom type with encoding.TextUnmarshaler for durations, see https://github.com/BurntSushi/toml
+
 type IRCOp struct {
 	Name     string
 	Password string
