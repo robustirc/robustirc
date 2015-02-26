@@ -177,13 +177,17 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		msg := types.NewRobustMessageFromBytes(elog.Data)
-		if msg.Session.Id != session.Id {
-			continue
+		if msg.Session.Id == session.Id {
+			messages = append(messages, &msg)
 		}
-		messages = append(messages, &msg)
 		output, ok := ircServer.Get(msg.Id)
 		if ok {
-			messages = append(messages, output...)
+			for _, msg := range output {
+				if !msg.InterestingFor[session.Id] {
+					continue
+				}
+				messages = append(messages, msg)
+			}
 		}
 	}
 
