@@ -20,9 +20,8 @@ import (
 	"runtime"
 	"time"
 
-	"bitbucket.org/kardianos/osext"
-
 	"github.com/julienschmidt/httprouter"
+	"github.com/kardianos/osext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robustirc/rafthttp"
 	"github.com/robustirc/robustirc/config"
