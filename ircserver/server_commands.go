@@ -36,8 +36,8 @@ func init() {
 	commands["server_TOPIC"] = &ircCommand{Func: (*IRCServer).cmdServerTopic, MinParams: 3}
 	commands["server_SVSNICK"] = &ircCommand{Func: (*IRCServer).cmdServerSvsnick, MinParams: 2}
 	commands["server_KILL"] = &ircCommand{Func: (*IRCServer).cmdServerKill, MinParams: 1}
+	commands["server_KICK"] = &ircCommand{Func: (*IRCServer).cmdServerKick, MinParams: 2}
 	// TODO: add server_SVSMODE which is for changing the user mode
-	// TODO: add server_KICK
 	// TODO: operserv is not yet usable (access denied)
 }
 
@@ -53,6 +53,47 @@ func (i *IRCServer) interestSjoin(sessionid types.RobustId, msg *irc.Message) ma
 	}
 
 	return result
+}
+
+func (i *IRCServer) cmdServerKick(s *Session, msg *irc.Message) []*irc.Message {
+	// e.g. “:ChanServ KICK #noname-ev blArgh_ :get out”
+	channelname := msg.Params[0]
+	c, ok := i.channels[ChanToLower(channelname)]
+	if !ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOSUCHCHANNEL,
+			Params:   []string{"*", channelname},
+			Trailing: "No such nick/channel",
+		}}
+	}
+
+	if _, ok := c.nicks[NickToLower(msg.Params[1])]; !ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_USERNOTINCHANNEL,
+			Params:   []string{"*", msg.Params[1], channelname},
+			Trailing: "They aren't on that channel",
+		}}
+	}
+
+	// Must exist since c.nicks contains the nick.
+	session, _ := i.nicks[NickToLower(msg.Params[1])]
+
+	// TODO(secure): reduce code duplication with cmdPart()
+	delete(c.nicks, NickToLower(msg.Params[1]))
+	if len(c.nicks) == 0 {
+		delete(i.channels, ChanToLower(channelname))
+	}
+	delete(session.Channels, ChanToLower(channelname))
+	return []*irc.Message{&irc.Message{
+		Prefix: &irc.Prefix{
+			Name: msg.Prefix.Name,
+			User: "services",
+			Host: "services",
+		},
+		Command:  irc.KICK,
+		Params:   []string{msg.Params[0], msg.Params[1]},
+		Trailing: msg.Trailing,
+	}}
 }
 
 func (i *IRCServer) cmdServerKill(s *Session, msg *irc.Message) []*irc.Message {

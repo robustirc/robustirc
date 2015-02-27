@@ -60,6 +60,11 @@ func init() {
 		Interesting:   (*IRCServer).interestPart,
 		StillRelevant: relevantPart,
 	}
+	commands["KICK"] = &ircCommand{
+		Func:        (*IRCServer).cmdKick,
+		MinParams:   2,
+		Interesting: (*IRCServer).interestKick,
+	}
 	commands["QUIT"] = &ircCommand{
 		Func:        (*IRCServer).cmdQuit,
 		Interesting: (*IRCServer).interestQuit,
@@ -442,6 +447,79 @@ func (i *IRCServer) cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 	})
 
 	return replies
+}
+
+func (i *IRCServer) interestKick(sessionid types.RobustId, msg *irc.Message) map[int64]bool {
+	result := make(map[int64]bool)
+
+	for _, serverid := range i.serverSessions {
+		result[serverid] = true
+	}
+
+	channel, ok := i.channels[ChanToLower(msg.Params[0])]
+	if ok {
+		for nick, _ := range channel.nicks {
+			result[i.nicks[nick].Id.Id] = true
+		}
+	}
+
+	// Do send KICK messages to the kicked user (who, by now, is not in the
+	// channel anymore).
+	result[i.nicks[NickToLower(msg.Params[1])].Id.Id] = true
+	return result
+}
+
+func (i *IRCServer) cmdKick(s *Session, msg *irc.Message) []*irc.Message {
+	channelname := msg.Params[0]
+	c, ok := i.channels[ChanToLower(channelname)]
+	if !ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOSUCHCHANNEL,
+			Params:   []string{"*", channelname},
+			Trailing: "No such nick/channel",
+		}}
+	}
+
+	perms, ok := c.nicks[NickToLower(s.Nick)]
+	if !ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOTONCHANNEL,
+			Params:   []string{s.Nick, channelname},
+			Trailing: "You're not on that channel",
+		}}
+	}
+
+	if !perms[chanop] {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_CHANOPRIVSNEEDED,
+			Params:   []string{s.Nick, channelname},
+			Trailing: "You're not channel operator",
+		}}
+	}
+
+	if _, ok := c.nicks[NickToLower(msg.Params[1])]; !ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_USERNOTINCHANNEL,
+			Params:   []string{"*", msg.Params[1], channelname},
+			Trailing: "They aren't on that channel",
+		}}
+	}
+
+	// Must exist since c.nicks contains the nick.
+	session, _ := i.nicks[NickToLower(msg.Params[1])]
+
+	// TODO(secure): reduce code duplication with cmdPart()
+	delete(c.nicks, NickToLower(msg.Params[1]))
+	if len(c.nicks) == 0 {
+		delete(i.channels, ChanToLower(channelname))
+	}
+	delete(session.Channels, ChanToLower(channelname))
+	return []*irc.Message{&irc.Message{
+		Prefix:   &s.ircPrefix,
+		Command:  irc.KICK,
+		Params:   []string{msg.Params[0], msg.Params[1]},
+		Trailing: msg.Trailing,
+	}}
 }
 
 func (i *IRCServer) interestPart(sessionid types.RobustId, msg *irc.Message) map[int64]bool {
