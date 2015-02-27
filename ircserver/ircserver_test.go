@@ -241,6 +241,11 @@ func mustMatchInterested(t *testing.T, i *IRCServer, sessionid types.RobustId, m
 func TestInterestedIn(t *testing.T) {
 	i, ids := stdIRCServer()
 
+	mustMatchInterested(t, i,
+		ids["secure"], irc.ParseMessage("NICK secure_out_of_chan"),
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{true, false, false})
+
 	i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #test"))
 	i.ProcessMessage(ids["mero"], irc.ParseMessage("JOIN #test"))
 
