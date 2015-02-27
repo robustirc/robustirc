@@ -38,14 +38,13 @@ func TestServerHandshake(t *testing.T) {
 		i.ProcessMessage(ids["services"], irc.ParseMessage("PASS :services=mypass")),
 		[]*irc.Message{})
 
-	// TODO(secure): this is flaky, make the ordering deterministic by sorting
 	mustMatchIrcmsgs(t,
 		i.ProcessMessage(ids["services"], irc.ParseMessage("SERVER services.robustirc.net 1 :Services for IRC Networks")),
 		[]*irc.Message{
 			irc.ParseMessage("SERVER robustirc.net 0 23"),
-			irc.ParseMessage("NICK sECuRE 1 1 blah robust/0x13b5aa0a2bcfb8ad robustirc.net 0 +o :Michael Stapelberg"),
 			irc.ParseMessage("NICK mero 1 1 foo robust/0x13b5aa0a2bcfb8ae robustirc.net 0 + :Axel Wagner"),
 			irc.ParseMessage(":robustirc.net SJOIN 1 #test :@mero"),
+			irc.ParseMessage("NICK sECuRE 1 1 blah robust/0x13b5aa0a2bcfb8ad robustirc.net 0 +o :Michael Stapelberg"),
 			irc.ParseMessage("NICK xeen 1 1 baz robust/0x13b5aa0a2bcfb8af robustirc.net 0 + :Iks Enn"),
 		})
 }

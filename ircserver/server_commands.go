@@ -3,6 +3,7 @@ package ircserver
 import (
 	"fmt"
 	"hash/fnv"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -269,7 +270,13 @@ func (i *IRCServer) cmdServer(s *Session, msg *irc.Message) []*irc.Message {
 			"23", // token, must be different from the services token
 		},
 	}}
-	for _, session := range i.sessions {
+	nicks := make([]string, 0, len(i.nicks))
+	for nick, _ := range i.nicks {
+		nicks = append(nicks, string(nick))
+	}
+	sort.Strings(nicks)
+	for _, nick := range nicks {
+		session := i.nicks[lcNick(nick)]
 		// Skip sessions that are not yet logged in, sessions that represent a
 		// server connection and subsessions of a server connection.
 		if !session.loggedIn() || session.Server || session.Id.Reply != 0 {
