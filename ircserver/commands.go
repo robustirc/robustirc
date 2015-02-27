@@ -103,6 +103,11 @@ func init() {
 		Func:          (*IRCServer).cmdMotd,
 		StillRelevant: neverRelevant,
 	}
+	commands["WHOIS"] = &ircCommand{
+		Func:          (*IRCServer).cmdWhois,
+		MinParams:     1,
+		StillRelevant: neverRelevant,
+	}
 
 	if os.Getenv("ROBUSTIRC_TESTING_ENABLE_PANIC_COMMAND") == "1" {
 		commands["PANIC"] = &ircCommand{
@@ -1197,4 +1202,85 @@ func (i *IRCServer) cmdMotd(s *Session, msg *irc.Message) []*irc.Message {
 func (i *IRCServer) cmdPass(s *Session, msg *irc.Message) []*irc.Message {
 	s.Pass = msg.Trailing
 	return []*irc.Message{}
+}
+
+func (i *IRCServer) cmdWhois(s *Session, msg *irc.Message) []*irc.Message {
+	session, ok := i.nicks[NickToLower(msg.Params[0])]
+	if !ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOSUCHNICK,
+			Params:   []string{s.Nick, msg.Params[0]},
+			Trailing: "No such nick/channel",
+		}}
+	}
+
+	var replies []*irc.Message
+
+	replies = append(replies, &irc.Message{
+		Command:  irc.RPL_WHOISUSER,
+		Params:   []string{s.Nick, session.Nick, session.ircPrefix.User, session.ircPrefix.Host, "*"},
+		Trailing: session.Realname,
+	})
+
+	var channels []string
+	for channel, _ := range session.Channels {
+		var prefix string
+		c := i.channels[channel]
+		if c.modes['s'] && !s.Operator && !s.Channels[channel] {
+			continue
+		}
+		if c.nicks[NickToLower(session.Nick)][chanop] {
+			prefix = "@"
+		}
+		channels = append(channels, prefix+c.name)
+	}
+
+	sort.Strings(channels)
+
+	if len(channels) > 0 {
+		// TODO(secure): this needs to be split into multiple messages if the line exceeds 510 bytes.
+		replies = append(replies, &irc.Message{
+			Command:  irc.RPL_WHOISCHANNELS,
+			Params:   []string{s.Nick, session.Nick},
+			Trailing: strings.Join(channels, " "),
+		})
+	}
+
+	replies = append(replies, &irc.Message{
+		Command:  irc.RPL_WHOISSERVER,
+		Params:   []string{s.Nick, session.Nick, i.ServerPrefix.Name},
+		Trailing: "RobustIRC",
+	})
+
+	if session.Operator {
+		replies = append(replies, &irc.Message{
+			Command:  irc.RPL_WHOISOPERATOR,
+			Params:   []string{s.Nick, session.Nick},
+			Trailing: "is an IRC operator",
+		})
+	}
+
+	if session.AwayMsg != "" {
+		replies = append(replies, &irc.Message{
+			Command:  irc.RPL_AWAY,
+			Params:   []string{s.Nick, session.Nick},
+			Trailing: session.AwayMsg,
+		})
+	}
+
+	idle := strconv.FormatInt(int64(s.LastActivity.Sub(session.LastActivity).Seconds()), 10)
+	signon := strconv.FormatInt(time.Unix(0, session.Id.Id).Unix(), 10)
+	replies = append(replies, &irc.Message{
+		Command:  irc.RPL_WHOISIDLE,
+		Params:   []string{s.Nick, session.Nick, idle, signon},
+		Trailing: "seconds idle, signon time",
+	})
+
+	replies = append(replies, &irc.Message{
+		Command:  irc.RPL_ENDOFWHOIS,
+		Params:   []string{s.Nick, session.Nick},
+		Trailing: "End of /WHOIS list",
+	})
+
+	return replies
 }
