@@ -301,6 +301,10 @@ func IsValidNickname(nick string) bool {
 	return validNickRe.MatchString(nick)
 }
 
+func IsServicesNickname(nick string) bool {
+	return strings.HasSuffix(strings.ToLower(nick), "serv")
+}
+
 func IsValidChannel(channel string) bool {
 	return validChannelRe.MatchString(channel)
 }

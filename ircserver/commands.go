@@ -207,7 +207,7 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
-	if _, ok := i.nicks[NickToLower(msg.Params[0])]; ok {
+	if _, ok := i.nicks[NickToLower(msg.Params[0])]; ok || IsServicesNickname(msg.Params[0]) {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NICKNAMEINUSE,
 			Params:   []string{"*", msg.Params[0]},
