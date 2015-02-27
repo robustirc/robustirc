@@ -21,10 +21,12 @@ func init() {
 
 	commands["SJOIN"] = &ircCommand{Func: (*IRCServer).ignoreCmd, Interesting: (*IRCServer).interestSjoin}
 
-	// These just use exactly the same code as clients.
-	// TODO(secure): check init() order, can we use commands["server_QUIT"] = commands["QUIT"]?
-	commands["server_QUIT"] = &ircCommand{Func: (*IRCServer).cmdQuit, Interesting: (*IRCServer).interestQuit}
-	commands["server_PING"] = &ircCommand{Func: (*IRCServer).cmdPing}
+	// These just use exactly the same code as clients. We can directly assign
+	// the contents of commands[x] because commands.go is sorted lexically
+	// before server_commands.go. For details, see
+	// http://golang.org/ref/spec#Package_initialization.
+	commands["server_PING"] = commands["PING"]
+	commands["server_QUIT"] = commands["QUIT"]
 
 	commands["server_NICK"] = &ircCommand{Func: (*IRCServer).cmdServerNick}
 	commands["server_MODE"] = &ircCommand{Func: (*IRCServer).cmdServerMode}
