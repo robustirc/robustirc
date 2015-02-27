@@ -203,7 +203,7 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_ERRONEUSNICKNAME,
 			Params:   []string{"*", msg.Params[0]},
-			Trailing: "Erroneus nickname.",
+			Trailing: "Erroneous nickname",
 		}}
 	}
 
@@ -211,7 +211,7 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NICKNAMEINUSE,
 			Params:   []string{"*", msg.Params[0]},
-			Trailing: "Nickname is already in use.",
+			Trailing: "Nickname is already in use",
 		}}
 	}
 	oldNick := NickToLower(s.Nick)
@@ -394,6 +394,7 @@ func (i *IRCServer) cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 	c, ok := i.channels[ChanToLower(channelname)]
 	if !ok {
 		c = &channel{
+			name:  channelname,
 			nicks: make(map[lcNick]*[maxChanMemberStatus]bool),
 		}
 		i.channels[ChanToLower(channelname)] = c
@@ -824,6 +825,7 @@ func (i *IRCServer) cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 				}
 			}
 			if len(replies) > 0 {
+				// TODO(secure): see how other ircds are handling this. do they sanity check the entire mode string before applying it, or do they keep valid modes while erroring for others?
 				return replies
 			}
 			replies = append(replies, &irc.Message{
@@ -852,7 +854,7 @@ func (i *IRCServer) cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 			}}
 		}
 	} else {
-		if channelname == s.Nick {
+		if NickToLower(channelname) == NickToLower(s.Nick) {
 			modestr := "+"
 			for mode := 'A'; mode < 'z'; mode++ {
 				if s.modes[mode] {

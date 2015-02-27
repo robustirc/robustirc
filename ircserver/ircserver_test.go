@@ -132,7 +132,7 @@ func TestSessionInitialization(t *testing.T) {
 
 	mustMatchMsg(t,
 		i.ProcessMessage(idSecond, irc.ParseMessage("NICK secure")),
-		":robustirc.net 433 * secure :Nickname is already in use.")
+		":robustirc.net 433 * secure :Nickname is already in use")
 	if sSecond.Nick != "" {
 		t.Fatalf("session.Nick: got %q, want %q", s.Nick, "")
 	}
@@ -335,15 +335,15 @@ func TestNickCollision(t *testing.T) {
 
 	mustMatchMsg(t,
 		i.ProcessMessage(idMero, irc.ParseMessage("NICK s[E]CuRE")),
-		":robustirc.net 433 * s[E]CuRE :Nickname is already in use.")
+		":robustirc.net 433 * s[E]CuRE :Nickname is already in use")
 
 	mustMatchMsg(t,
 		i.ProcessMessage(idMero, irc.ParseMessage("NICK S[E]CURE")),
-		":robustirc.net 433 * S[E]CURE :Nickname is already in use.")
+		":robustirc.net 433 * S[E]CURE :Nickname is already in use")
 
 	mustMatchMsg(t,
 		i.ProcessMessage(idMero, irc.ParseMessage("NICK S{E}CURE")),
-		":robustirc.net 433 * S{E}CURE :Nickname is already in use.")
+		":robustirc.net 433 * S{E}CURE :Nickname is already in use")
 }
 
 func TestInvalidNick(t *testing.T) {
@@ -397,7 +397,7 @@ func TestInvalidNickPlumbing(t *testing.T) {
 
 	mustMatchMsg(t,
 		i.ProcessMessage(id, irc.ParseMessage("NICK 0secure")),
-		":robustirc.net 432 * 0secure :Erroneus nickname.")
+		":robustirc.net 432 * 0secure :Erroneous nickname")
 
 	if s.Nick != "" {
 		t.Fatalf("session.Nick: got %q, want %q", s.Nick, "")

@@ -3,7 +3,6 @@ package ircserver
 import (
 	"fmt"
 	"hash/fnv"
-	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -26,7 +25,7 @@ func init() {
 	// file makes more sense than in commands.go.
 	commands["SERVER"] = &ircCommand{Func: (*IRCServer).cmdServer, MinParams: 2}
 
-	commands["SJOIN"] = &ircCommand{Func: (*IRCServer).ignoreCmd, Interesting: (*IRCServer).interestSjoin}
+	commands["SJOIN"] = &ircCommand{Func: (*IRCServer).unknownCmd, Interesting: (*IRCServer).interestSjoin}
 
 	// These just use exactly the same code as clients. We can directly assign
 	// the contents of commands[x] because commands.go is sorted lexically
@@ -48,8 +47,20 @@ func init() {
 	commands["server_KICK"] = &ircCommand{Func: (*IRCServer).cmdServerKick, MinParams: 2}
 }
 
-func (i *IRCServer) ignoreCmd(s *Session, msg *irc.Message) []*irc.Message {
-	return []*irc.Message{}
+func servicesPrefix(prefix *irc.Prefix) *irc.Prefix {
+	return &irc.Prefix{
+		Name: prefix.Name,
+		User: "services",
+		Host: "services"}
+}
+
+func (i *IRCServer) unknownCmd(s *Session, msg *irc.Message) []*irc.Message {
+	return []*irc.Message{&irc.Message{
+		Prefix:   i.ServerPrefix,
+		Command:  irc.ERR_UNKNOWNCOMMAND,
+		Params:   []string{s.Nick, msg.Command},
+		Trailing: "Unknown command",
+	}}
 }
 
 func (i *IRCServer) interestSjoin(sessionid types.RobustId, msg *irc.Message) map[int64]bool {
@@ -116,7 +127,7 @@ func (i *IRCServer) cmdServerKill(s *Session, msg *irc.Message) []*irc.Message {
 	if !ok {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOSUCHNICK,
-			Params:   []string{msg.Prefix.Name, msg.Params[0]},
+			Params:   []string{"*", msg.Params[0]},
 			Trailing: "No such nick/channel",
 		}}
 	}
@@ -130,11 +141,21 @@ func (i *IRCServer) cmdServerKill(s *Session, msg *irc.Message) []*irc.Message {
 }
 
 func (i *IRCServer) cmdServerNick(s *Session, msg *irc.Message) []*irc.Message {
-	log.Printf("got nick: %+v\n", msg)
+	// e.g. “NICK OperServ 1 1422134861 services localhost.net services.localhost.net 0 :Operator Server”
+	// <nickname> <hopcount> <username> <host> <servertoken> <umode> <realname>
+
 	// Could be either a nickchange or the introduction of a new user.
 	if len(msg.Params) == 1 {
 		// TODO(secure): handle nickchanges. not sure when/if those are used. botserv maybe?
 		return []*irc.Message{}
+	}
+
+	if _, ok := i.nicks[NickToLower(msg.Params[0])]; ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NICKNAMEINUSE,
+			Params:   []string{"*", msg.Params[0]},
+			Trailing: "Nickname is already in use",
+		}}
 	}
 
 	h := fnv.New64()
@@ -147,14 +168,10 @@ func (i *IRCServer) cmdServerNick(s *Session, msg *irc.Message) []*irc.Message {
 	i.CreateSession(id, "")
 	ss, _ := i.GetSession(id)
 	ss.Nick = msg.Params[0]
-	// TODO(secure): handle nick collisions. best to forbid *Serv nicks in cmdNick
 	i.nicks[NickToLower(ss.Nick)] = ss
 	ss.Username = msg.Params[3]
 	ss.updateIrcPrefix()
 	return []*irc.Message{}
-
-	// <nickname> <hopcount> <username> <host> <servertoken> <umode> <realname>
-	// OperServ 1 1422134861 services localhost.net services.localhost.net 0 :Operator Server
 }
 
 func (i *IRCServer) cmdServerMode(s *Session, msg *irc.Message) []*irc.Message {
@@ -162,8 +179,11 @@ func (i *IRCServer) cmdServerMode(s *Session, msg *irc.Message) []*irc.Message {
 	// TODO(secure): properly distinguish between users and channels
 	c, ok := i.channels[ChanToLower(channelname)]
 	if !ok {
-		// TODO
-		return []*irc.Message{}
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOSUCHCHANNEL,
+			Params:   []string{msg.Prefix.Name, msg.Params[0]},
+			Trailing: "No such nick/channel",
+		}}
 	}
 
 	// TODO(secure): possibly refactor this with cmdMode()
@@ -171,68 +191,66 @@ func (i *IRCServer) cmdServerMode(s *Session, msg *irc.Message) []*irc.Message {
 	if len(msg.Params) > 1 {
 		modestr = msg.Params[1]
 	}
-	if strings.HasPrefix(modestr, "+") || strings.HasPrefix(modestr, "-") {
-		var replies []*irc.Message
-		// true for adding a mode, false for removing it
-		newvalue := strings.HasPrefix(modestr, "+")
-		modearg := 2
-		for _, char := range modestr[1:] {
-			switch char {
-			case '+', '-':
-				newvalue = (char == '+')
-			case 't', 's', 'r':
-				c.modes[char] = newvalue
-			case 'o':
-				if len(msg.Params) > modearg {
-					nick := msg.Params[modearg]
-					perms, ok := c.nicks[NickToLower(nick)]
-					if !ok {
-						replies = append(replies, &irc.Message{
-							Command:  irc.ERR_USERNOTINCHANNEL,
-							Params:   []string{msg.Prefix.Name, nick, channelname},
-							Trailing: "They aren't on that channel",
-						})
-					} else {
-						// If the user already is a chanop, silently do
-						// nothing (like UnrealIRCd).
-						if perms[chanop] != newvalue {
-							c.nicks[NickToLower(nick)][chanop] = newvalue
-						}
+	if !strings.HasPrefix(modestr, "+") && !strings.HasPrefix(modestr, "-") {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_UNKNOWNMODE,
+			Params:   []string{msg.Prefix.Name, modestr},
+			Trailing: "is unknown mode char to me",
+		}}
+	}
+	var replies []*irc.Message
+	// true for adding a mode, false for removing it
+	newvalue := strings.HasPrefix(modestr, "+")
+	modearg := 2
+	for _, char := range modestr[1:] {
+		switch char {
+		case '+', '-':
+			newvalue = (char == '+')
+		case 't', 's', 'r':
+			c.modes[char] = newvalue
+		case 'o':
+			if len(msg.Params) > modearg {
+				nick := msg.Params[modearg]
+				perms, ok := c.nicks[NickToLower(nick)]
+				if !ok {
+					replies = append(replies, &irc.Message{
+						Command:  irc.ERR_USERNOTINCHANNEL,
+						Params:   []string{msg.Prefix.Name, nick, channelname},
+						Trailing: "They aren't on that channel",
+					})
+				} else {
+					// If the user already is a chanop, silently do
+					// nothing (like UnrealIRCd).
+					if perms[chanop] != newvalue {
+						c.nicks[NickToLower(nick)][chanop] = newvalue
 					}
 				}
-				modearg++
-			default:
-				replies = append(replies, &irc.Message{
-					Command:  irc.ERR_UNKNOWNMODE,
-					Params:   []string{msg.Prefix.Name, string(char)},
-					Trailing: "is unknown mode char to me",
-				})
 			}
+			modearg++
+		default:
+			replies = append(replies, &irc.Message{
+				Command:  irc.ERR_UNKNOWNMODE,
+				Params:   []string{msg.Prefix.Name, string(char)},
+				Trailing: "is unknown mode char to me",
+			})
 		}
-		if len(replies) > 0 {
-			return replies
-		}
-		replies = append(replies, &irc.Message{
-			// TODO: refactor into a servicesprefix function or sth
-			Prefix: &irc.Prefix{
-				Name: msg.Prefix.Name,
-				User: "services",
-				Host: "services",
-			},
-			Command: irc.MODE,
-			Params:  msg.Params[:modearg],
-		})
+	}
+	if len(replies) > 0 {
 		return replies
 	}
-
-	// TODO
-	return []*irc.Message{}
+	replies = append(replies, &irc.Message{
+		Prefix:  servicesPrefix(msg.Prefix),
+		Command: irc.MODE,
+		Params:  msg.Params[:modearg],
+	})
+	return replies
 }
 
 func (i *IRCServer) cmdServer(s *Session, msg *irc.Message) []*irc.Message {
 	// TODO(secure): make this configurable once we have a config file.
 	if s.Pass != "services=mypass" {
 		return []*irc.Message{&irc.Message{
+			Prefix:   &irc.Prefix{},
 			Command:  irc.ERROR,
 			Trailing: "Invalid password",
 		}}
@@ -331,13 +349,10 @@ func (i *IRCServer) cmdServerSvsmode(s *Session, msg *irc.Message) []*irc.Messag
 		default:
 			replies = append(replies, &irc.Message{
 				Command:  irc.ERR_UMODEUNKNOWNFLAG,
-				Params:   []string{"*", string(char)},
-				Trailing: "is unknown mode char to me",
+				Params:   []string{"*"},
+				Trailing: "Unknown MODE flag",
 			})
 		}
-	}
-	if len(replies) > 0 {
-		return replies
 	}
 	modestr = "+"
 	for mode := 'A'; mode < 'z'; mode++ {
@@ -346,7 +361,7 @@ func (i *IRCServer) cmdServerSvsmode(s *Session, msg *irc.Message) []*irc.Messag
 		}
 	}
 	replies = append(replies, &irc.Message{
-		Prefix:   msg.Prefix,
+		Prefix:   &s.ircPrefix,
 		Command:  irc.MODE,
 		Params:   []string{session.Nick},
 		Trailing: modestr,
@@ -360,7 +375,7 @@ func (i *IRCServer) cmdServerSvsnick(s *Session, msg *irc.Message) []*irc.Messag
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_ERRONEUSNICKNAME,
 			Params:   []string{"*", msg.Params[1]},
-			Trailing: "Erroneus nickname.",
+			Trailing: "Erroneous nickname",
 		}}
 	}
 
@@ -400,7 +415,7 @@ func (i *IRCServer) cmdServerJoin(s *Session, msg *irc.Message) []*irc.Message {
 	if !IsValidChannel(channelname) {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOSUCHCHANNEL,
-			Params:   []string{"*", channelname},
+			Params:   []string{msg.Prefix.Name, channelname},
 			Trailing: "No such channel",
 		}}
 	}
@@ -408,6 +423,7 @@ func (i *IRCServer) cmdServerJoin(s *Session, msg *irc.Message) []*irc.Message {
 	c, ok := i.channels[ChanToLower(channelname)]
 	if !ok {
 		c = &channel{
+			name:  channelname,
 			nicks: make(map[lcNick]*[maxChanMemberStatus]bool),
 		}
 		i.channels[ChanToLower(channelname)] = c
@@ -421,12 +437,7 @@ func (i *IRCServer) cmdServerJoin(s *Session, msg *irc.Message) []*irc.Message {
 	s.Channels[ChanToLower(channelname)] = true
 
 	return []*irc.Message{&irc.Message{
-		// TODO: refactor into a servicesprefix function or sth
-		Prefix: &irc.Prefix{
-			Name: msg.Prefix.Name,
-			User: "services",
-			Host: "services",
-		},
+		Prefix:   servicesPrefix(msg.Prefix),
 		Command:  irc.JOIN,
 		Trailing: channelname,
 	}}
@@ -440,7 +451,7 @@ func (i *IRCServer) cmdServerPart(s *Session, msg *irc.Message) []*irc.Message {
 	if !ok {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOSUCHCHANNEL,
-			Params:   []string{"*", channelname},
+			Params:   []string{msg.Prefix.Name, channelname},
 			Trailing: "No such channel",
 		}}
 	}
@@ -460,12 +471,7 @@ func (i *IRCServer) cmdServerPart(s *Session, msg *irc.Message) []*irc.Message {
 	}
 	delete(s.Channels, ChanToLower(channelname))
 	return []*irc.Message{&irc.Message{
-		// TODO: refactor into a servicesprefix function or sth
-		Prefix: &irc.Prefix{
-			Name: msg.Prefix.Name,
-			User: "services",
-			Host: "services",
-		},
+		Prefix:  servicesPrefix(msg.Prefix),
 		Command: irc.PART,
 		Params:  []string{channelname},
 	}}
@@ -478,7 +484,7 @@ func (i *IRCServer) cmdServerTopic(s *Session, msg *irc.Message) []*irc.Message 
 	if !ok {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOSUCHCHANNEL,
-			Params:   []string{"*", channel},
+			Params:   []string{msg.Prefix.Name, channel},
 			Trailing: "No such channel",
 		}}
 	}
@@ -489,7 +495,7 @@ func (i *IRCServer) cmdServerTopic(s *Session, msg *irc.Message) []*irc.Message 
 		c.topicTime = time.Time{}
 		c.topic = ""
 		return []*irc.Message{&irc.Message{
-			Prefix:        msg.Prefix,
+			Prefix:        servicesPrefix(msg.Prefix),
 			Command:       irc.TOPIC,
 			Params:        []string{channel},
 			Trailing:      msg.Trailing,
@@ -511,7 +517,7 @@ func (i *IRCServer) cmdServerTopic(s *Session, msg *irc.Message) []*irc.Message 
 	c.topic = msg.Trailing
 
 	return []*irc.Message{&irc.Message{
-		Prefix:   msg.Prefix,
+		Prefix:   servicesPrefix(msg.Prefix),
 		Command:  irc.TOPIC,
 		Params:   []string{channel},
 		Trailing: msg.Trailing,
@@ -525,7 +531,7 @@ func (i *IRCServer) cmdServerPrivmsg(s *Session, msg *irc.Message) []*irc.Messag
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NORECIPIENT,
 			Params:   []string{msg.Prefix.Name},
-			Trailing: "No recipient given (PRIVMSG)",
+			Trailing: fmt.Sprintf("No recipient given (%s)", msg.Command),
 		}}
 	}
 
@@ -539,15 +545,14 @@ func (i *IRCServer) cmdServerPrivmsg(s *Session, msg *irc.Message) []*irc.Messag
 
 	if strings.HasPrefix(msg.Params[0], "#") {
 		return []*irc.Message{&irc.Message{
-			Prefix:   &s.ircPrefix,
+			Prefix:   servicesPrefix(msg.Prefix),
 			Command:  msg.Command,
 			Params:   []string{msg.Params[0]},
 			Trailing: msg.Trailing,
 		}}
 	}
 
-	session, ok := i.nicks[NickToLower(msg.Params[0])]
-	if !ok {
+	if _, ok := i.nicks[NickToLower(msg.Params[0])]; !ok {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOSUCHNICK,
 			Params:   []string{msg.Prefix.Name, msg.Params[0]},
@@ -558,19 +563,11 @@ func (i *IRCServer) cmdServerPrivmsg(s *Session, msg *irc.Message) []*irc.Messag
 	var replies []*irc.Message
 
 	replies = append(replies, &irc.Message{
-		Prefix:   &irc.Prefix{Name: msg.Prefix.Name, User: "services", Host: "robust/TODO"},
+		Prefix:   servicesPrefix(msg.Prefix),
 		Command:  msg.Command,
 		Params:   []string{msg.Params[0]},
 		Trailing: msg.Trailing,
 	})
-
-	if session.AwayMsg != "" && msg.Command == irc.PRIVMSG {
-		replies = append(replies, &irc.Message{
-			Command:  irc.RPL_AWAY,
-			Params:   []string{msg.Prefix.Name, msg.Params[0]},
-			Trailing: session.AwayMsg,
-		})
-	}
 
 	return replies
 }
