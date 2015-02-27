@@ -132,6 +132,71 @@ func (i *IRCServer) cmdPing(s *Session, msg *irc.Message) []*irc.Message {
 	}}
 }
 
+// login is called by either cmdNick or cmdUser, depending on which message the
+// client sends last.
+func (i *IRCServer) login(s *Session, msg *irc.Message) []*irc.Message {
+	var replies []*irc.Message
+
+	// TODO(secure): send 002, 003, 004, 251, 252, 254, 255, 265, 266
+	replies = append(replies, &irc.Message{
+		Command:  irc.RPL_WELCOME,
+		Params:   []string{s.Nick},
+		Trailing: "Welcome to RobustIRC!",
+	})
+
+	replies = append(replies, &irc.Message{
+		Command:  irc.RPL_YOURHOST,
+		Params:   []string{s.Nick},
+		Trailing: "Your host is " + i.ServerPrefix.Name,
+	})
+
+	replies = append(replies, &irc.Message{
+		Command:  irc.RPL_CREATED,
+		Params:   []string{s.Nick},
+		Trailing: "This server was created " + i.ServerCreation.UTC().String(),
+	})
+
+	replies = append(replies, &irc.Message{
+		Command: irc.RPL_MYINFO,
+		Params:  []string{s.Nick},
+		// TODO(secure): actually support these modes.
+		Trailing: i.ServerPrefix.Name + " v1 i nst",
+	})
+
+	// send ISUPPORT as per http://www.irc.org/tech_docs/draft-brocklesby-irc-isupport-03.txt
+	replies = append(replies, &irc.Message{
+		Command: "005",
+		Params: []string{
+			"CHANTYPES=#",
+			"CHANNELLEN=" + maxChannelLen,
+			"NICKLEN=" + maxNickLen,
+			"MODES=1",
+			"PREFIX=",
+		},
+		Trailing: "are supported by this server",
+	})
+
+	replies = append(replies, &irc.Message{
+		Prefix:  &irc.Prefix{},
+		Command: irc.NICK,
+		Params: []string{
+			s.Nick,
+			"1", // hopcount (ignored by anope)
+			"1", // timestamp
+			s.Username,
+			s.ircPrefix.Host,
+			i.ServerPrefix.Name,
+			"0", // svid, an identifier set by the services
+			"+",
+		},
+		Trailing: s.Realname,
+	})
+
+	replies = append(replies, i.cmdMotd(s, msg)...)
+
+	return replies
+}
+
 func relevantNick(msg *irc.Message, prev, next logCursor) (bool, error) {
 	if len(msg.Params) < 1 {
 		return false, nil
@@ -214,6 +279,7 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 			Trailing: "Nickname is already in use",
 		}}
 	}
+	loggedIn := s.loggedIn()
 	oldNick := NickToLower(s.Nick)
 	s.Nick = msg.Params[0]
 	i.nicks[NickToLower(s.Nick)] = s
@@ -236,75 +302,11 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
-	var replies []*irc.Message
-
-	// TODO(secure): send 002, 003, 004, 251, 252, 254, 255, 265, 266
-	replies = append(replies, &irc.Message{
-		Command:  irc.RPL_WELCOME,
-		Params:   []string{s.Nick},
-		Trailing: "Welcome to RobustIRC!",
-	})
-
-	replies = append(replies, &irc.Message{
-		Command:  irc.RPL_YOURHOST,
-		Params:   []string{s.Nick},
-		Trailing: "Your host is " + i.ServerPrefix.Name,
-	})
-
-	replies = append(replies, &irc.Message{
-		Command:  irc.RPL_CREATED,
-		Params:   []string{s.Nick},
-		Trailing: "This server was created " + i.ServerCreation.UTC().String(),
-	})
-
-	replies = append(replies, &irc.Message{
-		Command: irc.RPL_MYINFO,
-		Params:  []string{s.Nick},
-		// TODO(secure): actually support these modes.
-		Trailing: i.ServerPrefix.Name + " v1 i nst",
-	})
-
-	// send ISUPPORT as per http://www.irc.org/tech_docs/draft-brocklesby-irc-isupport-03.txt
-	replies = append(replies, &irc.Message{
-		Command: "005",
-		Params: []string{
-			"CHANTYPES=#",
-			"CHANNELLEN=" + maxChannelLen,
-			"NICKLEN=" + maxNickLen,
-			"MODES=1",
-			"PREFIX=",
-		},
-		Trailing: "are supported by this server",
-	})
-
-	// TODO: if NICK was sent first, wait for USER. add test for that. we need a non-zero username here
-	user := "placeholder"
-	if s.Username != "" {
-		user = s.Username
+	if !loggedIn && s.loggedIn() {
+		return i.login(s, msg)
+	} else {
+		return []*irc.Message{}
 	}
-	realname := "Place Holder"
-	if s.Realname != "" {
-		realname = s.Realname
-	}
-	replies = append(replies, &irc.Message{
-		Prefix:  &irc.Prefix{},
-		Command: irc.NICK,
-		Params: []string{
-			s.Nick,
-			"1", // hopcount (ignored by anope)
-			"1", // timestamp
-			user,
-			s.ircPrefix.Host,
-			i.ServerPrefix.Name,
-			"0", // svid, an identifier set by the services
-			"+",
-		},
-		Trailing: realname,
-	})
-
-	replies = append(replies, i.cmdMotd(s, msg)...)
-
-	return replies
 }
 
 func relevantUser(msg *irc.Message, prev, next logCursor) (bool, error) {
@@ -330,11 +332,15 @@ func relevantUser(msg *irc.Message, prev, next logCursor) (bool, error) {
 }
 
 func (i *IRCServer) cmdUser(s *Session, msg *irc.Message) []*irc.Message {
+	loggedIn := s.loggedIn()
 	// We keep the username (so that bans are more effective) and realname
 	// (some people actually set it and look at it).
 	s.Username = msg.Params[0]
 	s.Realname = msg.Trailing
 	s.updateIrcPrefix()
+	if !loggedIn && s.loggedIn() {
+		return i.login(s, msg)
+	}
 	return []*irc.Message{}
 }
 

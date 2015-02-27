@@ -100,8 +100,13 @@ func TestSessionInitialization(t *testing.T) {
 		i.ProcessMessage(id, irc.ParseMessage("NICK")),
 		":robustirc.net 431 :No nickname given")
 
-	i.ProcessMessage(id, irc.ParseMessage("NICK secure"))
-	i.ProcessMessage(id, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(id, irc.ParseMessage("NICK secure")),
+		[]*irc.Message{})
+	got := i.ProcessMessage(id, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
+	if len(got) < 1 || got[0].Command != irc.RPL_WELCOME {
+		t.Fatalf("got %v, want irc.RPL_WELCOME", got)
+	}
 
 	if s.Nick != "secure" {
 		t.Fatalf("session.Nick: got %q, want %q", s.Nick, "secure")
@@ -138,7 +143,7 @@ func TestSessionInitialization(t *testing.T) {
 	}
 	i.ProcessMessage(idSecond, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
 
-	got := i.ProcessMessage(idSecond, irc.ParseMessage("NICK secure_"))
+	got = i.ProcessMessage(idSecond, irc.ParseMessage("NICK secure_"))
 	if len(got) < 1 || got[0].Command != irc.RPL_WELCOME {
 		t.Fatalf("got %v, want irc.RPL_WELCOME", got)
 	}
@@ -639,6 +644,7 @@ func TestMotd(t *testing.T) {
 
 	i.CreateSession(idSecure, "auth-secure")
 
+	i.ProcessMessage(idSecure, irc.ParseMessage("USER 1 2 3 :4"))
 	got = i.ProcessMessage(idSecure, irc.ParseMessage("NICK s[E]CuRE"))
 	motdFound := false
 	for i := 0; i < len(got)-2; i++ {
