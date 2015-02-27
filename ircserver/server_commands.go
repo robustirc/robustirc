@@ -35,9 +35,9 @@ func init() {
 	commands["server_NOTICE"] = &ircCommand{Func: (*IRCServer).cmdServerPrivmsg}
 	commands["server_TOPIC"] = &ircCommand{Func: (*IRCServer).cmdServerTopic, MinParams: 3}
 	commands["server_SVSNICK"] = &ircCommand{Func: (*IRCServer).cmdServerSvsnick, MinParams: 2}
+	commands["server_KILL"] = &ircCommand{Func: (*IRCServer).cmdServerKill, MinParams: 1}
 	// TODO: add server_SVSMODE which is for changing the user mode
 	// TODO: add server_KICK
-	// TODO: add server_KILL
 	// TODO: operserv is not yet usable (access denied)
 }
 
@@ -53,6 +53,32 @@ func (i *IRCServer) interestSjoin(sessionid types.RobustId, msg *irc.Message) ma
 	}
 
 	return result
+}
+
+func (i *IRCServer) cmdServerKill(s *Session, msg *irc.Message) []*irc.Message {
+	if strings.TrimSpace(msg.Trailing) == "" {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NEEDMOREPARAMS,
+			Params:   []string{"*", msg.Command},
+			Trailing: "Not enough parameters",
+		}}
+	}
+
+	session, ok := i.nicks[NickToLower(msg.Params[0])]
+	if !ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOSUCHNICK,
+			Params:   []string{s.Nick, msg.Params[0]},
+			Trailing: "No such nick/channel",
+		}}
+	}
+
+	i.DeleteSession(session)
+	return []*irc.Message{&irc.Message{
+		Prefix:   &session.ircPrefix,
+		Command:  irc.QUIT,
+		Trailing: "Killed: " + msg.Trailing,
+	}}
 }
 
 func (i *IRCServer) cmdServerNick(s *Session, msg *irc.Message) []*irc.Message {

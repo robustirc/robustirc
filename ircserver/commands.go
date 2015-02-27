@@ -540,6 +540,18 @@ func (i *IRCServer) interestQuit(sessionid types.RobustId, msg *irc.Message) map
 	// Do send QUIT messages back to the sender (who, by now, is not in the
 	// channel anymore).
 	result[sessionid.Id] = true
+	if s.Server {
+		// In order to reliably deliver the QUIT message to the affected
+		// session, we need to iterate over all sessions since DeleteSession
+		// removes the nick from all mappings.
+		for id, session := range i.sessions {
+			if session.deleted && NickToLower(session.Nick) == NickToLower(msg.Prefix.Name) {
+				result[id.Id] = true
+				break
+			}
+		}
+	}
+
 	return result
 }
 
