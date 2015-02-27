@@ -36,11 +36,17 @@ func verifyEndState(t *testing.T) {
 		t.Fatalf("session.Nick: got %q, want %q", s.Nick, "secure_")
 	}
 
+	// s.Channels is a map[lcChan]bool, so we copy it over.
+	got := make(map[string]bool)
+	for key, value := range s.Channels {
+		got[string(key)] = value
+	}
+
 	want := make(map[string]bool)
 	want["#chaos-hd"] = true
 
-	if !reflect.DeepEqual(s.Channels, want) {
-		t.Fatalf("session.Channels: got %v, want %v", s.Channels, want)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("session.Channels: got %v, want %v", got, want)
 	}
 }
 
