@@ -97,6 +97,10 @@ type Session struct {
 	Operator     bool
 	AwayMsg      string
 
+	// We waste 65 bytes per session for clearer code (being able to directly
+	// access modes by using their letter as an index).
+	modes ['z']bool
+
 	// The (raw) password from a PASS command.
 	Pass string
 

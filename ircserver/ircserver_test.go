@@ -476,9 +476,12 @@ func TestKill(t *testing.T) {
 		i.ProcessMessage(ids["mero"], irc.ParseMessage("OPER mero bar")),
 		":robustirc.net 464 mero :Password incorrect")
 
-	mustMatchMsg(t,
+	mustMatchIrcmsgs(t,
 		i.ProcessMessage(ids["mero"], irc.ParseMessage("OPER mero foo")),
-		":robustirc.net 381 mero :You are now an IRC operator")
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 381 mero :You are now an IRC operator"),
+			irc.ParseMessage(":robustirc.net MODE mero :+o"),
+		})
 
 	mustMatchMsg(t,
 		i.ProcessMessage(ids["mero"], irc.ParseMessage("KILL socoro :die")),
@@ -772,9 +775,12 @@ func TestChannelMemberStatus(t *testing.T) {
 		i.ProcessMessage(ids["xeen"], irc.ParseMessage("TOPIC #test :nooo")),
 		":robustirc.net 482 xeen #test :You're not channel operator")
 
-	mustMatchMsg(t,
+	mustMatchIrcmsgs(t,
 		i.ProcessMessage(ids["xeen"], irc.ParseMessage("OPER xeen foo")),
-		":robustirc.net 381 xeen :You are now an IRC operator")
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 381 xeen :You are now an IRC operator"),
+			irc.ParseMessage(":robustirc.net MODE xeen :+o"),
+		})
 
 	mustMatchMsg(t,
 		i.ProcessMessage(ids["xeen"], irc.ParseMessage("MODE #test +o xeen")),

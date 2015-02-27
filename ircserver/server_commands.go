@@ -20,8 +20,6 @@ func init() {
 	// perl -nlE 'my ($cmd) = ($_ =~ /send_cmd\([^,]+, "([^" ]+)/); say $cmd if defined($cmd)' src/protocol/robustirc.c | sort | uniq
 
 	// TODO: server_INVITE
-	// TODO: server_SQUIT
-	// TODO: server_SVSMODE
 
 	// NB: This command doesn’t have the server_ prefix because it is sent in
 	// order to make a session _become_ a server. Having the function in this
@@ -45,10 +43,9 @@ func init() {
 	commands["server_NOTICE"] = &ircCommand{Func: (*IRCServer).cmdServerPrivmsg}
 	commands["server_TOPIC"] = &ircCommand{Func: (*IRCServer).cmdServerTopic, MinParams: 3}
 	commands["server_SVSNICK"] = &ircCommand{Func: (*IRCServer).cmdServerSvsnick, MinParams: 2}
+	commands["server_SVSMODE"] = &ircCommand{Func: (*IRCServer).cmdServerSvsmode, MinParams: 2}
 	commands["server_KILL"] = &ircCommand{Func: (*IRCServer).cmdServerKill, MinParams: 1}
 	commands["server_KICK"] = &ircCommand{Func: (*IRCServer).cmdServerKick, MinParams: 2}
-	// TODO: add server_SVSMODE which is for changing the user mode
-	// TODO: operserv is not yet usable (access denied)
 }
 
 func (i *IRCServer) ignoreCmd(s *Session, msg *irc.Message) []*irc.Message {
@@ -260,6 +257,12 @@ func (i *IRCServer) cmdServer(s *Session, msg *irc.Message) []*irc.Message {
 		if !session.loggedIn() || session.Server || session.Id.Reply != 0 {
 			continue
 		}
+		modestr := "+"
+		for mode := 'A'; mode < 'z'; mode++ {
+			if session.modes[mode] {
+				modestr += string(mode)
+			}
+		}
 		replies = append(replies, &irc.Message{
 			Prefix:  &irc.Prefix{},
 			Command: irc.NICK,
@@ -270,7 +273,8 @@ func (i *IRCServer) cmdServer(s *Session, msg *irc.Message) []*irc.Message {
 				session.Username,
 				session.ircPrefix.Host,
 				i.ServerPrefix.Name,
-				"0", // svid TODO: this field is not in the RFC?
+				"0", // svid, an identifier set by the services
+				modestr,
 			},
 			Trailing: session.Realname,
 		})
@@ -287,6 +291,66 @@ func (i *IRCServer) cmdServer(s *Session, msg *irc.Message) []*irc.Message {
 			})
 		}
 	}
+	return replies
+}
+
+func (i *IRCServer) cmdServerSvsmode(s *Session, msg *irc.Message) []*irc.Message {
+	session, ok := i.nicks[NickToLower(msg.Params[0])]
+	if !ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOSUCHNICK,
+			Params:   []string{"*", msg.Params[0]},
+			Trailing: "No such nick/channel",
+		}}
+	}
+	modestr := msg.Params[1]
+	if !strings.HasPrefix(modestr, "+") && !strings.HasPrefix(modestr, "-") {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_UMODEUNKNOWNFLAG,
+			Params:   []string{"*"},
+			Trailing: "Unknown MODE flag",
+		}}
+	}
+
+	var replies []*irc.Message
+	// true for adding a mode, false for removing it
+	newvalue := strings.HasPrefix(modestr, "+")
+	modearg := 2
+	for _, char := range modestr[1:] {
+		switch char {
+		case '+', '-':
+			newvalue = (char == '+')
+		case 'd':
+			// This is used to set an arbitrary identifier by services. Anope
+			// sets this to a timestamp, and e.g. UnrealIRCD doesn’t do
+			// anything with it, so we just ignore it.
+			modearg++
+		case 'r':
+			// Store registered flag
+			session.modes[char] = newvalue
+		default:
+			replies = append(replies, &irc.Message{
+				Command:  irc.ERR_UMODEUNKNOWNFLAG,
+				Params:   []string{"*", string(char)},
+				Trailing: "is unknown mode char to me",
+			})
+		}
+	}
+	if len(replies) > 0 {
+		return replies
+	}
+	modestr = "+"
+	for mode := 'A'; mode < 'z'; mode++ {
+		if session.modes[mode] {
+			modestr += string(mode)
+		}
+	}
+	replies = append(replies, &irc.Message{
+		Prefix:   msg.Prefix,
+		Command:  irc.MODE,
+		Params:   []string{session.Nick},
+		Trailing: modestr,
+	})
 	return replies
 }
 

@@ -296,7 +296,8 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 			user,
 			s.ircPrefix.Host,
 			i.ServerPrefix.Name,
-			"0", // svid TODO: this field is not in the RFC?
+			"0", // svid, an identifier set by the services
+			"+",
 		},
 		Trailing: realname,
 	})
@@ -852,11 +853,17 @@ func (i *IRCServer) cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 		}
 	} else {
 		if channelname == s.Nick {
+			modestr := "+"
+			for mode := 'A'; mode < 'z'; mode++ {
+				if s.modes[mode] {
+					modestr += string(mode)
+				}
+			}
 			return []*irc.Message{&irc.Message{
 				Prefix:   &s.ircPrefix,
 				Command:  irc.MODE,
 				Params:   []string{s.Nick},
-				Trailing: "+",
+				Trailing: modestr,
 			}}
 		} else {
 			return []*irc.Message{&irc.Message{
@@ -923,7 +930,6 @@ func (i *IRCServer) cmdWho(s *Session, msg *irc.Message) []*irc.Message {
 }
 
 func (i *IRCServer) cmdOper(s *Session, msg *irc.Message) []*irc.Message {
-	// TODO: set umode +o
 	name := msg.Params[0]
 	password := msg.Params[1]
 	authenticated := false
@@ -943,12 +949,28 @@ func (i *IRCServer) cmdOper(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	s.Operator = true
+	s.modes['o'] = true
 
-	return []*irc.Message{&irc.Message{
-		Command:  irc.RPL_YOUREOPER,
-		Params:   []string{s.Nick},
-		Trailing: "You are now an IRC operator",
-	}}
+	modestr := "+"
+	for mode := 'A'; mode < 'z'; mode++ {
+		if s.modes[mode] {
+			modestr += string(mode)
+		}
+	}
+
+	return []*irc.Message{
+		&irc.Message{
+			Command:  irc.RPL_YOUREOPER,
+			Params:   []string{s.Nick},
+			Trailing: "You are now an IRC operator",
+		},
+		&irc.Message{
+			Prefix:   msg.Prefix,
+			Command:  irc.MODE,
+			Params:   []string{s.Nick},
+			Trailing: modestr,
+		},
+	}
 }
 
 func (i *IRCServer) cmdKill(s *Session, msg *irc.Message) []*irc.Message {
