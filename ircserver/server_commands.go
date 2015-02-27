@@ -109,7 +109,7 @@ func (i *IRCServer) cmdServerMode(s *Session, msg *irc.Message) []*irc.Message {
 			case 'o':
 				if len(msg.Params) > modearg {
 					nick := msg.Params[modearg]
-					perms, ok := c.nicks[nick]
+					perms, ok := c.nicks[NickToLower(nick)]
 					if !ok {
 						replies = append(replies, &irc.Message{
 							Command:  irc.ERR_USERNOTINCHANNEL,
@@ -120,7 +120,7 @@ func (i *IRCServer) cmdServerMode(s *Session, msg *irc.Message) []*irc.Message {
 						// If the user already is a chanop, silently do
 						// nothing (like UnrealIRCd).
 						if perms[chanop] != newvalue {
-							c.nicks[nick][chanop] = newvalue
+							c.nicks[NickToLower(nick)][chanop] = newvalue
 						}
 					}
 				}
@@ -198,12 +198,12 @@ func (i *IRCServer) cmdServer(s *Session, msg *irc.Message) []*irc.Message {
 		for channelname := range session.Channels {
 			var prefix string
 
-			if i.channels[ChanToLower(channelname)].nicks[session.Nick][chanop] {
+			if i.channels[channelname].nicks[NickToLower(session.Nick)][chanop] {
 				prefix = prefix + string('@')
 			}
 			replies = append(replies, &irc.Message{
 				Command:  "SJOIN",
-				Params:   []string{"1", channelname},
+				Params:   []string{"1", i.channels[channelname].name},
 				Trailing: prefix + session.Nick,
 			})
 		}
@@ -238,7 +238,7 @@ func (i *IRCServer) cmdServerSvsnick(s *Session, msg *irc.Message) []*irc.Messag
 	delete(i.nicks, oldNick)
 	for _, c := range i.channels {
 		if modes, ok := c.nicks[oldNick]; ok {
-			c.nicks[session.Nick] = modes
+			c.nicks[NickToLower(session.Nick)] = modes
 		}
 		delete(c.nicks, oldNick)
 	}

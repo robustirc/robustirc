@@ -893,3 +893,21 @@ func TestQuit(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 315 mero #test :End of /WHO list"),
 		})
 }
+
+func TestChannelCaseInsensitive(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	sMero, _ := i.GetSession(ids["mero"])
+
+	i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #test"))
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("JOIN #TEST")),
+		[]*irc.Message{
+			&irc.Message{Prefix: &sMero.ircPrefix, Command: irc.JOIN, Trailing: "#TEST"},
+			irc.ParseMessage(":robustirc.net SJOIN 1 #TEST :mero"),
+			irc.ParseMessage(":robustirc.net 331 mero #TEST :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 mero = #TEST :@sECuRE mero"),
+			irc.ParseMessage(":robustirc.net 366 mero #TEST :End of /NAMES list."),
+		})
+}
