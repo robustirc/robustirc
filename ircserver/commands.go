@@ -492,7 +492,7 @@ func (i *IRCServer) cmdKick(s *Session, msg *irc.Message) []*irc.Message {
 	if !ok {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_NOSUCHCHANNEL,
-			Params:   []string{"*", channelname},
+			Params:   []string{s.Nick, channelname},
 			Trailing: "No such nick/channel",
 		}}
 	}
@@ -517,7 +517,7 @@ func (i *IRCServer) cmdKick(s *Session, msg *irc.Message) []*irc.Message {
 	if _, ok := c.nicks[NickToLower(msg.Params[1])]; !ok {
 		return []*irc.Message{&irc.Message{
 			Command:  irc.ERR_USERNOTINCHANNEL,
-			Params:   []string{"*", msg.Params[1], channelname},
+			Params:   []string{s.Nick, msg.Params[1], channelname},
 			Trailing: "They aren't on that channel",
 		}}
 	}

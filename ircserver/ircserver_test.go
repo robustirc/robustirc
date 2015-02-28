@@ -289,6 +289,13 @@ func TestInterestedIn(t *testing.T) {
 		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{true, true, false})
 
+	i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #test"))
+
+	mustMatchInterested(t, i,
+		ids["mero"], irc.ParseMessage("KICK #test secore :bye"),
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{true, true, false})
+
 	mustMatchInterested(t, i,
 		ids["secure"], irc.ParseMessage("QUIT :bye"),
 		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
@@ -925,6 +932,14 @@ func TestKick(t *testing.T) {
 	mustMatchMsg(t,
 		i.ProcessMessage(ids["xeen"], irc.ParseMessage("KICK #test secure :bye")),
 		":robustirc.net 442 xeen #test :You're not on that channel")
+
+	mustMatchMsg(t,
+		i.ProcessMessage(ids["xeen"], irc.ParseMessage("KICK #toast secure :bye")),
+		":robustirc.net 403 xeen #toast :No such nick/channel")
+
+	mustMatchMsg(t,
+		i.ProcessMessage(ids["secure"], irc.ParseMessage("KICK #test moro :bye bye")),
+		":robustirc.net 441 sECuRE moro #test :They aren't on that channel")
 
 	mustMatchMsg(t,
 		i.ProcessMessage(ids["secure"], irc.ParseMessage("KICK #test mero :bye bye")),
