@@ -135,6 +135,7 @@ func main() {
 					time.Sleep(1 * time.Second)
 					continue
 				}
+				log.Printf("Network became healthy.\n")
 				break
 			}
 
@@ -151,14 +152,14 @@ func main() {
 
 			log.Printf("Killing node %q\n", server)
 			if err := quit(server); err != nil {
-				log.Printf("Quitting %q: %v\n", server, err)
+				log.Printf("%v\n", err)
 			}
 
 			for htry := 0; htry < 60; htry++ {
 				time.Sleep(1 * time.Second)
 				current, err := util.GetServerStatus(server, *networkPassword)
 				if err != nil {
-					log.Printf("Node %q unhealthy: %v\n", server, err)
+					log.Printf("Node unhealthy: %v\n", err)
 					continue
 				}
 				if current.ExecutableHash != binaryHash {
