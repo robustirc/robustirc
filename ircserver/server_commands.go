@@ -417,71 +417,81 @@ func (i *IRCServer) cmdServerSvsnick(s *Session, msg *irc.Message) []*irc.Messag
 
 func (i *IRCServer) cmdServerJoin(s *Session, msg *irc.Message) []*irc.Message {
 	// e.g. “:ChanServ JOIN #noname-ev” (before enforcing AKICK).
-	// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
-	channelname := msg.Params[0]
-	if !IsValidChannel(channelname) {
-		return []*irc.Message{&irc.Message{
-			Command:  irc.ERR_NOSUCHCHANNEL,
-			Params:   []string{msg.Prefix.Name, channelname},
-			Trailing: "No such channel",
-		}}
-	}
-	// TODO(secure): reduce code duplication with cmdJoin()
-	c, ok := i.channels[ChanToLower(channelname)]
-	if !ok {
-		c = &channel{
-			name:  channelname,
-			nicks: make(map[lcNick]*[maxChanMemberStatus]bool),
-		}
-		i.channels[ChanToLower(channelname)] = c
-	}
-	c.nicks[NickToLower(msg.Prefix.Name)] = &[maxChanMemberStatus]bool{}
-	// If the channel did not exist before, the first joining user becomes a
-	// channel operator.
-	if !ok {
-		c.nicks[NickToLower(msg.Prefix.Name)][chanop] = true
-	}
-	s.Channels[ChanToLower(channelname)] = true
+	var replies []*irc.Message
 
-	return []*irc.Message{&irc.Message{
-		Prefix:   servicesPrefix(msg.Prefix),
-		Command:  irc.JOIN,
-		Trailing: channelname,
-	}}
+	for _, channelname := range strings.Split(msg.Params[0], ",") {
+		if !IsValidChannel(channelname) {
+			replies = append(replies, &irc.Message{
+				Command:  irc.ERR_NOSUCHCHANNEL,
+				Params:   []string{msg.Prefix.Name, channelname},
+				Trailing: "No such channel",
+			})
+			continue
+		}
+		// TODO(secure): reduce code duplication with cmdJoin()
+		c, ok := i.channels[ChanToLower(channelname)]
+		if !ok {
+			c = &channel{
+				name:  channelname,
+				nicks: make(map[lcNick]*[maxChanMemberStatus]bool),
+			}
+			i.channels[ChanToLower(channelname)] = c
+		}
+		c.nicks[NickToLower(msg.Prefix.Name)] = &[maxChanMemberStatus]bool{}
+		// If the channel did not exist before, the first joining user becomes a
+		// channel operator.
+		if !ok {
+			c.nicks[NickToLower(msg.Prefix.Name)][chanop] = true
+		}
+		s.Channels[ChanToLower(channelname)] = true
+
+		replies = append(replies, &irc.Message{
+			Prefix:   servicesPrefix(msg.Prefix),
+			Command:  irc.JOIN,
+			Trailing: channelname,
+		})
+	}
+	return replies
 }
 
 func (i *IRCServer) cmdServerPart(s *Session, msg *irc.Message) []*irc.Message {
 	// e.g. “:ChanServ PART #noname-ev” (after enforcing AKICK).
-	// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
-	channelname := msg.Params[0]
-	c, ok := i.channels[ChanToLower(channelname)]
-	if !ok {
-		return []*irc.Message{&irc.Message{
-			Command:  irc.ERR_NOSUCHCHANNEL,
-			Params:   []string{msg.Prefix.Name, channelname},
-			Trailing: "No such channel",
-		}}
+	var replies []*irc.Message
+
+	for _, channelname := range strings.Split(msg.Params[0], ",") {
+		c, ok := i.channels[ChanToLower(channelname)]
+		if !ok {
+			replies = append(replies, &irc.Message{
+				Command:  irc.ERR_NOSUCHCHANNEL,
+				Params:   []string{msg.Prefix.Name, channelname},
+				Trailing: "No such channel",
+			})
+			continue
+		}
+
+		if _, ok := c.nicks[NickToLower(msg.Prefix.Name)]; !ok {
+			replies = append(replies, &irc.Message{
+				Command:  irc.ERR_NOTONCHANNEL,
+				Params:   []string{msg.Prefix.Name, channelname},
+				Trailing: "You're not on that channel",
+			})
+			continue
+		}
+
+		// TODO(secure): reduce code duplication with cmdPart()
+		delete(c.nicks, NickToLower(msg.Prefix.Name))
+		if len(c.nicks) == 0 {
+			delete(i.channels, ChanToLower(channelname))
+		}
+		delete(s.Channels, ChanToLower(channelname))
+		replies = append(replies, &irc.Message{
+			Prefix:  servicesPrefix(msg.Prefix),
+			Command: irc.PART,
+			Params:  []string{channelname},
+		})
 	}
 
-	if _, ok := c.nicks[NickToLower(msg.Prefix.Name)]; !ok {
-		return []*irc.Message{&irc.Message{
-			Command:  irc.ERR_NOTONCHANNEL,
-			Params:   []string{msg.Prefix.Name, channelname},
-			Trailing: "You're not on that channel",
-		}}
-	}
-
-	// TODO(secure): reduce code duplication with cmdPart()
-	delete(c.nicks, NickToLower(msg.Prefix.Name))
-	if len(c.nicks) == 0 {
-		delete(i.channels, ChanToLower(channelname))
-	}
-	delete(s.Channels, ChanToLower(channelname))
-	return []*irc.Message{&irc.Message{
-		Prefix:  servicesPrefix(msg.Prefix),
-		Command: irc.PART,
-		Params:  []string{channelname},
-	}}
+	return replies
 }
 
 func (i *IRCServer) cmdServerTopic(s *Session, msg *irc.Message) []*irc.Message {

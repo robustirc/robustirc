@@ -127,6 +127,24 @@ func neverRelevant(m *irc.Message, prev, next logCursor) (bool, error) {
 	return false, nil
 }
 
+func multipleChannels(targets string) map[lcChan]bool {
+	channelnames := strings.Split(targets, ",")
+	lcnames := make(map[lcChan]bool, len(channelnames))
+	for _, name := range channelnames {
+		lcnames[ChanToLower(name)] = true
+	}
+	return lcnames
+}
+
+func anyChanInChannels(needles, haystack map[lcChan]bool) bool {
+	for needle, _ := range needles {
+		if haystack[needle] {
+			return true
+		}
+	}
+	return false
+}
+
 func (i *IRCServer) cmdPing(s *Session, msg *irc.Message) []*irc.Message {
 	if len(msg.Params) < 1 {
 		return []*irc.Message{&irc.Message{
@@ -375,8 +393,7 @@ func relevantJoin(msg *irc.Message, prev, next logCursor) (bool, error) {
 		return false, nil
 	}
 
-	// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
-
+	lcnames := multipleChannels(msg.Params[0])
 	for {
 		nmsg, err := next()
 		if err != nil {
@@ -385,11 +402,16 @@ func relevantJoin(msg *irc.Message, prev, next logCursor) (bool, error) {
 			}
 			return true, err
 		}
-		if nmsg.Command == irc.TOPIC && nmsg.Params[0] == msg.Params[0] {
+		if nmsg.Command == irc.TOPIC && lcnames[ChanToLower(nmsg.Params[0])] {
 			return true, nil
 		}
-		if nmsg.Command == irc.PART && nmsg.Params[0] == msg.Params[0] {
-			return false, nil
+		if nmsg.Command == irc.PART {
+			for channelname, _ := range multipleChannels(nmsg.Params[0]) {
+				delete(lcnames, channelname)
+			}
+			if len(lcnames) == 0 {
+				return false, nil
+			}
 		}
 	}
 
@@ -397,71 +419,75 @@ func relevantJoin(msg *irc.Message, prev, next logCursor) (bool, error) {
 }
 
 func (i *IRCServer) cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
-	// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
-	channelname := msg.Params[0]
-	if !IsValidChannel(channelname) {
-		return []*irc.Message{&irc.Message{
-			Command:  irc.ERR_NOSUCHCHANNEL,
-			Params:   []string{s.Nick, channelname},
-			Trailing: "No such channel",
-		}}
-	}
-	c, ok := i.channels[ChanToLower(channelname)]
-	if !ok {
-		c = &channel{
-			name:  channelname,
-			nicks: make(map[lcNick]*[maxChanMemberStatus]bool),
-		}
-		i.channels[ChanToLower(channelname)] = c
-	}
-	c.nicks[NickToLower(s.Nick)] = &[maxChanMemberStatus]bool{}
-	// If the channel did not exist before, the first joining user becomes a
-	// channel operator.
-	if !ok {
-		c.nicks[NickToLower(s.Nick)][chanop] = true
-	}
-	s.Channels[ChanToLower(channelname)] = true
-
-	nicks := make([]string, 0, len(c.nicks))
-	for nick, perms := range c.nicks {
-		var prefix string
-		if perms[chanop] {
-			prefix = prefix + string('@')
-		}
-		nicks = append(nicks, prefix+i.nicks[nick].Nick)
-	}
-
-	sort.Strings(nicks)
-
 	var replies []*irc.Message
 
-	replies = append(replies, &irc.Message{
-		Prefix:   &s.ircPrefix,
-		Command:  irc.JOIN,
-		Trailing: channelname,
-	})
-	var prefix string
-	if c.nicks[NickToLower(s.Nick)][chanop] {
-		prefix = prefix + string('@')
+	for _, channelname := range strings.Split(msg.Params[0], ",") {
+		if !IsValidChannel(channelname) {
+			replies = append(replies, &irc.Message{
+				Command:  irc.ERR_NOSUCHCHANNEL,
+				Params:   []string{s.Nick, channelname},
+				Trailing: "No such channel",
+			})
+			continue
+		}
+		c, ok := i.channels[ChanToLower(channelname)]
+		if !ok {
+			c = &channel{
+				name:  channelname,
+				nicks: make(map[lcNick]*[maxChanMemberStatus]bool),
+			}
+			i.channels[ChanToLower(channelname)] = c
+		}
+		if _, ok := c.nicks[NickToLower(s.Nick)]; ok {
+			continue
+		}
+		c.nicks[NickToLower(s.Nick)] = &[maxChanMemberStatus]bool{}
+		// If the channel did not exist before, the first joining user becomes a
+		// channel operator.
+		if !ok {
+			c.nicks[NickToLower(s.Nick)][chanop] = true
+		}
+		s.Channels[ChanToLower(channelname)] = true
+
+		nicks := make([]string, 0, len(c.nicks))
+		for nick, perms := range c.nicks {
+			var prefix string
+			if perms[chanop] {
+				prefix = prefix + string('@')
+			}
+			nicks = append(nicks, prefix+i.nicks[nick].Nick)
+		}
+
+		sort.Strings(nicks)
+
+		replies = append(replies, &irc.Message{
+			Prefix:   &s.ircPrefix,
+			Command:  irc.JOIN,
+			Trailing: channelname,
+		})
+		var prefix string
+		if c.nicks[NickToLower(s.Nick)][chanop] {
+			prefix = prefix + string('@')
+		}
+		replies = append(replies, &irc.Message{
+			Command:  "SJOIN",
+			Params:   []string{"1", channelname},
+			Trailing: prefix + s.Nick,
+		})
+		// Integrate the topic response by simulating a TOPIC command.
+		replies = append(replies, i.cmdTopic(s, &irc.Message{Command: irc.TOPIC, Params: []string{channelname}})...)
+		// TODO(secure): why the = param?
+		replies = append(replies, &irc.Message{
+			Command:  irc.RPL_NAMREPLY,
+			Params:   []string{s.Nick, "=", channelname},
+			Trailing: strings.Join(nicks, " "),
+		})
+		replies = append(replies, &irc.Message{
+			Command:  irc.RPL_ENDOFNAMES,
+			Params:   []string{s.Nick, channelname},
+			Trailing: "End of /NAMES list.",
+		})
 	}
-	replies = append(replies, &irc.Message{
-		Command:  "SJOIN",
-		Params:   []string{"1", channelname},
-		Trailing: prefix + s.Nick,
-	})
-	// Integrate the topic response by simulating a TOPIC command.
-	replies = append(replies, i.cmdTopic(s, &irc.Message{Command: irc.TOPIC, Params: []string{channelname}})...)
-	// TODO(secure): why the = param?
-	replies = append(replies, &irc.Message{
-		Command:  irc.RPL_NAMREPLY,
-		Params:   []string{s.Nick, "=", channelname},
-		Trailing: strings.Join(nicks, " "),
-	})
-	replies = append(replies, &irc.Message{
-		Command:  irc.RPL_ENDOFNAMES,
-		Params:   []string{s.Nick, channelname},
-		Trailing: "End of /NAMES list.",
-	})
 
 	return replies
 }
@@ -564,8 +590,7 @@ func relevantPart(msg *irc.Message, prev, next logCursor) (bool, error) {
 		return false, nil
 	}
 
-	// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
-
+	lcnames := multipleChannels(msg.Params[0])
 	for {
 		pmsg, err := prev()
 		if err != nil {
@@ -574,7 +599,7 @@ func relevantPart(msg *irc.Message, prev, next logCursor) (bool, error) {
 			}
 			return true, err
 		}
-		if pmsg.Command == irc.JOIN && pmsg.Params[0] == msg.Params[0] {
+		if pmsg.Command == irc.JOIN && anyChanInChannels(lcnames, multipleChannels(pmsg.Params[0])) {
 			return true, nil
 		}
 	}
@@ -583,36 +608,41 @@ func relevantPart(msg *irc.Message, prev, next logCursor) (bool, error) {
 }
 
 func (i *IRCServer) cmdPart(s *Session, msg *irc.Message) []*irc.Message {
-	// TODO(secure): strictly speaking, RFC1459 says one can join multiple channels at once.
-	channelname := msg.Params[0]
+	var replies []*irc.Message
 
-	c, ok := i.channels[ChanToLower(channelname)]
-	if !ok {
-		return []*irc.Message{&irc.Message{
-			Command:  irc.ERR_NOSUCHCHANNEL,
-			Params:   []string{s.Nick, channelname},
-			Trailing: "No such channel",
-		}}
+	for _, channelname := range strings.Split(msg.Params[0], ",") {
+		c, ok := i.channels[ChanToLower(channelname)]
+		if !ok {
+			replies = append(replies, &irc.Message{
+				Command:  irc.ERR_NOSUCHCHANNEL,
+				Params:   []string{s.Nick, channelname},
+				Trailing: "No such channel",
+			})
+			continue
+		}
+
+		if _, ok := c.nicks[NickToLower(s.Nick)]; !ok {
+			replies = append(replies, &irc.Message{
+				Command:  irc.ERR_NOTONCHANNEL,
+				Params:   []string{s.Nick, channelname},
+				Trailing: "You're not on that channel",
+			})
+			continue
+		}
+
+		delete(c.nicks, NickToLower(s.Nick))
+		if len(c.nicks) == 0 {
+			delete(i.channels, ChanToLower(channelname))
+		}
+		delete(s.Channels, ChanToLower(channelname))
+		replies = append(replies, &irc.Message{
+			Prefix:  &s.ircPrefix,
+			Command: irc.PART,
+			Params:  []string{channelname},
+		})
 	}
 
-	if _, ok := c.nicks[NickToLower(s.Nick)]; !ok {
-		return []*irc.Message{&irc.Message{
-			Command:  irc.ERR_NOTONCHANNEL,
-			Params:   []string{s.Nick, channelname},
-			Trailing: "You're not on that channel",
-		}}
-	}
-
-	delete(c.nicks, NickToLower(s.Nick))
-	if len(c.nicks) == 0 {
-		delete(i.channels, ChanToLower(channelname))
-	}
-	delete(s.Channels, ChanToLower(channelname))
-	return []*irc.Message{&irc.Message{
-		Prefix:  &s.ircPrefix,
-		Command: irc.PART,
-		Params:  []string{channelname},
-	}}
+	return replies
 }
 
 func (i *IRCServer) interestQuit(sessionid types.RobustId, msg *irc.Message) map[int64]bool {

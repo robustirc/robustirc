@@ -1150,3 +1150,49 @@ func TestList(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 323 sECuRE :End of LIST"),
 		})
 }
+
+func TestJoinMultiple(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #test,#second")),
+		[]*irc.Message{
+			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad JOIN :#test"),
+			irc.ParseMessage(":robustirc.net SJOIN 1 #test :@sECuRE"),
+			irc.ParseMessage(":robustirc.net 331 sECuRE #test :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 sECuRE = #test :@sECuRE"),
+			irc.ParseMessage(":robustirc.net 366 sECuRE #test :End of /NAMES list."),
+			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad JOIN :#second"),
+			irc.ParseMessage(":robustirc.net SJOIN 1 #second :@sECuRE"),
+			irc.ParseMessage(":robustirc.net 331 sECuRE #second :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 sECuRE = #second :@sECuRE"),
+			irc.ParseMessage(":robustirc.net 366 sECuRE #second :End of /NAMES list."),
+		})
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #test,#second")),
+		[]*irc.Message{})
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #third,invalid,#fourth")),
+		[]*irc.Message{
+			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad JOIN :#third"),
+			irc.ParseMessage(":robustirc.net SJOIN 1 #third :@sECuRE"),
+			irc.ParseMessage(":robustirc.net 331 sECuRE #third :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 sECuRE = #third :@sECuRE"),
+			irc.ParseMessage(":robustirc.net 366 sECuRE #third :End of /NAMES list."),
+			irc.ParseMessage(":robustirc.net 403 sECuRE invalid :No such channel"),
+			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad JOIN :#fourth"),
+			irc.ParseMessage(":robustirc.net SJOIN 1 #fourth :@sECuRE"),
+			irc.ParseMessage(":robustirc.net 331 sECuRE #fourth :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 sECuRE = #fourth :@sECuRE"),
+			irc.ParseMessage(":robustirc.net 366 sECuRE #fourth :End of /NAMES list."),
+		})
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["secure"], irc.ParseMessage("PART #second,#fourth")),
+		[]*irc.Message{
+			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad PART #second"),
+			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad PART #fourth"),
+		})
+}
