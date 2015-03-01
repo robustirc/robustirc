@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/robustirc/robustirc/robusthttp"
+	"github.com/stapelberg/glog"
 )
 
 type ServerStatus struct {
