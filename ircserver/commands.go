@@ -626,7 +626,13 @@ func (i *IRCServer) interestQuit(sessionid types.RobustId, msg *irc.Message) map
 	s := i.sessions[sessionid]
 
 	for channelname, _ := range s.Channels {
-		channel := i.channels[channelname]
+		channel, ok := i.channels[channelname]
+		// If the channel does not exist anymore, it was deleted with this QUIT
+		// message, so there cannot be anyone else in there to receive our
+		// message.
+		if !ok {
+			continue
+		}
 		for nick, _ := range channel.nicks {
 			result[i.nicks[nick].Id.Id] = true
 		}
