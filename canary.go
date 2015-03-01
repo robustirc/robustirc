@@ -137,7 +137,7 @@ func canary() {
 				log.Printf("localoutput = %v\n", localoutput)
 				// TODO(secure): also diff these lines
 				i.DeleteSessionById(cm.Input.Session)
-				// TODO(secure): call sendmessages or otherwise delete the session
+				i.SendMessages(localoutput, cm.Input.Session, cm.Input.Id.Id)
 			}
 
 		case types.RobustIRCFromClient:
