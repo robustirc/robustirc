@@ -690,11 +690,13 @@ func (i *IRCServer) cmdQuit(s *Session, msg *irc.Message) []*irc.Message {
 	var replies []*irc.Message
 
 	i.DeleteSession(s)
-	replies = append(replies, &irc.Message{
-		Prefix:   &s.ircPrefix,
-		Command:  irc.QUIT,
-		Trailing: msg.Trailing,
-	})
+	if s.loggedIn() {
+		replies = append(replies, &irc.Message{
+			Prefix:   &s.ircPrefix,
+			Command:  irc.QUIT,
+			Trailing: msg.Trailing,
+		})
+	}
 
 	if s.Server {
 		// For services, we also need to delete all sessions that share the

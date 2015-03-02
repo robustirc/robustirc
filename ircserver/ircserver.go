@@ -341,6 +341,7 @@ func (i *IRCServer) ProcessMessage(session types.RobustId, message *irc.Message)
 		command != irc.NICK &&
 		command != irc.USER &&
 		command != irc.PASS &&
+		command != irc.QUIT &&
 		command != irc.SERVER {
 		return []*irc.Message{&irc.Message{
 			Prefix:   i.ServerPrefix,
@@ -390,6 +391,21 @@ func (i *IRCServer) ProcessMessage(session types.RobustId, message *irc.Message)
 // by calling GetNext.
 func (i *IRCServer) SendMessages(replies []*irc.Message, session types.RobustId, id int64) {
 	i.lastProcessed = types.RobustId{Id: id}
+
+	defer func() {
+		i.sessionsMu.Lock()
+		defer i.sessionsMu.Unlock()
+		if s, ok := i.sessions[session]; ok && s.deleted {
+			if s.Server {
+				for id, session := range i.sessions {
+					if id.Id == s.Id.Id && id.Reply != 0 && session.deleted {
+						delete(i.sessions, id)
+					}
+				}
+			}
+			delete(i.sessions, session)
+		}
+	}()
 
 	if len(replies) == 0 {
 		return
@@ -444,18 +460,6 @@ func (i *IRCServer) SendMessages(replies []*irc.Message, session types.RobustId,
 	}
 
 	i.output.Add(robustreplies)
-	i.sessionsMu.Lock()
-	defer i.sessionsMu.Unlock()
-	if s, ok := i.sessions[session]; ok && s.deleted {
-		if s.Server {
-			for id, session := range i.sessions {
-				if id.Id == s.Id.Id && id.Reply != 0 && session.deleted {
-					delete(i.sessions, id)
-				}
-			}
-		}
-		delete(i.sessions, session)
-	}
 }
 
 // SendPing appends a ping message to the output, including the current servers
