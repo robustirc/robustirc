@@ -142,7 +142,7 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		return
 	}
 
-	t := ircServer.GetLastActivity(session).Add(netConfig.PostMessageCooloff)
+	t := ircServer.GetLastActivity(session).Add(time.Duration(netConfig.PostMessageCooloff))
 	time.Sleep(t.Sub(time.Now()))
 
 	type postMessageRequest struct {
