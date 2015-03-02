@@ -3,12 +3,16 @@ package ircserver
 import (
 	"testing"
 
+	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/types"
 	"github.com/sorcix/irc"
 )
 
 func stdIRCServerWithServices() (*IRCServer, map[string]types.RobustId) {
 	i, ids := stdIRCServer()
+	i.Config.Services = append(i.Config.Services, config.Service{
+		Password: "mypass",
+	})
 	ids["services"] = types.RobustId{Id: 0x13c6cdee3e749faf}
 	i.CreateSession(ids["services"], "auth-server")
 	i.ProcessMessage(ids["services"], irc.ParseMessage("PASS :services=mypass"))
@@ -18,6 +22,9 @@ func stdIRCServerWithServices() (*IRCServer, map[string]types.RobustId) {
 
 func TestServerHandshake(t *testing.T) {
 	i, ids := stdIRCServer()
+	i.Config.Services = append(i.Config.Services, config.Service{
+		Password: "mypass",
+	})
 
 	i.ProcessMessage(ids["secure"], irc.ParseMessage("OPER mero foo"))
 	i.ProcessMessage(ids["mero"], irc.ParseMessage("JOIN #test"))

@@ -13,9 +13,14 @@ type IRCOp struct {
 	Password string
 }
 
+type Service struct {
+	Password string
+}
+
 // IRC is the IRC-related configuration.
 type IRC struct {
 	Operators []IRCOp
+	Services  []Service
 }
 
 // Network is the network configuration, i.e. the top level.

@@ -248,8 +248,14 @@ func (i *IRCServer) cmdServerMode(s *Session, msg *irc.Message) []*irc.Message {
 }
 
 func (i *IRCServer) cmdServer(s *Session, msg *irc.Message) []*irc.Message {
-	// TODO(secure): make this configurable once we have a config file.
-	if s.Pass != "services=mypass" {
+	authenticated := false
+	for _, service := range i.Config.Services {
+		if s.Pass == "services="+service.Password {
+			authenticated = true
+			break
+		}
+	}
+	if !authenticated {
 		return []*irc.Message{&irc.Message{
 			Prefix:   &irc.Prefix{},
 			Command:  irc.ERROR,
