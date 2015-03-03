@@ -97,6 +97,8 @@ type Session struct {
 	Operator     bool
 	AwayMsg      string
 
+	invitedTo map[lcChan]bool
+
 	// We waste 65 bytes per session for clearer code (being able to directly
 	// access modes by using their letter as an index).
 	modes ['z']bool
@@ -235,6 +237,7 @@ func (i *IRCServer) CreateSession(id types.RobustId, auth string) {
 		auth:         auth,
 		startId:      i.output.LastSeen(),
 		Channels:     make(map[lcChan]bool),
+		invitedTo:    make(map[lcChan]bool),
 		LastActivity: time.Unix(0, id.Id),
 	}
 }
@@ -254,12 +257,10 @@ func (i *IRCServer) DeleteSessionById(sessionid types.RobustId) {
 // itself (when processing QUIT or KILL) or from the API (DELETE request coming
 // from the bridge).
 func (i *IRCServer) DeleteSession(s *Session) {
-	for channelname, c := range i.channels {
+	for _, c := range i.channels {
 		delete(c.nicks, NickToLower(s.Nick))
 
-		if len(c.nicks) == 0 {
-			delete(i.channels, channelname)
-		}
+		i.maybeDeleteChannel(c)
 	}
 	delete(i.nicks, NickToLower(s.Nick))
 	// Instead of deleting the session here, we defer that to SendMessages, as
@@ -323,6 +324,17 @@ func NickToLower(nick string) lcNick {
 // ChanToLower converts a channel to lower case.
 func ChanToLower(channelname string) lcChan {
 	return lcChan(strings.ToLower(channelname))
+}
+
+func (i *IRCServer) maybeDeleteChannel(c *channel) {
+	if len(c.nicks) > 0 {
+		return
+	}
+	lc := ChanToLower(c.name)
+	delete(i.channels, lc)
+	for _, s := range i.sessions {
+		delete(s.invitedTo, lc)
+	}
 }
 
 // ProcessMessage modifies state in response to 'message' and returns zero or

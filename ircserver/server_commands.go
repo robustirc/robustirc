@@ -99,9 +99,7 @@ func (i *IRCServer) cmdServerKick(s *Session, msg *irc.Message) []*irc.Message {
 
 	// TODO(secure): reduce code duplication with cmdPart()
 	delete(c.nicks, NickToLower(msg.Params[1]))
-	if len(c.nicks) == 0 {
-		delete(i.channels, ChanToLower(channelname))
-	}
+	i.maybeDeleteChannel(c)
 	delete(session.Channels, ChanToLower(channelname))
 	return []*irc.Message{&irc.Message{
 		Prefix: &irc.Prefix{
@@ -486,9 +484,7 @@ func (i *IRCServer) cmdServerPart(s *Session, msg *irc.Message) []*irc.Message {
 
 		// TODO(secure): reduce code duplication with cmdPart()
 		delete(c.nicks, NickToLower(msg.Prefix.Name))
-		if len(c.nicks) == 0 {
-			delete(i.channels, ChanToLower(channelname))
-		}
+		i.maybeDeleteChannel(c)
 		delete(s.Channels, ChanToLower(channelname))
 		replies = append(replies, &irc.Message{
 			Prefix:  servicesPrefix(msg.Prefix),

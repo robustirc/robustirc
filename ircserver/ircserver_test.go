@@ -329,6 +329,46 @@ func TestInterestedInDelayed(t *testing.T) {
 		[]bool{true, true, false})
 }
 
+func TestInterestedInInvite(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(ids["mero"], irc.ParseMessage("JOIN #test"))
+
+	msg := irc.ParseMessage("INVITE xeen #test")
+	msgid := types.RobustId{Id: time.Now().UnixNano()}
+	replies := i.ProcessMessage(ids["secure"], msg)
+	i.SendMessages(replies, ids["secure"], msgid.Id)
+	msgs, _ := i.Get(msgid)
+
+	mustMatchMsg(t,
+		[]*irc.Message{irc.ParseMessage(msgs[0].Data)},
+		":robustirc.net 341 sECuRE xeen #test")
+
+	mustMatchInterestedMsgs(t, i,
+		msg, []*types.RobustMessage{msgs[0]},
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{true, false, false})
+
+	mustMatchMsg(t,
+		[]*irc.Message{irc.ParseMessage(msgs[1].Data)},
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad INVITE xeen :#test")
+
+	mustMatchInterestedMsgs(t, i,
+		msg, []*types.RobustMessage{msgs[1]},
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{false, false, true})
+
+	mustMatchMsg(t,
+		[]*irc.Message{irc.ParseMessage(msgs[2].Data)},
+		":robustirc.net NOTICE #test :sECuRE invited xeen into the channel.")
+
+	mustMatchInterestedMsgs(t, i,
+		msg, []*types.RobustMessage{msgs[2]},
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{true, true, false})
+}
+
 func TestNickCollision(t *testing.T) {
 	var got []*irc.Message
 
@@ -1194,5 +1234,87 @@ func TestJoinMultiple(t *testing.T) {
 		[]*irc.Message{
 			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad PART #second"),
 			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad PART #fourth"),
+		})
+}
+
+func TestInvite(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	mustMatchMsg(t,
+		i.ProcessMessage(ids["secure"], irc.ParseMessage("INVITE mero #test")),
+		":robustirc.net 442 sECuRE #test :You're not on that channel")
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad JOIN :#test"),
+			irc.ParseMessage(":robustirc.net SJOIN 1 #test :@sECuRE"),
+			irc.ParseMessage(":robustirc.net 331 sECuRE #test :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 sECuRE = #test :@sECuRE"),
+			irc.ParseMessage(":robustirc.net 366 sECuRE #test :End of /NAMES list."),
+		})
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["secure"], irc.ParseMessage("INVITE mero #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 341 sECuRE mero #test"),
+			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad INVITE mero :#test"),
+			irc.ParseMessage(":robustirc.net NOTICE #test :sECuRE invited mero into the channel."),
+		})
+
+	i.ProcessMessage(ids["mero"], irc.ParseMessage("JOIN #test"))
+
+	mustMatchMsg(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("INVITE secure #test")),
+		":robustirc.net 443 mero sECuRE #test :is already on channel")
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("INVITE xeen #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 341 mero xeen #test"),
+			irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae INVITE xeen :#test"),
+			irc.ParseMessage(":robustirc.net NOTICE #test :mero invited xeen into the channel."),
+		})
+
+	mustMatchMsg(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("INVITE xoon #test")),
+		":robustirc.net 401 mero xoon :No such nick/channel")
+
+	mustMatchMsg(t,
+		i.ProcessMessage(ids["secure"], irc.ParseMessage("MODE #test +i")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE #test +i")
+
+	mustMatchMsg(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("INVITE xeen #test")),
+		":robustirc.net 482 mero #test :You're not channel operator")
+
+	i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #second"))
+	i.ProcessMessage(ids["secure"], irc.ParseMessage("MODE #second +i"))
+
+	mustMatchMsg(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("JOIN #second")),
+		":robustirc.net 473 mero #second :Cannot join channel (+i)")
+
+	i.ProcessMessage(ids["secure"], irc.ParseMessage("INVITE mero #second"))
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("JOIN #second")),
+		[]*irc.Message{
+			irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae JOIN :#second"),
+			irc.ParseMessage(":robustirc.net SJOIN 1 #second :mero"),
+			irc.ParseMessage(":robustirc.net 331 mero #second :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 mero = #second :@sECuRE mero"),
+			irc.ParseMessage(":robustirc.net 366 mero #second :End of /NAMES list."),
+		})
+
+	i.ProcessMessage(ids["xeen"], irc.ParseMessage("AWAY :gone"))
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["secure"], irc.ParseMessage("INVITE xeen #second")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 341 sECuRE xeen #second"),
+			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad INVITE xeen :#second"),
+			irc.ParseMessage(":robustirc.net NOTICE #second :sECuRE invited xeen into the channel."),
+			irc.ParseMessage(":robustirc.net 301 sECuRE xeen :gone"),
 		})
 }

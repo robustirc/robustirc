@@ -1,6 +1,7 @@
 package ircserver
 
 import (
+	"fmt"
 	"os"
 	"sort"
 	"strconv"
@@ -111,6 +112,11 @@ func init() {
 	commands["LIST"] = &ircCommand{
 		Func:          (*IRCServer).cmdList,
 		StillRelevant: neverRelevant,
+	}
+	commands["INVITE"] = &ircCommand{
+		Func:        (*IRCServer).cmdInvite,
+		Interesting: (*IRCServer).interestInvite,
+		MinParams:   2,
 	}
 
 	if os.Getenv("ROBUSTIRC_TESTING_ENABLE_PANIC_COMMAND") == "1" {
@@ -437,6 +443,13 @@ func (i *IRCServer) cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 				nicks: make(map[lcNick]*[maxChanMemberStatus]bool),
 			}
 			i.channels[ChanToLower(channelname)] = c
+		} else if c.modes['i'] && !s.invitedTo[ChanToLower(channelname)] {
+			replies = append(replies, &irc.Message{
+				Command:  irc.ERR_INVITEONLYCHAN,
+				Params:   []string{s.Nick, c.name},
+				Trailing: "Cannot join channel (+i)",
+			})
+			continue
 		}
 		if _, ok := c.nicks[NickToLower(s.Nick)]; ok {
 			continue
@@ -553,9 +566,7 @@ func (i *IRCServer) cmdKick(s *Session, msg *irc.Message) []*irc.Message {
 
 	// TODO(secure): reduce code duplication with cmdPart()
 	delete(c.nicks, NickToLower(msg.Params[1]))
-	if len(c.nicks) == 0 {
-		delete(i.channels, ChanToLower(channelname))
-	}
+	i.maybeDeleteChannel(c)
 	delete(session.Channels, ChanToLower(channelname))
 	return []*irc.Message{&irc.Message{
 		Prefix:   &s.ircPrefix,
@@ -631,9 +642,7 @@ func (i *IRCServer) cmdPart(s *Session, msg *irc.Message) []*irc.Message {
 		}
 
 		delete(c.nicks, NickToLower(s.Nick))
-		if len(c.nicks) == 0 {
-			delete(i.channels, ChanToLower(channelname))
-		}
+		i.maybeDeleteChannel(c)
 		delete(s.Channels, ChanToLower(channelname))
 		replies = append(replies, &irc.Message{
 			Prefix:  &s.ircPrefix,
@@ -729,10 +738,12 @@ func (i *IRCServer) interestPrivmsg(sessionid types.RobustId, msg *irc.Message) 
 		return result
 	}
 
+	prefixnick := NickToLower(msg.Prefix.Name)
+
 	for nick, _ := range channel.nicks {
 		session := i.nicks[nick].Id
 		// Senders do not see their own messages.
-		if session == sessionid {
+		if nick == prefixnick {
 			continue
 		}
 		result[session.Id] = true
@@ -848,7 +859,7 @@ func (i *IRCServer) cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 				switch char {
 				case '+', '-':
 					newvalue = (char == '+')
-				case 't', 's':
+				case 't', 's', 'i':
 					c.modes[char] = newvalue
 				case 'o':
 					if len(msg.Params) > modearg {
@@ -1362,5 +1373,79 @@ func (i *IRCServer) cmdList(s *Session, msg *irc.Message) []*irc.Message {
 		Params:   []string{s.Nick},
 		Trailing: "End of LIST",
 	})
+	return replies
+}
+
+func (i *IRCServer) interestInvite(sessionid types.RobustId, msg *irc.Message) map[int64]bool {
+	result := make(map[int64]bool)
+
+	for _, serverid := range i.serverSessions {
+		result[serverid] = true
+	}
+
+	result[i.nicks[NickToLower(msg.Params[0])].Id.Id] = true
+
+	return result
+}
+
+func (i *IRCServer) cmdInvite(s *Session, msg *irc.Message) []*irc.Message {
+	var replies []*irc.Message
+	nickname := msg.Params[0]
+	channelname := msg.Params[1]
+	c, ok := i.channels[ChanToLower(channelname)]
+	if !ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOTONCHANNEL,
+			Params:   []string{s.Nick, msg.Params[1]},
+			Trailing: "You're not on that channel",
+		}}
+	}
+	session, ok := i.nicks[NickToLower(nickname)]
+	if !ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOSUCHNICK,
+			Params:   []string{s.Nick, msg.Params[0]},
+			Trailing: "No such nick/channel",
+		}}
+	}
+	if _, ok := c.nicks[NickToLower(nickname)]; ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_USERONCHANNEL,
+			Params:   []string{s.Nick, session.Nick, c.name},
+			Trailing: "is already on channel",
+		}}
+	}
+	if c.modes['i'] && !c.nicks[NickToLower(s.Nick)][chanop] {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_CHANOPRIVSNEEDED,
+			Params:   []string{s.Nick, c.name},
+			Trailing: "You're not channel operator",
+		}}
+	}
+	session.invitedTo[ChanToLower(channelname)] = true
+	replies = append(replies, &irc.Message{
+		Command: irc.RPL_INVITING,
+		Params:  []string{s.Nick, session.Nick, c.name},
+	})
+	replies = append(replies, &irc.Message{
+		Prefix:   &s.ircPrefix,
+		Command:  irc.INVITE,
+		Params:   []string{session.Nick},
+		Trailing: c.name,
+	})
+	replies = append(replies, &irc.Message{
+		Command:  irc.NOTICE,
+		Params:   []string{c.name},
+		Trailing: fmt.Sprintf("%s invited %s into the channel.", s.Nick, msg.Params[0]),
+	})
+
+	if session.AwayMsg != "" {
+		replies = append(replies, &irc.Message{
+			Command:  irc.RPL_AWAY,
+			Params:   []string{s.Nick, msg.Params[0]},
+			Trailing: session.AwayMsg,
+		})
+	}
+
 	return replies
 }
