@@ -19,8 +19,6 @@ func init() {
 	//
 	// perl -nlE 'my ($cmd) = ($_ =~ /send_cmd\([^,]+, "([^" ]+)/); say $cmd if defined($cmd)' src/protocol/robustirc.c | sort | uniq
 
-	// TODO: server_INVITE
-
 	// NB: This command doesn’t have the server_ prefix because it is sent in
 	// order to make a session _become_ a server. Having the function in this
 	// file makes more sense than in commands.go.
@@ -46,6 +44,7 @@ func init() {
 	commands["server_SVSMODE"] = &ircCommand{Func: (*IRCServer).cmdServerSvsmode, MinParams: 2}
 	commands["server_KILL"] = &ircCommand{Func: (*IRCServer).cmdServerKill, MinParams: 1}
 	commands["server_KICK"] = &ircCommand{Func: (*IRCServer).cmdServerKick, MinParams: 2}
+	commands["server_INVITE"] = &ircCommand{Func: (*IRCServer).cmdServerInvite, MinParams: 2}
 }
 
 func servicesPrefix(prefix *irc.Prefix) *irc.Prefix {
@@ -205,7 +204,7 @@ func (i *IRCServer) cmdServerMode(s *Session, msg *irc.Message) []*irc.Message {
 		switch char {
 		case '+', '-':
 			newvalue = (char == '+')
-		case 't', 's', 'r':
+		case 't', 's', 'r', 'i':
 			c.modes[char] = newvalue
 		case 'o':
 			if len(msg.Params) > modearg {
@@ -586,6 +585,58 @@ func (i *IRCServer) cmdServerPrivmsg(s *Session, msg *irc.Message) []*irc.Messag
 		Command:  msg.Command,
 		Params:   []string{msg.Params[0]},
 		Trailing: msg.Trailing,
+	})
+
+	return replies
+}
+
+// TODO(secure): refactor this with cmdInvite possibly?
+func (i *IRCServer) cmdServerInvite(s *Session, msg *irc.Message) []*irc.Message {
+	var replies []*irc.Message
+	nickname := msg.Params[0]
+	channelname := msg.Params[1]
+
+	session, ok := i.nicks[NickToLower(nickname)]
+	if !ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOSUCHNICK,
+			Params:   []string{msg.Prefix.Name, msg.Params[0]},
+			Trailing: "No such nick/channel",
+		}}
+	}
+
+	c, ok := i.channels[ChanToLower(channelname)]
+	if !ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_NOSUCHCHANNEL,
+			Params:   []string{msg.Prefix.Name, msg.Params[1]},
+			Trailing: "No such channel",
+		}}
+	}
+
+	if _, ok := c.nicks[NickToLower(nickname)]; ok {
+		return []*irc.Message{&irc.Message{
+			Command:  irc.ERR_USERONCHANNEL,
+			Params:   []string{msg.Prefix.Name, session.Nick, c.name},
+			Trailing: "is already on channel",
+		}}
+	}
+
+	session.invitedTo[ChanToLower(channelname)] = true
+	replies = append(replies, &irc.Message{
+		Command: irc.RPL_INVITING,
+		Params:  []string{msg.Prefix.Name, msg.Params[0], c.name},
+	})
+	replies = append(replies, &irc.Message{
+		Prefix:   servicesPrefix(msg.Prefix),
+		Command:  irc.INVITE,
+		Params:   []string{session.Nick},
+		Trailing: c.name,
+	})
+	replies = append(replies, &irc.Message{
+		Command:  irc.NOTICE,
+		Params:   []string{c.name},
+		Trailing: fmt.Sprintf("%s invited %s into the channel.", msg.Prefix.Name, msg.Params[0]),
 	})
 
 	return replies
