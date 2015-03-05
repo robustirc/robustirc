@@ -48,7 +48,7 @@ func TestServerHandshake(t *testing.T) {
 	mustMatchIrcmsgs(t,
 		i.ProcessMessage(ids["services"], irc.ParseMessage("SERVER services.robustirc.net 1 :Services for IRC Networks")),
 		[]*irc.Message{
-			irc.ParseMessage("SERVER robustirc.net 0 23"),
+			irc.ParseMessage("SERVER robustirc.net 1 23"),
 			irc.ParseMessage("NICK mero 1 1 foo robust/0x13b5aa0a2bcfb8ae robustirc.net 0 + :Axel Wagner"),
 			irc.ParseMessage(":robustirc.net SJOIN 1 #test :@mero"),
 			irc.ParseMessage("NICK sECuRE 1 1 blah robust/0x13b5aa0a2bcfb8ad robustirc.net 0 +o :Michael Stapelberg"),
