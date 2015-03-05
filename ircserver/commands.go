@@ -707,22 +707,6 @@ func (i *IRCServer) cmdQuit(s *Session, msg *irc.Message) []*irc.Message {
 		})
 	}
 
-	if s.Server {
-		// For services, we also need to delete all sessions that share the
-		// same .Id, but have a different .Reply.
-		for id, session := range i.sessions {
-			if id.Id != s.Id.Id || id.Reply == 0 {
-				continue
-			}
-			i.DeleteSession(session)
-			replies = append(replies, &irc.Message{
-				Prefix:   &session.ircPrefix,
-				Command:  irc.QUIT,
-				Trailing: msg.Trailing,
-			})
-		}
-	}
-
 	return replies
 }
 

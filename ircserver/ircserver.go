@@ -407,7 +407,7 @@ func (i *IRCServer) SendMessages(replies []*irc.Message, session types.RobustId,
 	defer func() {
 		i.sessionsMu.Lock()
 		defer i.sessionsMu.Unlock()
-		if s, ok := i.sessions[session]; ok && s.deleted {
+		if s, ok := i.sessions[session]; ok {
 			if s.Server {
 				for id, session := range i.sessions {
 					if id.Id == s.Id.Id && id.Reply != 0 && session.deleted {
@@ -415,7 +415,9 @@ func (i *IRCServer) SendMessages(replies []*irc.Message, session types.RobustId,
 					}
 				}
 			}
-			delete(i.sessions, session)
+			if s.deleted {
+				delete(i.sessions, session)
+			}
 		}
 	}()
 

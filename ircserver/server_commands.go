@@ -31,8 +31,8 @@ func init() {
 	// before server_commands.go. For details, see
 	// http://golang.org/ref/spec#Package_initialization.
 	commands["server_PING"] = commands["PING"]
-	commands["server_QUIT"] = commands["QUIT"]
 
+	commands["server_QUIT"] = &ircCommand{Func: (*IRCServer).cmdServerQuit}
 	commands["server_NICK"] = &ircCommand{Func: (*IRCServer).cmdServerNick}
 	commands["server_MODE"] = &ircCommand{Func: (*IRCServer).cmdServerMode}
 	commands["server_JOIN"] = &ircCommand{Func: (*IRCServer).cmdServerJoin}
@@ -136,6 +136,43 @@ func (i *IRCServer) cmdServerKill(s *Session, msg *irc.Message) []*irc.Message {
 		Command:  irc.QUIT,
 		Trailing: "Killed: " + msg.Trailing,
 	}}
+}
+
+func (i *IRCServer) cmdServerQuit(s *Session, msg *irc.Message) []*irc.Message {
+	// No prefix means the server quits the entire session.
+	if msg.Prefix == nil {
+		i.DeleteSession(s)
+		var replies []*irc.Message
+		// For services, we also need to delete all sessions that share the
+		// same .Id, but have a different .Reply.
+		for id, session := range i.sessions {
+			if id.Id != s.Id.Id || id.Reply == 0 {
+				continue
+			}
+			i.DeleteSession(session)
+			replies = append(replies, &irc.Message{
+				Prefix:   &session.ircPrefix,
+				Command:  irc.QUIT,
+				Trailing: msg.Trailing,
+			})
+		}
+		return replies
+	}
+
+	// We got a prefix, so only a single session quits (e.g. nickname
+	// enforcer).
+	for id, session := range i.sessions {
+		if id.Id != s.Id.Id || id.Reply == 0 || NickToLower(session.Nick) != NickToLower(msg.Prefix.Name) {
+			continue
+		}
+		i.DeleteSession(session)
+		return []*irc.Message{&irc.Message{
+			Prefix:   &session.ircPrefix,
+			Command:  irc.QUIT,
+			Trailing: msg.Trailing,
+		}}
+	}
+	return []*irc.Message{}
 }
 
 func (i *IRCServer) cmdServerNick(s *Session, msg *irc.Message) []*irc.Message {

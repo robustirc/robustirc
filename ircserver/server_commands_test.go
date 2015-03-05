@@ -327,3 +327,13 @@ func TestServerInvite(t *testing.T) {
 		i.ProcessMessage(ids["services"], irc.ParseMessage(":ChanServ INVITE mero #toast")),
 		":robustirc.net 403 ChanServ #toast :No such channel")
 }
+
+func TestServerQuit(t *testing.T) {
+	i, ids := stdIRCServerWithServices()
+
+	i.ProcessMessage(ids["services"], irc.ParseMessage(":services.robustirc.net NICK blorgh 1 1425542735 enforcer services.robustirc.net services.robustirc.net 0 :Services Enforcer"))
+
+	mustMatchMsg(t,
+		i.ProcessMessage(ids["services"], irc.ParseMessage(":blorgh QUIT")),
+		":blorgh!enforcer@robust/0x13c6cdee3e749faf QUIT")
+}
