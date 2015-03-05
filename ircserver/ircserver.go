@@ -103,6 +103,10 @@ type Session struct {
 	// access modes by using their letter as an index).
 	modes ['z']bool
 
+	// svid is an identifier set by the services. It starts out as 0 and gets
+	// set to something >0 once the nickname identified itself.
+	svid string
+
 	// The (raw) password from a PASS command.
 	Pass string
 
@@ -239,6 +243,7 @@ func (i *IRCServer) CreateSession(id types.RobustId, auth string) {
 		Channels:     make(map[lcChan]bool),
 		invitedTo:    make(map[lcChan]bool),
 		LastActivity: time.Unix(0, id.Id),
+		svid:         "0",
 	}
 }
 

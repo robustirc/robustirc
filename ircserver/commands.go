@@ -219,7 +219,7 @@ func (i *IRCServer) login(s *Session, msg *irc.Message) []*irc.Message {
 			s.Username,
 			s.ircPrefix.Host,
 			i.ServerPrefix.Name,
-			"0", // svid, an identifier set by the services
+			s.svid,
 			"+",
 		},
 		Trailing: s.Realname,

@@ -339,7 +339,7 @@ func (i *IRCServer) cmdServer(s *Session, msg *irc.Message) []*irc.Message {
 				session.Username,
 				session.ircPrefix.Host,
 				i.ServerPrefix.Name,
-				"0", // svid, an identifier set by the services
+				session.svid,
 				modestr,
 			},
 			Trailing: session.Realname,
@@ -387,9 +387,9 @@ func (i *IRCServer) cmdServerSvsmode(s *Session, msg *irc.Message) []*irc.Messag
 		case '+', '-':
 			newvalue = (char == '+')
 		case 'd':
-			// This is used to set an arbitrary identifier by services. Anope
-			// sets this to a timestamp, and e.g. UnrealIRCD doesn’t do
-			// anything with it, so we just ignore it.
+			if len(msg.Params) > modearg {
+				session.svid = msg.Params[modearg]
+			}
 			modearg++
 		case 'r':
 			// Store registered flag
