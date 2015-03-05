@@ -6,7 +6,6 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-
 type duration time.Duration
 
 func (d *duration) UnmarshalText(text []byte) error {
@@ -52,7 +51,7 @@ type Network struct {
 
 var DefaultConfig = Network{
 	SessionExpiration:  duration(30 * time.Minute),
-	PostMessageCooloff: duration(0 * time.Millisecond),
+	PostMessageCooloff: duration(500 * time.Millisecond),
 }
 
 func FromString(input string) (Network, error) {

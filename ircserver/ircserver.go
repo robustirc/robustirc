@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"regexp"
 	"strings"
@@ -96,6 +97,12 @@ type Session struct {
 	LastActivity time.Time
 	Operator     bool
 	AwayMsg      string
+
+	// throttlingExponent starts at 0 and is increased on every subsequent
+	// message until 2^throttlingExponent ≥ netConfig.PostMessageCooloff.
+	// It will be reset once the user does not send messages for
+	// netConfig.PostMessageCooloff.
+	throttlingExponent int
 
 	invitedTo map[lcChan]bool
 
@@ -552,12 +559,22 @@ func (i *IRCServer) GetStartId(sessionid types.RobustId) types.RobustId {
 	return types.RobustId{}
 }
 
-// GetLastActivity returns the last activity of |sessionid| or the zero time.
-func (i *IRCServer) GetLastActivity(sessionid types.RobustId) time.Time {
+// ThrottleUntil returns the last activity of |sessionid| or the zero time.
+func (i *IRCServer) ThrottleUntil(sessionid types.RobustId, cooloff time.Duration) time.Time {
 	i.sessionsMu.RLock()
 	defer i.sessionsMu.RUnlock()
+
 	if s, ok := i.sessions[sessionid]; ok {
-		return s.LastActivity
+		// Reset throttlingExponent when the session was idle long enough.
+		if time.Since(s.LastActivity) > cooloff {
+			s.throttlingExponent = 0
+		}
+		delay := time.Duration(math.Pow(2, float64(s.throttlingExponent))) * time.Millisecond
+		if delay < cooloff {
+			s.throttlingExponent++
+		}
+
+		return s.LastActivity.Add(delay)
 	}
 	return time.Time{}
 }
