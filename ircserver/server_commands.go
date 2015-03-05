@@ -269,7 +269,7 @@ func (i *IRCServer) cmdServer(s *Session, msg *irc.Message) []*irc.Message {
 		Command: "SERVER",
 		Params: []string{
 			i.ServerPrefix.Name,
-			"0",  // hopcount
+			"1",  // hopcount
 			"23", // token, must be different from the services token
 		},
 	}}
