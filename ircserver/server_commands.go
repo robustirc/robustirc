@@ -168,6 +168,7 @@ func (i *IRCServer) cmdServerNick(s *Session, msg *irc.Message) []*irc.Message {
 	ss.Nick = msg.Params[0]
 	i.nicks[NickToLower(ss.Nick)] = ss
 	ss.Username = msg.Params[3]
+	ss.Realname = msg.Trailing
 	ss.updateIrcPrefix()
 	return []*irc.Message{}
 }
