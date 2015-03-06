@@ -786,6 +786,9 @@ func TestBans(t *testing.T) {
 	mustMatchMsg(t,
 		i.ProcessMessage(ids["secure"], irc.ParseMessage("MODE #test b")),
 		":robustirc.net 368 sECuRE #test :End of Channel Ban List")
+	mustMatchMsg(t,
+		i.ProcessMessage(ids["secure"], irc.ParseMessage("MODE #test +b")),
+		":robustirc.net 368 sECuRE #test :End of Channel Ban List")
 }
 
 func TestChannelMemberStatus(t *testing.T) {

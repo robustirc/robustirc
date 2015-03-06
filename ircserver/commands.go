@@ -832,6 +832,16 @@ func (i *IRCServer) cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 		if len(msg.Params) > 1 {
 			modestr = msg.Params[1]
 		}
+		// TODO(secure): this is special cased for now. The behavior in
+		// UnrealIRCD is to silently ignore query-modes (like b) when combined
+		// with any other mode, even if it’s another query mode (like e).
+		if modestr == "+b" {
+			return []*irc.Message{&irc.Message{
+				Command:  irc.RPL_ENDOFBANLIST,
+				Params:   []string{s.Nick, channelname},
+				Trailing: "End of Channel Ban List",
+			}}
+		}
 		if strings.HasPrefix(modestr, "+") || strings.HasPrefix(modestr, "-") {
 			if !c.nicks[NickToLower(s.Nick)][chanop] && !s.Operator {
 				return []*irc.Message{&irc.Message{
