@@ -204,7 +204,7 @@ func (i *IRCServer) login(s *Session, msg *irc.Message) []*irc.Message {
 			"CHANNELLEN=" + maxChannelLen,
 			"NICKLEN=" + maxNickLen,
 			"MODES=1",
-			"PREFIX=",
+			"PREFIX=(o)@",
 		},
 		Trailing: "are supported by this server",
 	})
