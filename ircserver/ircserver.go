@@ -564,7 +564,7 @@ func (i *IRCServer) ThrottleUntil(sessionid types.RobustId, cooloff time.Duratio
 	i.sessionsMu.RLock()
 	defer i.sessionsMu.RUnlock()
 
-	if s, ok := i.sessions[sessionid]; ok {
+	if s, ok := i.sessions[sessionid]; ok && !s.Server {
 		// Reset throttlingExponent when the session was idle long enough.
 		if time.Since(s.LastActivity) > cooloff {
 			s.throttlingExponent = 0

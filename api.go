@@ -143,7 +143,7 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	}
 
 	// Don’t throttle server-to-server connections (services)
-	if session.Reply == 0 && netConfig.PostMessageCooloff > 0 {
+	if netConfig.PostMessageCooloff > 0 {
 		until := ircServer.ThrottleUntil(session, time.Duration(netConfig.PostMessageCooloff))
 		time.Sleep(until.Sub(time.Now()))
 	}
