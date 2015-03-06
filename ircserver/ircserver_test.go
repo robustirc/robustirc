@@ -1318,3 +1318,19 @@ func TestInvite(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 301 sECuRE xeen :gone"),
 		})
 }
+
+func TestUserhost(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	i.ProcessMessage(ids["secure"], irc.ParseMessage("OPER mero foo"))
+
+	mustMatchMsg(t,
+		i.ProcessMessage(ids["secure"], irc.ParseMessage("USERHOST n")),
+		":robustirc.net 302 sECuRE :")
+
+	i.ProcessMessage(ids["xeen"], irc.ParseMessage("AWAY :gone"))
+
+	mustMatchMsg(t,
+		i.ProcessMessage(ids["secure"], irc.ParseMessage("USERHOST secure xeen mero")),
+		":robustirc.net 302 sECuRE :sECuRE*=+sECuRE!blah@robust/0x13b5aa0a2bcfb8ad xeen=-xeen!baz@robust/0x13b5aa0a2bcfb8af mero=+mero!foo@robust/0x13b5aa0a2bcfb8ae")
+}

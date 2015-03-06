@@ -118,6 +118,11 @@ func init() {
 		Interesting: (*IRCServer).interestInvite,
 		MinParams:   2,
 	}
+	commands["USERHOST"] = &ircCommand{
+		Func:          (*IRCServer).cmdUserhost,
+		StillRelevant: neverRelevant,
+		MinParams:     1,
+	}
 
 	if os.Getenv("ROBUSTIRC_TESTING_ENABLE_PANIC_COMMAND") == "1" {
 		commands["PANIC"] = &ircCommand{
@@ -1432,4 +1437,29 @@ func (i *IRCServer) cmdInvite(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	return replies
+}
+
+func (i *IRCServer) cmdUserhost(s *Session, msg *irc.Message) []*irc.Message {
+	var userhosts []string
+	for _, nickname := range msg.Params {
+		session, ok := i.nicks[NickToLower(nickname)]
+		if !ok {
+			continue
+		}
+		awayPrefix := "+"
+		if session.AwayMsg != "" {
+			awayPrefix = "-"
+		}
+		nick := session.Nick
+		if session.Operator {
+			nick = nick + "*"
+		}
+		userhosts = append(userhosts, fmt.Sprintf("%s=%s%s", nick, awayPrefix, session.ircPrefix.String()))
+	}
+	return []*irc.Message{&irc.Message{
+		Command:       irc.RPL_USERHOST,
+		Params:        []string{s.Nick},
+		Trailing:      strings.Join(userhosts, " "),
+		EmptyTrailing: len(userhosts) == 0,
+	}}
 }
