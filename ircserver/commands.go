@@ -759,6 +759,13 @@ func (i *IRCServer) cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	if strings.HasPrefix(msg.Params[0], "#") {
+		if _, ok := i.channels[ChanToLower(msg.Params[0])]; !ok {
+			return []*irc.Message{&irc.Message{
+				Command:  irc.ERR_NOSUCHCHANNEL,
+				Params:   []string{s.Nick, msg.Params[0]},
+				Trailing: "No such channel",
+			}}
+		}
 		return []*irc.Message{&irc.Message{
 			Prefix:   &s.ircPrefix,
 			Command:  msg.Command,
