@@ -1404,3 +1404,35 @@ func TestUserhost(t *testing.T) {
 		i.ProcessMessage(ids["secure"], irc.ParseMessage("USERHOST secure xeen mero")),
 		":robustirc.net 302 sECuRE :sECuRE*=+sECuRE!blah@robust/0x13b5aa0a2bcfb8ad xeen=-xeen!baz@robust/0x13b5aa0a2bcfb8af mero=+mero!foo@robust/0x13b5aa0a2bcfb8ae")
 }
+
+func TestServiceAliases(t *testing.T) {
+	i, ids := stdIRCServerWithServices()
+
+	aliases := map[string]string{
+		"NickServ": "PRIVMSG NickServ :",
+		"ns":       "PRIVMSG NickServ :",
+		"ChanServ": "PRIVMSG ChanServ :",
+		"cs":       "PRIVMSG ChanServ :",
+		"OperServ": "PRIVMSG OperServ :",
+		"os":       "PRIVMSG OperServ :",
+		"MemoServ": "PRIVMSG MemoServ :",
+		"ms":       "PRIVMSG MemoServ :",
+		"HostServ": "PRIVMSG HostServ :",
+		"hs":       "PRIVMSG HostServ :",
+		"BotServ":  "PRIVMSG BotServ :",
+		"bs":       "PRIVMSG BotServ :",
+	}
+
+	i.ProcessMessage(ids["services"], irc.ParseMessage("NICK NickServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
+	i.ProcessMessage(ids["services"], irc.ParseMessage("NICK ChanServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
+	i.ProcessMessage(ids["services"], irc.ParseMessage("NICK OperServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
+	i.ProcessMessage(ids["services"], irc.ParseMessage("NICK MemoServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
+	i.ProcessMessage(ids["services"], irc.ParseMessage("NICK HostServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
+	i.ProcessMessage(ids["services"], irc.ParseMessage("NICK BotServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
+
+	for alias, expanded := range aliases {
+		mustMatchMsg(t,
+			i.ProcessMessage(ids["secure"], irc.ParseMessage(alias+" IDENTIFY foobar baz")),
+			":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad "+expanded+"IDENTIFY foobar baz")
+	}
+}

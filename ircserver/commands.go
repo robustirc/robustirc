@@ -123,6 +123,22 @@ func init() {
 		StillRelevant: neverRelevant,
 		MinParams:     1,
 	}
+	serviceAlias := &ircCommand{
+		Func:          (*IRCServer).cmdServiceAlias,
+		StillRelevant: neverRelevant,
+	}
+	commands["NICKSERV"] = serviceAlias
+	commands["CHANSERV"] = serviceAlias
+	commands["OPERSERV"] = serviceAlias
+	commands["MEMOSERV"] = serviceAlias
+	commands["HOSTSERV"] = serviceAlias
+	commands["BOTSERV"] = serviceAlias
+	commands["NS"] = serviceAlias
+	commands["CS"] = serviceAlias
+	commands["OS"] = serviceAlias
+	commands["MS"] = serviceAlias
+	commands["HS"] = serviceAlias
+	commands["BS"] = serviceAlias
 
 	if os.Getenv("ROBUSTIRC_TESTING_ENABLE_PANIC_COMMAND") == "1" {
 		commands["PANIC"] = &ircCommand{
@@ -1520,4 +1536,29 @@ func (i *IRCServer) cmdUserhost(s *Session, msg *irc.Message) []*irc.Message {
 		Trailing:      strings.Join(userhosts, " "),
 		EmptyTrailing: len(userhosts) == 0,
 	}}
+}
+
+func (i *IRCServer) cmdServiceAlias(s *Session, msg *irc.Message) []*irc.Message {
+	aliases := map[string]string{
+		"NICKSERV": "PRIVMSG NickServ :",
+		"NS":       "PRIVMSG NickServ :",
+		"CHANSERV": "PRIVMSG ChanServ :",
+		"CS":       "PRIVMSG ChanServ :",
+		"OPERSERV": "PRIVMSG OperServ :",
+		"OS":       "PRIVMSG OperServ :",
+		"MEMOSERV": "PRIVMSG MemoServ :",
+		"MS":       "PRIVMSG MemoServ :",
+		"HOSTSERV": "PRIVMSG HostServ :",
+		"HS":       "PRIVMSG HostServ :",
+		"BOTSERV":  "PRIVMSG BotServ :",
+		"BS":       "PRIVMSG BotServ :",
+	}
+	for alias, expanded := range aliases {
+		if strings.ToUpper(msg.Command) != alias {
+			continue
+		}
+		return i.cmdPrivmsg(s, irc.ParseMessage(expanded+strings.Join(msg.Params, " ")))
+	}
+	// Unreached.
+	return []*irc.Message{}
 }
