@@ -753,9 +753,10 @@ func (i *IRCServer) interestPrivmsg(sessionid types.RobustId, msg *irc.Message) 
 	channel, ok := i.channels[ChanToLower(msg.Params[0])]
 	if !ok {
 		// It MUST either be a channel or a nick, otherwise no PRIVMSG reply is
-		// generated. Hence no error checking.
-		s, _ := i.nicks[NickToLower(msg.Params[0])]
-		result[s.Id.Id] = true
+		// generated.
+		if s, ok := i.nicks[NickToLower(msg.Params[0])]; ok {
+			result[s.Id.Id] = true
+		}
 		return result
 	}
 
