@@ -338,6 +338,27 @@ func ChanToLower(channelname string) lcChan {
 	return lcChan(strings.ToLower(channelname))
 }
 
+func extractPassword(password, prefix string) string {
+	var extracted string
+	for _, part := range strings.Split(password, ":") {
+		if strings.HasPrefix(strings.ToLower(part), prefix+"=") {
+			extracted = part[len(prefix+"="):]
+		}
+
+		// Append prefix-less strings to the extracted password, chances are
+		// the user used a colon in the password.
+		if !strings.HasPrefix(part, "nickserv=") &&
+			!strings.HasPrefix(part, "services=") &&
+			!strings.HasPrefix(part, "network=") &&
+			!strings.HasPrefix(part, "session=") &&
+			!strings.HasPrefix(part, "oper=") &&
+			extracted != "" {
+			extracted = extracted + ":" + part
+		}
+	}
+	return extracted
+}
+
 func (i *IRCServer) maybeDeleteChannel(c *channel) {
 	if len(c.nicks) > 0 {
 		return

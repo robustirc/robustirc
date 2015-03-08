@@ -230,6 +230,22 @@ func (i *IRCServer) login(s *Session, msg *irc.Message) []*irc.Message {
 		Trailing: s.Realname,
 	})
 
+	if pass := extractPassword(s.Pass, "nickserv"); pass != "" {
+		replies = append(replies, &irc.Message{
+			Prefix:   &s.ircPrefix,
+			Command:  irc.PRIVMSG,
+			Params:   []string{"NickServ"},
+			Trailing: fmt.Sprintf("IDENTIFY %s", pass),
+		})
+	}
+
+	if pass := extractPassword(s.Pass, "oper"); pass != "" {
+		parsed := irc.ParseMessage("OPER " + pass)
+		if len(parsed.Params) > 1 {
+			replies = append(replies, i.cmdOper(s, parsed)...)
+		}
+	}
+
 	replies = append(replies, i.cmdMotd(s, msg)...)
 
 	return replies
@@ -1259,7 +1275,32 @@ func (i *IRCServer) cmdMotd(s *Session, msg *irc.Message) []*irc.Message {
 }
 
 func (i *IRCServer) cmdPass(s *Session, msg *irc.Message) []*irc.Message {
-	s.Pass = msg.Trailing
+	// TODO(secure): document this in the admin/user manual
+	// You can specify multiple passwords in a single PASS command, separated
+	// by colons and prefixed with <key>=, e.g. “nickserv=secret” or
+	// “nickserv=secret:network=letmein” in case the network requires a
+	// password _and_ you want to authenticate to nickserv.
+	//
+	// In case there is no <key>= prefix, nickserv= is added.
+	//
+	// The valid prefixes are:
+	// services= for identifying as a server-to-server connection (services)
+	// session= for picking up a saved session (not yet implemented)
+	// network= for authenticating to a private network (not yet implemented)
+	// nickserv= for authenticating to services
+	// oper= for authenticating as an IRC operator
+	if len(msg.Params) > 0 {
+		s.Pass = strings.Join(msg.Params, " ")
+	} else {
+		s.Pass = msg.Trailing
+	}
+	if !strings.HasPrefix(s.Pass, "nickserv=") &&
+		!strings.HasPrefix(s.Pass, "services=") &&
+		!strings.HasPrefix(s.Pass, "network=") &&
+		!strings.HasPrefix(s.Pass, "oper=") &&
+		!strings.HasPrefix(s.Pass, "session=") {
+		s.Pass = "nickserv=" + s.Pass
+	}
 	return []*irc.Message{}
 }
 

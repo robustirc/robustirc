@@ -157,6 +157,73 @@ func TestSessionInitialization(t *testing.T) {
 	}
 }
 
+func welcomeMustContain(t *testing.T, passMsg, privMsg string) {
+	i := NewIRCServer("robustirc.net", time.Now())
+	i.Config = config.IRC{
+		Operators: []config.IRCOp{
+			config.IRCOp{Name: "mero", Password: "foo"},
+		},
+	}
+
+	id := types.RobustId{Id: 0x13c988ab2b01f2fb}
+	i.CreateSession(id, "authbytes")
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(id, irc.ParseMessage(passMsg)),
+		[]*irc.Message{})
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(id, irc.ParseMessage("NICK secure")),
+		[]*irc.Message{})
+	got := i.ProcessMessage(id, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
+	if len(got) < 1 || got[0].Command != irc.RPL_WELCOME {
+		t.Fatalf("got %v, want irc.RPL_WELCOME", got)
+	}
+	foundAuth := false
+	for _, msg := range got {
+		if msg.String() == privMsg {
+			foundAuth = true
+			break
+		}
+	}
+	if !foundAuth {
+		t.Fatalf("No PRIVMSG to NickServ in %v", got)
+	}
+}
+
+func TestNickServAuth(t *testing.T) {
+	welcomeMustContain(t,
+		"PASS :foobar",
+		":secure!blah@robust/0x13c988ab2b01f2fb PRIVMSG NickServ :IDENTIFY foobar")
+
+	welcomeMustContain(t,
+		"PASS :nickserv=foobar",
+		":secure!blah@robust/0x13c988ab2b01f2fb PRIVMSG NickServ :IDENTIFY foobar")
+
+	welcomeMustContain(t,
+		"PASS :nickserv=foobar=baz",
+		":secure!blah@robust/0x13c988ab2b01f2fb PRIVMSG NickServ :IDENTIFY foobar=baz")
+
+	welcomeMustContain(t,
+		"PASS :nickserv=pass:word",
+		":secure!blah@robust/0x13c988ab2b01f2fb PRIVMSG NickServ :IDENTIFY pass:word")
+
+	welcomeMustContain(t,
+		"PASS password",
+		":secure!blah@robust/0x13c988ab2b01f2fb PRIVMSG NickServ :IDENTIFY password")
+
+	welcomeMustContain(t,
+		"PASS :nickserv=secure foobar",
+		":secure!blah@robust/0x13c988ab2b01f2fb PRIVMSG NickServ :IDENTIFY secure foobar")
+
+	welcomeMustContain(t,
+		"PASS :nickserv=foobar:oper=blah",
+		":secure!blah@robust/0x13c988ab2b01f2fb PRIVMSG NickServ :IDENTIFY foobar")
+
+	welcomeMustContain(t,
+		"PASS :nickserv=foobar:oper=mero foo",
+		":robustirc.net 381 secure :You are now an IRC operator")
+}
+
 // TestPlumbing exercises the code paths for storing messages in outputstream
 // and getting them from multiple sessions.
 func TestPlumbing(t *testing.T) {
