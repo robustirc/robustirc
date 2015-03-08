@@ -149,7 +149,16 @@ func TestMessageOfDeath(t *testing.T) {
 
 	wg.Wait()
 
-	if !l.Healthy() {
+	healthy := false
+	for try := 0; try < 5; try++ {
+		if l.Healthy() {
+			healthy = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	if !healthy {
 		t.Fatalf("Expected recovery, but not all nodes are healthy")
 	}
 
