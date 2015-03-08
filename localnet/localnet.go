@@ -211,7 +211,7 @@ func (l *localnet) StartIRCServer(singlenode bool) (*exec.Cmd, string, string) {
 	// Poll the configured listening port to see if the server started up successfully.
 	try := 0
 	running := false
-	for !running && try < 10 {
+	for !running && try < 20 {
 		_, err := l.Httpclient.Get(fmt.Sprintf("https://localhost:%d/", l.randomPort))
 		if err != nil {
 			try++
@@ -226,7 +226,7 @@ func (l *localnet) StartIRCServer(singlenode bool) (*exec.Cmd, string, string) {
 	if !running {
 		cmd.Process.Kill()
 		// TODO(secure): retry on a different port.
-		log.Fatal("robustirc was not reachable via HTTP after 2.5s")
+		log.Fatal("robustirc was not reachable via HTTP after 5s")
 	}
 	l.Ports = append(l.Ports, l.randomPort)
 
