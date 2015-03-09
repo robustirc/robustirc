@@ -295,9 +295,35 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	done := make(chan bool, 1)
 	go func() {
 		var msgs []*types.RobustMessage
+		pingDone := make(chan bool)
+		go func() {
+			pingTicker := time.NewTicker(pingInterval)
+			for {
+				select {
+				case <-pingTicker.C:
+					pingmsg := &types.RobustMessage{
+						Type: types.RobustPing,
+					}
+
+					peers, err := peerStore.Peers()
+					if err != nil {
+						log.Fatalf("Could not get peers: %v (Peer file corrupted on disk?)\n", err)
+					}
+					for _, peer := range peers {
+						pingmsg.Servers = append(pingmsg.Servers, peer.String())
+					}
+					msgschan <- []*types.RobustMessage{pingmsg}
+				case <-pingDone:
+					pingTicker.Stop()
+					return
+				}
+			}
+		}()
+
 		for {
 			select {
 			case <-done:
+				pingDone <- true
 				close(msgschan)
 				return
 			default:

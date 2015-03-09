@@ -798,18 +798,9 @@ func main() {
 		node.SetPeers(p)
 	}
 
-	pingTimer := time.After(pingInterval)
 	expireSessionsTimer := time.After(expireSessionsInterval)
 	for {
 		select {
-		case <-pingTimer:
-			pingTimer = time.After(pingInterval)
-			peers, err := peerStore.Peers()
-			if err != nil {
-				log.Fatalf("Could not get peers: %v (Peer file corrupted on disk?)\n", err)
-			}
-			ircServer.SendPing(node.Leader(), peers)
-
 		case <-expireSessionsTimer:
 			expireSessionsTimer = time.After(expireSessionsInterval)
 

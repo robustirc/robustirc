@@ -509,20 +509,6 @@ func (i *IRCServer) SendMessages(replies []*irc.Message, session types.RobustId,
 	i.output.Add(robustreplies)
 }
 
-// SendPing appends a ping message to the output, including the current servers
-// in the network so that bridges don’t need to re-resolve the DNS record and
-// can still get a more recent server list.
-func (i *IRCServer) SendPing(master net.Addr, peers []net.Addr) {
-	pingmsg := types.NewRobustMessage(types.RobustPing, types.RobustId{}, "")
-	for _, peer := range peers {
-		pingmsg.Servers = append(pingmsg.Servers, peer.String())
-	}
-	if master != nil {
-		pingmsg.Currentmaster = master.String()
-	}
-	i.output.Add([]*types.RobustMessage{pingmsg})
-}
-
 // GetSession returns a pointer to the session specified by 'id'.
 //
 // It returns ErrNoSuchSession when the session definitely does not exist
