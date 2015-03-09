@@ -140,6 +140,7 @@ type robustSnapshot struct {
 	lastIndex  uint64
 	store      *raft_store.LevelDBStore
 	del        map[uint64]bool
+	parsed     map[uint64]types.RobustMessage
 }
 
 func (s *robustSnapshot) canCompact(compactionStart time.Time, elog *raft.Log) (bool, error) {
@@ -167,15 +168,11 @@ func (s *robustSnapshot) canCompact(compactionStart time.Time, elog *raft.Log) (
 			return nil
 		}
 
-		var nlog raft.Log
-		if err := s.store.GetLog(index, &nlog); err != nil {
+		nmsg, ok := s.parsed[index]
+		if !ok {
 			return nil
 		}
 
-		if nlog.Type != raft.LogCommand {
-			return nil
-		}
-		nmsg := types.NewRobustMessageFromBytes(nlog.Data)
 		if nmsg.Type != types.RobustIRCFromClient ||
 			nmsg.Session != msg.Session {
 			return nil
@@ -225,6 +222,19 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 	// messages would pour into the window on every compaction round, possibly
 	// making the compaction never converge.
 	compactionStart := time.Now()
+
+	// First pass: just parse all the messages
+	for i := s.firstIndex; i <= s.lastIndex; i++ {
+		var nlog raft.Log
+		if err := s.store.GetLog(i, &nlog); err != nil {
+			continue
+		}
+
+		if nlog.Type != raft.LogCommand {
+			continue
+		}
+		s.parsed[i] = types.NewRobustMessageFromBytes(nlog.Data)
+	}
 
 	// We repeatedly compact, since the result of one compaction can affect the
 	// result of other compactions (see compaction_test.go for examples).
@@ -416,6 +426,7 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 		last,
 		fsm.ircstore,
 		make(map[uint64]bool),
+		make(map[uint64]types.RobustMessage),
 	}, err
 }
 
