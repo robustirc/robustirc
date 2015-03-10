@@ -344,15 +344,20 @@ func (i *IRCServer) cmdServer(s *Session, msg *irc.Message) []*irc.Message {
 			},
 			Trailing: session.Realname,
 		})
+		channelnames := make([]string, 0, len(session.Channels))
 		for channelname := range session.Channels {
+			channelnames = append(channelnames, string(channelname))
+		}
+		sort.Strings(channelnames)
+		for _, channelname := range channelnames {
 			var prefix string
 
-			if i.channels[channelname].nicks[NickToLower(session.Nick)][chanop] {
+			if i.channels[lcChan(channelname)].nicks[NickToLower(session.Nick)][chanop] {
 				prefix = prefix + string('@')
 			}
 			replies = append(replies, &irc.Message{
 				Command:  "SJOIN",
-				Params:   []string{"1", i.channels[channelname].name},
+				Params:   []string{"1", i.channels[lcChan(channelname)].name},
 				Trailing: prefix + session.Nick,
 			})
 		}
