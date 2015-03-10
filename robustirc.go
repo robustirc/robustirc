@@ -245,6 +245,10 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 		pass++
 		changed = false
 		for i := s.firstIndex; i <= s.lastIndex; i++ {
+			if i%1000 == 0 {
+				log.Printf("message %d of %d (%.0f%%)\n",
+					i, s.lastIndex, (float64(i)/float64(s.lastIndex))*100.0)
+			}
 			if s.del[i] {
 				continue
 			}
