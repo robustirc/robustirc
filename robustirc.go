@@ -299,20 +299,22 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 
 		var nlog raft.Log
 		if err := s.store.GetLog(idx, &nlog); err != nil {
-			return nil
+			continue
 		}
 
 		if nlog.Type != raft.LogCommand {
-			return nil
+			continue
 		}
 		nmsg := types.NewRobustMessageFromBytes(nlog.Data)
 		if nmsg.Type != types.RobustIRCFromClient {
-			return nil
+			continue
 		}
 		log.Printf("Compacting index %d, ircmsg %q\n", idx, nmsg.Data)
 
 		// TODO: delete msg in s.store
 	}
+
+	// TODO(secure): add stats about how many messages are still left (within the range that is considered for compaction)
 
 	return nil
 }
