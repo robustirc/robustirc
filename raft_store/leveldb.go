@@ -97,6 +97,9 @@ func (s *LevelDBStore) GetLog(index uint64, rlog *raft.Log) error {
 	binary.LittleEndian.PutUint64(key, index)
 	value, err := s.db.Get(key, nil)
 	if err != nil {
+		if err == leveldb.ErrNotFound {
+			return raft.ErrLogNotFound
+		}
 		return err
 	}
 	return json.Unmarshal(value, rlog)
