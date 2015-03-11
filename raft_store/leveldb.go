@@ -6,6 +6,7 @@
 package raft_store
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -16,19 +17,11 @@ import (
 	leveldb_errors "github.com/syndtr/goleveldb/leveldb/errors"
 )
 
-var metaKey = []byte("logstore-meta")
-
 // LevelDBStore implements the raft.LogStore and raft.StableStore interfaces on
 // top of leveldb.
 type LevelDBStore struct {
-	mu   sync.RWMutex
-	meta logstoreMeta
-	db   *leveldb.DB
-}
-
-type logstoreMeta struct {
-	Lo uint64
-	Hi uint64
+	mu sync.RWMutex
+	db *leveldb.DB
 }
 
 // NewLevelDBStore opens a leveldb at the given directory to be used as a log-
@@ -45,21 +38,7 @@ func NewLevelDBStore(dir string) (*LevelDBStore, error) {
 		}
 	}
 
-	v, err := db.Get(metaKey, nil)
-	if err != nil {
-		if err != leveldb.ErrNotFound {
-			db.Close()
-			return nil, fmt.Errorf("error reading metadata: %v", err)
-		}
-		v = []byte(`{"Lo":0,"Hi":0}`)
-	}
-	var m logstoreMeta
-	if err = json.Unmarshal(v, &m); err != nil {
-		db.Close()
-		return nil, err
-	}
-
-	return &LevelDBStore{db: db, meta: m}, nil
+	return &LevelDBStore{db: db}, nil
 }
 
 // Close closes the LevelDBStore. No other methods may be called after this.
@@ -77,7 +56,17 @@ func (s *LevelDBStore) FirstIndex() (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.meta.Lo, nil
+	i := s.db.NewIterator(nil, nil)
+	defer i.Release()
+	if !i.First() {
+		return 0, nil
+	}
+	for bytes.HasPrefix(i.Key(), []byte("stablestore-")) {
+		if !i.Next() {
+			return 0, nil
+		}
+	}
+	return binary.BigEndian.Uint64(i.Key()), nil
 }
 
 // LastIndex implements raft.LogStore.
@@ -85,7 +74,17 @@ func (s *LevelDBStore) LastIndex() (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.meta.Hi, nil
+	i := s.db.NewIterator(nil, nil)
+	defer i.Release()
+	if !i.Last() {
+		return 0, nil
+	}
+	for bytes.HasPrefix(i.Key(), []byte("stablestore-")) {
+		if !i.Prev() {
+			return 0, nil
+		}
+	}
+	return binary.BigEndian.Uint64(i.Key()), nil
 }
 
 // GetLog implements raft.LogStore.
@@ -94,7 +93,7 @@ func (s *LevelDBStore) GetLog(index uint64, rlog *raft.Log) error {
 	defer s.mu.RUnlock()
 
 	key := make([]byte, binary.Size(index))
-	binary.LittleEndian.PutUint64(key, index)
+	binary.BigEndian.PutUint64(key, index)
 	value, err := s.db.Get(key, nil)
 	if err != nil {
 		if err == leveldb.ErrNotFound {
@@ -117,33 +116,19 @@ func (s *LevelDBStore) StoreLogs(logs []*raft.Log) error {
 
 	var batch leveldb.Batch
 	key := make([]byte, binary.Size(uint64(0)))
-	meta := s.meta
 
 	for _, entry := range logs {
-		binary.LittleEndian.PutUint64(key, entry.Index)
+		binary.BigEndian.PutUint64(key, entry.Index)
 		v, err := json.Marshal(entry)
 		if err != nil {
 			return err
 		}
 		batch.Put(key, v)
-
-		if entry.Index < meta.Lo || meta.Lo == 0 {
-			meta.Lo = entry.Index
-		}
-		if entry.Index > meta.Hi {
-			meta.Hi = entry.Index
-		}
 	}
-	data, err := json.Marshal(meta)
-	if err != nil {
-		return err
-	}
-	batch.Put(metaKey, data)
 
 	if err := s.db.Write(&batch, nil); err != nil {
 		return err
 	}
-	s.meta = meta
 	return nil
 }
 
@@ -154,37 +139,13 @@ func (s *LevelDBStore) DeleteRange(min, max uint64) error {
 
 	var batch leveldb.Batch
 	key := make([]byte, binary.Size(uint64(0)))
-	meta := s.meta
-
-	if min > meta.Lo && max < meta.Hi {
-		panic("wrongly assumed that the range of stored keys is always contiguous")
-	}
-
 	for n := min; n <= max; n++ {
-		binary.LittleEndian.PutUint64(key, n)
+		binary.BigEndian.PutUint64(key, n)
 		batch.Delete(key)
 	}
-	if max == meta.Hi && min == meta.Lo {
-		meta.Lo = 0
-		meta.Hi = 0
-	} else if max < meta.Hi {
-		// We are deleting from the beginning. Update meta.Lo
-		meta.Lo = max + 1
-	} else if min > meta.Lo {
-		// We are deleting from the end. Update meta.Hi
-		meta.Hi = min - 1
-	}
-
-	data, err := json.Marshal(meta)
-	if err != nil {
-		return err
-	}
-	batch.Put(metaKey, data)
-
 	if err := s.db.Write(&batch, nil); err != nil {
 		return err
 	}
-	s.meta = meta
 	return nil
 }
 
@@ -209,7 +170,7 @@ func (s *LevelDBStore) SetUint64(key []byte, val uint64) error {
 	key = append([]byte("stablestore-"), key...)
 
 	v := make([]byte, binary.Size(val))
-	binary.LittleEndian.PutUint64(v, val)
+	binary.BigEndian.PutUint64(v, val)
 
 	return s.db.Put(key, v, nil)
 }
@@ -221,5 +182,5 @@ func (s *LevelDBStore) GetUint64(key []byte) (uint64, error) {
 	if err == leveldb.ErrNotFound {
 		return 0, nil
 	}
-	return binary.LittleEndian.Uint64(v), err
+	return binary.BigEndian.Uint64(v), err
 }
