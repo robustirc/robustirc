@@ -93,17 +93,6 @@ func (m *RobustMessage) PrivacyFilter() string {
 	return m.Data
 }
 
-func NewRobustMessage(t RobustType, session RobustId, data string) *RobustMessage {
-	return &RobustMessage{
-		// TODO(secure): bring in something else than just the time. Perhaps we
-		// can put in the log index so that resumes are faster?
-		Id:      RobustId{Id: time.Now().UnixNano()},
-		Session: session,
-		Type:    t,
-		Data:    data,
-	}
-}
-
 func NewRobustMessageFromBytes(b []byte) RobustMessage {
 	var msg RobustMessage
 	if err := json.Unmarshal(b, &msg); err != nil {

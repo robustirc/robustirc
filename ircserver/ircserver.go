@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"net"
 	"regexp"
 	"strings"
 	"sync"
@@ -203,7 +202,8 @@ type IRCServer struct {
 	ServerPrefix *irc.Prefix
 
 	// lastProcessed is the id of the last message fed into ProcessMessage.
-	lastProcessed types.RobustId
+	lastProcessed   types.RobustId
+	lastProcessedMu *sync.RWMutex
 
 	// serverCreation is the time at which the IRCServer object was created.
 	// Used for the RPL_CREATED message.
@@ -216,13 +216,33 @@ type IRCServer struct {
 // NewIRCServer returns a new IRC server.
 func NewIRCServer(networkname string, serverCreation time.Time) *IRCServer {
 	return &IRCServer{
-		channels:       make(map[lcChan]*channel),
-		nicks:          make(map[lcNick]*Session),
-		sessions:       make(map[types.RobustId]*Session),
-		sessionsMu:     &sync.RWMutex{},
-		output:         outputstream.NewOutputStream(),
-		ServerPrefix:   &irc.Prefix{Name: networkname},
-		ServerCreation: serverCreation,
+		channels:        make(map[lcChan]*channel),
+		nicks:           make(map[lcNick]*Session),
+		sessions:        make(map[types.RobustId]*Session),
+		sessionsMu:      &sync.RWMutex{},
+		lastProcessedMu: &sync.RWMutex{},
+		output:          outputstream.NewOutputStream(),
+		ServerPrefix:    &irc.Prefix{Name: networkname},
+		ServerCreation:  serverCreation,
+	}
+}
+
+// NewRobustMessage creates a new RobustMessage with an id that is guaranteed
+// to be higher than the last processed message (it panics otherwise) so that
+// timestamp drift is loudly complained about instead of silently accepted to
+// the point where it breaks the network’s regular operation.
+func (i *IRCServer) NewRobustMessage(t types.RobustType, session types.RobustId, data string) *types.RobustMessage {
+	unixnano := time.Now().UnixNano()
+	i.lastProcessedMu.RLock()
+	defer i.lastProcessedMu.RUnlock()
+	if unixnano < i.lastProcessed.Id {
+		panic(fmt.Sprintf("Assumption violated: current time %d is older than the timestamp of the last processed message (%d)", unixnano, i.lastProcessed.Id))
+	}
+	return &types.RobustMessage{
+		Id:      types.RobustId{Id: unixnano},
+		Session: session,
+		Type:    t,
+		Data:    data,
 	}
 }
 
@@ -301,7 +321,7 @@ func (i *IRCServer) ExpireSessions(timeout time.Duration) []*types.RobustMessage
 
 		log.Printf("Expiring session %v\n", id)
 
-		deletes = append(deletes, types.NewRobustMessage(
+		deletes = append(deletes, i.NewRobustMessage(
 			types.RobustDeleteSession, id, fmt.Sprintf("Ping timeout (%v)", timeout)))
 	}
 	return deletes
@@ -435,7 +455,9 @@ func (i *IRCServer) ProcessMessage(session types.RobustId, message *irc.Message)
 // with session 'session'. IRC clients will eventually receive these messages
 // by calling GetNext.
 func (i *IRCServer) SendMessages(replies []*irc.Message, session types.RobustId, id int64) {
+	i.lastProcessedMu.Lock()
 	i.lastProcessed = types.RobustId{Id: id}
+	i.lastProcessedMu.Unlock()
 
 	defer func() {
 		i.sessionsMu.Lock()
@@ -460,11 +482,15 @@ func (i *IRCServer) SendMessages(replies []*irc.Message, session types.RobustId,
 
 	robustreplies := make([]*types.RobustMessage, len(replies))
 	for idx, reply := range replies {
-		robustmsg := types.NewRobustMessage(types.RobustIRCToClient, session, string(reply.Bytes()))
-		// The IDs must be the same across servers.
-		robustmsg.Id = types.RobustId{
-			Id:    id,
-			Reply: int64(idx + 1),
+		robustmsg := &types.RobustMessage{
+			// The IDs must be the same across servers.
+			Id: types.RobustId{
+				Id:    id,
+				Reply: int64(idx + 1),
+			},
+			Session: session,
+			Type:    types.RobustIRCToClient,
+			Data:    string(reply.Bytes()),
 		}
 
 		if reply.Prefix == nil {
@@ -522,6 +548,8 @@ func (i *IRCServer) GetSession(id types.RobustId) (*Session, error) {
 	}
 
 	// TODO(secure): think about and document implications of timestamp drift
+	i.lastProcessedMu.RLock()
+	defer i.lastProcessedMu.RUnlock()
 	if time.Unix(0, i.lastProcessed.Id).Sub(time.Unix(0, id.Id)) > 0 {
 		// We processed a newer message than that session identifier, so
 		// the session definitely does not exist.

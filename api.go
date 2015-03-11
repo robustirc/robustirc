@@ -174,7 +174,7 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		return
 	}
 
-	msg := types.NewRobustMessage(types.RobustIRCFromClient, session, req.Data)
+	msg := ircServer.NewRobustMessage(types.RobustIRCFromClient, session, req.Data)
 	msg.ClientMessageId = req.ClientMessageId
 	msgbytes, err := json.Marshal(msg)
 	if err != nil {
@@ -396,7 +396,7 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request, ps httprouter.P
 		return
 	}
 	sessionauth := fmt.Sprintf("%x", b)
-	msg := types.NewRobustMessage(types.RobustCreateSession, types.RobustId{}, sessionauth)
+	msg := ircServer.NewRobustMessage(types.RobustCreateSession, types.RobustId{}, sessionauth)
 	// Cannot fail, no user input.
 	msgbytes, _ := json.Marshal(msg)
 
@@ -443,7 +443,7 @@ func handleDeleteSession(w http.ResponseWriter, r *http.Request, ps httprouter.P
 		return
 	}
 
-	msg := types.NewRobustMessage(types.RobustDeleteSession, session, req.Quitmessage)
+	msg := ircServer.NewRobustMessage(types.RobustDeleteSession, session, req.Quitmessage)
 	// Cannot fail, no user input.
 	msgbytes, _ := json.Marshal(msg)
 
@@ -556,7 +556,7 @@ func handlePostConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg := types.NewRobustMessage(types.RobustConfig, types.RobustId{}, body.String())
+	msg := ircServer.NewRobustMessage(types.RobustConfig, types.RobustId{}, body.String())
 	msg.Revision = int(revision) + 1
 	msgbytes, err := json.Marshal(msg)
 	if err != nil {
