@@ -357,6 +357,34 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 	msg := types.NewRobustMessageFromBytes(l.Data)
 	log.Printf("Apply(msg.Type=%s)\n", msg.Type)
 
+	defer func() {
+		if msg.Type == types.RobustMessageOfDeath {
+			return
+		}
+		if r := recover(); r != nil {
+			// Panics in ircserver.ProcessMessage() are a problem, since
+			// they will bring down the entire raft cluster and you cannot
+			// bring up any raft node anymore without deleting the entire
+			// log.
+			//
+			// Therefore, when we panic, we invalidate the log entry in
+			// question before crashing. This doesn’t fix the underlying
+			// bug, i.e. an IRC message will then go unhandled, but it
+			// prevents RobustIRC from dying horribly in such a situation.
+			msg.Type = types.RobustMessageOfDeath
+			data, err := json.Marshal(msg)
+			if err != nil {
+				glog.Fatalf("Could not marshal message: %v", err)
+			}
+			l.Data = data
+			if err := fsm.store.StoreLog(l); err != nil {
+				glog.Fatalf("Could not store log while marking message as message of death: %v", err)
+			}
+			log.Printf("Marked %+v as message of death\n", l)
+			glog.Fatalf("%v", r)
+		}
+	}()
+
 	switch msg.Type {
 	case types.RobustMessageOfDeath:
 		// To prevent the message from being accepted again.
@@ -374,31 +402,6 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		}
 
 	case types.RobustIRCFromClient:
-		defer func() {
-			if r := recover(); r != nil {
-				// Panics in ircserver.ProcessMessage() are a problem, since
-				// they will bring down the entire raft cluster and you cannot
-				// bring up any raft node anymore without deleting the entire
-				// log.
-				//
-				// Therefore, when we panic, we invalidate the log entry in
-				// question before crashing. This doesn’t fix the underlying
-				// bug, i.e. an IRC message will then go unhandled, but it
-				// prevents RobustIRC from dying horribly in such a situation.
-				msg.Type = types.RobustMessageOfDeath
-				data, err := json.Marshal(msg)
-				if err != nil {
-					glog.Fatalf("Could not marshal message: %v", err)
-				}
-				l.Data = data
-				if err := fsm.store.StoreLog(l); err != nil {
-					glog.Fatalf("Could not store log while marking message as message of death: %v", err)
-				}
-				log.Printf("Marked %+v as message of death\n", l)
-				glog.Fatalf("%v", r)
-			}
-		}()
-
 		// Need to do this first, because ircserver.ProcessMessage could delete
 		// the session, e.g. by using KILL or QUIT.
 		if err := ircServer.UpdateLastClientMessageID(&msg, l.Data); err != nil {
