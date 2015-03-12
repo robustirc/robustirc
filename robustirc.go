@@ -840,6 +840,7 @@ func main() {
 				continue
 			}
 
+			applyMu.Lock()
 			for _, msg := range ircServer.ExpireSessions(time.Duration(netConfig.SessionExpiration)) {
 				// Cannot fail, no user input.
 				msgbytes, _ := json.Marshal(msg)
@@ -849,6 +850,7 @@ func main() {
 					break
 				}
 			}
+			applyMu.Unlock()
 		}
 	}
 }

@@ -419,11 +419,13 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request, ps httprouter.P
 		return
 	}
 	sessionauth := fmt.Sprintf("%x", b)
+	applyMu.Lock()
 	msg := ircServer.NewRobustMessage(types.RobustCreateSession, types.RobustId{}, sessionauth)
 	// Cannot fail, no user input.
 	msgbytes, _ := json.Marshal(msg)
 
 	f := node.Apply(msgbytes, 10*time.Second)
+	applyMu.Unlock()
 	if err := f.Error(); err != nil {
 		if err == raft.ErrNotLeader {
 			maybeProxyToLeader(w, r, nopCloser{bytes.NewBuffer(nil)})
@@ -466,11 +468,13 @@ func handleDeleteSession(w http.ResponseWriter, r *http.Request, ps httprouter.P
 		return
 	}
 
+	applyMu.Lock()
 	msg := ircServer.NewRobustMessage(types.RobustDeleteSession, session, req.Quitmessage)
 	// Cannot fail, no user input.
 	msgbytes, _ := json.Marshal(msg)
 
 	f := node.Apply(msgbytes, 10*time.Second)
+	applyMu.Unlock()
 	if err := f.Error(); err != nil {
 		if err == raft.ErrNotLeader {
 			maybeProxyToLeader(w, r, nopCloser{&body})
@@ -579,10 +583,12 @@ func handlePostConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	applyMu.Lock()
 	msg := ircServer.NewRobustMessage(types.RobustConfig, types.RobustId{}, body.String())
 	msg.Revision = int(revision) + 1
 	msgbytes, err := json.Marshal(msg)
 	if err != nil {
+		applyMu.Unlock()
 		configMu.Unlock()
 		http.Error(w, fmt.Sprintf("Could not store message, cannot encode it as JSON: %v", err),
 			http.StatusBadRequest)
@@ -590,6 +596,7 @@ func handlePostConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	f := node.Apply(msgbytes, 10*time.Second)
+	applyMu.Unlock()
 	err = f.Error()
 	configMu.Unlock()
 	if err != nil {
