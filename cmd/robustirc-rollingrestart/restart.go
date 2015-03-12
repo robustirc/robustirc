@@ -138,6 +138,9 @@ func main() {
 				log.Printf("Network became healthy.\n")
 				break
 			}
+			if err != nil {
+				log.Fatalf("Network did not become healthy within %v, aborting. (reason: %v)\n", *networkHealthTimeout, err)
+			}
 
 			if statuses[server].ExecutableHash == binaryHash {
 				if allNodesUpdated(statuses, binaryHash) {
