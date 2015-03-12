@@ -750,14 +750,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// NewRaft(*Config, FSM, LogStore, StableStore, SnapshotStore, PeerStore, Transport)
 	node, err = raft.NewRaft(config, fsm, logcache, logStore, fss, peerStore, transport)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	// TODO: observeleaderchanges?
-	// TODO: observenexttime?
 
 	privaterouter := httprouter.New()
 	privaterouter.HandlerFunc("GET", "/", handleStatus)
