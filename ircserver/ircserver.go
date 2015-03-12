@@ -74,7 +74,7 @@ func init() {
 // ircCommand’s StillRelevant callback will get a cursor for all messages
 // _before_ the current message and a separate cursor returning all
 // messages _after_ the current message.
-type logCursor func() (*irc.Message, error)
+type logCursor func(wantType types.RobustType) (*types.RobustMessage, error)
 
 // lcChan is a lower-case channel name, e.g. “#chaos-hd”, even when the user
 // sent “JOIN #Chaos-HD”. It is used to enforce using ChanToLower() on keys of
@@ -685,4 +685,10 @@ func (i *IRCServer) GetNext(lastseen types.RobustId) []*types.RobustMessage {
 // public. All other methods should not be used, which is enforced this way.
 func (i *IRCServer) Get(input types.RobustId) ([]*types.RobustMessage, bool) {
 	return i.output.Get(input)
+}
+
+// Delete wraps outputstream.Delete to avoid making the outputstream instance
+// public. All other methods should not be used, which is enforced this way.
+func (i *IRCServer) Delete(input types.RobustId) {
+	i.output.Delete(input)
 }

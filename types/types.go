@@ -28,6 +28,7 @@ const (
 	RobustPing
 	RobustMessageOfDeath
 	RobustConfig
+	RobustAny
 )
 
 func (t RobustType) String() string {
@@ -46,6 +47,8 @@ func (t RobustType) String() string {
 		return "message_of_death"
 	case RobustConfig:
 		return "config"
+	case RobustAny:
+		return "any"
 	default:
 		log.Panicf("RobustType.String() not updated for type %d", t)
 	}

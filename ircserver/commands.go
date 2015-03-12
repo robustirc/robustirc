@@ -267,19 +267,50 @@ func (i *IRCServer) login(s *Session, msg *irc.Message) []*irc.Message {
 	return replies
 }
 
+func isLastMessage(prev, next logCursor) (bool, error) {
+	prevrmsg, err := prev(types.RobustAny)
+	if err != nil {
+		if err == CursorEOF {
+			return false, nil
+		}
+		return false, err
+	}
+	next(types.RobustAny)
+	nextrmsg, err := next(types.RobustAny)
+	if err != nil {
+		if err == CursorEOF {
+			return false, nil
+		}
+		return false, err
+	}
+	prev(types.RobustAny)
+
+	return (prevrmsg.Type == types.RobustCreateSession &&
+		nextrmsg.Type == types.RobustDeleteSession), nil
+}
+
 func relevantNick(msg *irc.Message, prev, next logCursor) (bool, error) {
 	if len(msg.Params) < 1 {
 		return false, nil
 	}
 
+	last, err := isLastMessage(prev, next)
+	if err != nil {
+		return true, err
+	}
+	if last {
+		return false, nil
+	}
+
 	for {
-		nmsg, err := next()
+		rmsg, err := next(types.RobustIRCFromClient)
 		if err != nil {
 			if err == CursorEOF {
 				break
 			}
 			return true, err
 		}
+		nmsg := irc.ParseMessage(rmsg.Data)
 		// Found a USER message. This NICK command is thus the first one and must not be compacted.
 		if nmsg.Command == irc.USER {
 			return true, nil
@@ -384,14 +415,23 @@ func relevantUser(msg *irc.Message, prev, next logCursor) (bool, error) {
 		return false, nil
 	}
 
+	// This is the first USER message. If the next message is a QUIT message,
+	// this session cannot have modified any state.
+	rmsg, err := next(types.RobustAny)
+	if err == nil && rmsg.Type == types.RobustDeleteSession {
+		return false, nil
+	}
+	prev(types.RobustAny)
+
 	for {
-		pmsg, err := prev()
+		rmsg, err := prev(types.RobustIRCFromClient)
 		if err != nil {
 			if err == CursorEOF {
 				break
 			}
 			return true, err
 		}
+		pmsg := irc.ParseMessage(rmsg.Data)
 		// There already was a USER message, so discard this one.
 		if pmsg.Command == irc.USER {
 			return false, nil
@@ -438,13 +478,14 @@ func relevantJoin(msg *irc.Message, prev, next logCursor) (bool, error) {
 
 	lcnames := multipleChannels(msg.Params[0])
 	for {
-		nmsg, err := next()
+		rmsg, err := next(types.RobustIRCFromClient)
 		if err != nil {
 			if err == CursorEOF {
 				break
 			}
 			return true, err
 		}
+		nmsg := irc.ParseMessage(rmsg.Data)
 		if nmsg.Command == irc.TOPIC && lcnames[ChanToLower(nmsg.Params[0])] {
 			return true, nil
 		}
@@ -640,13 +681,14 @@ func relevantPart(msg *irc.Message, prev, next logCursor) (bool, error) {
 
 	lcnames := multipleChannels(msg.Params[0])
 	for {
-		pmsg, err := prev()
+		rmsg, err := prev(types.RobustIRCFromClient)
 		if err != nil {
 			if err == CursorEOF {
 				break
 			}
 			return true, err
 		}
+		pmsg := irc.ParseMessage(rmsg.Data)
 		if pmsg.Command == irc.JOIN && anyChanInChannels(lcnames, multipleChannels(pmsg.Params[0])) {
 			return true, nil
 		}
@@ -1136,13 +1178,14 @@ func relevantTopic(msg *irc.Message, prev, next logCursor) (bool, error) {
 	}
 
 	for {
-		nmsg, err := next()
+		rmsg, err := next(types.RobustIRCFromClient)
 		if err != nil {
 			if err == CursorEOF {
 				break
 			}
 			return true, err
 		}
+		nmsg := irc.ParseMessage(rmsg.Data)
 		// There is a newer TOPIC command for this channel, discard the old one.
 		if nmsg.Command == irc.TOPIC && nmsg.Params[0] == msg.Params[0] {
 			return false, nil

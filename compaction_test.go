@@ -231,7 +231,7 @@ func applyAndCompact(t *testing.T, input []string) []string {
 }
 
 func mustMatchStrings(t *testing.T, input []string, got []string, want []string) {
-	if reflect.DeepEqual(got, want) {
+	if (len(want) == 0 && len(got) == 0) || reflect.DeepEqual(got, want) {
 		return
 	}
 
@@ -304,8 +304,8 @@ func TestJoinPart(t *testing.T) {
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
 		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
-		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
-		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #chaos-hd"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #chaos-hd"}`,
 	}
 
 	want := []string{
@@ -490,6 +490,21 @@ func TestCompactInvalid(t *testing.T) {
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
 		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
 	}
+
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
+func TestCompactSession(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 1, "Data": "bye"}`,
+	}
+	want := []string{}
 
 	output := applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
