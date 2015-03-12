@@ -181,17 +181,18 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	}
 
 	applyMu.Lock()
-	defer applyMu.Unlock()
 	msg := ircServer.NewRobustMessage(types.RobustIRCFromClient, session, req.Data)
 	msg.ClientMessageId = req.ClientMessageId
 	msgbytes, err := json.Marshal(msg)
 	if err != nil {
+		applyMu.Unlock()
 		http.Error(w, fmt.Sprintf("Could not store message, cannot encode it as JSON: %v", err),
 			http.StatusBadRequest)
 		return
 	}
 
 	f := node.Apply(msgbytes, 10*time.Second)
+	applyMu.Unlock()
 	if err := f.Error(); err != nil {
 		if err == raft.ErrNotLeader {
 			maybeProxyToLeader(w, r, nopCloser{&body})
