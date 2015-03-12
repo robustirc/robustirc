@@ -31,7 +31,7 @@ var (
 		"A secure password to protect the communication between raft nodes. Use pwgen(1) or similar.")
 
 	networkHealthTimeout = flag.Duration("network_health_timeout",
-		1*time.Minute,
+		5*time.Minute,
 		"Amount of time until rollingrestart gives up waiting for the network to become healthy again")
 )
 
