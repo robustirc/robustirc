@@ -100,8 +100,8 @@ func EnsureNetworkHealthy(servers []string, networkPassword string) (map[string]
 			return statuses, fmt.Errorf("Server %q thinks %q is leader, others think %q is leader",
 				status.Server, status.Leader, leader)
 		}
-		if status.State == "Follower" && time.Since(status.LastContact) > 1*time.Second {
-			return statuses, fmt.Errorf("Server %q was last contacted by the leader at %v, which is over a second ago",
+		if status.State == "Follower" && time.Since(status.LastContact) > 2*time.Second {
+			return statuses, fmt.Errorf("Server %q was last contacted by the leader at %v, which is over 2 seconds ago",
 				status.Server, status.LastContact)
 		}
 	}
