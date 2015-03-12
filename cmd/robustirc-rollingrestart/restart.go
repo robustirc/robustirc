@@ -167,7 +167,7 @@ func main() {
 				}
 				if current.ExecutableHash != binaryHash {
 					log.Printf("Node %q came up with hash %s instead of %s?!\n",
-						server, current, binaryHash)
+						server, current.ExecutableHash, binaryHash)
 					break
 				}
 				if current.AppliedIndex < lastApplied {
