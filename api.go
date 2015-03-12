@@ -23,6 +23,7 @@ import (
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/types"
+	"github.com/stapelberg/glog"
 
 	"github.com/hashicorp/raft"
 )
@@ -32,6 +33,11 @@ var (
 	getMessagesRequestsMu sync.Mutex
 
 	configMu sync.Mutex
+
+	// applyMu guards calls to raft.Apply(). We need to lock them because
+	// otherwise we cannot guarantee that multiple goroutines will write
+	// strictly monotonically increasing timestamps.
+	applyMu sync.Mutex
 
 	// To avoid setting up a new proxy on every request, we cache the proxies
 	// for each node (since the current leader might change abruptly).
@@ -174,6 +180,8 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		return
 	}
 
+	applyMu.Lock()
+	defer applyMu.Unlock()
 	msg := ircServer.NewRobustMessage(types.RobustIRCFromClient, session, req.Data)
 	msg.ClientMessageId = req.ClientMessageId
 	msgbytes, err := json.Marshal(msg)
@@ -329,6 +337,20 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 			default:
 			}
 			msgs = ircServer.GetNext(lastSeen)
+			// This check prevents replaying old messages in the scenario where
+			// the client has seen newer messages than the server, for example
+			// because the server is currently recovering from a snapshot after
+			// being restarted, or because the server’s network connection to
+			// the rest of the network is currently slow.
+			if msgs[0].Id.Id < lastSeen.Id {
+				glog.Warningf("lastSeen (%d) more recent than GetNext() result %d\n", lastSeen.Id, msgs[0].Id.Id)
+				glog.Warningf("This should only happen while the server is recovering from a snapshot\n")
+				glog.Warningf("The message in question is %v\n", msgs[0])
+				// Prevent busylooping while new messages are applied.
+				time.Sleep(250 * time.Millisecond)
+				continue
+			}
+
 			lastSeen = msgs[0].Id
 			msgschan <- msgs
 		}
