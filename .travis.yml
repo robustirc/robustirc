@@ -4,8 +4,8 @@ sudo: false
 
 language: go
 
-# The default install command (“go get ./...”) fails because we have
-# directories that do not contain executables (e.g. “mod_test”).
+# The default install command ("go get ./...") fails because we have
+# directories that do not contain executables (e.g. "mod_test").
 # We need to specify the bridge because it is used by the mod_test.
 install:
   # TODO(secure): remove the following two lines once
