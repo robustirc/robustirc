@@ -32,6 +32,7 @@ import (
 
 	auth "github.com/abbot/go-http-auth"
 	"github.com/armon/go-metrics"
+	metrics_prometheus "github.com/armon/go-metrics/prometheus"
 	"github.com/hashicorp/raft"
 	"github.com/sorcix/irc"
 	"github.com/stapelberg/glog"
@@ -732,7 +733,7 @@ func main() {
 
 	// We use prometheus, so hook up the metrics package (used by raft) to
 	// prometheus as well.
-	sink, err := metrics.NewPrometheusSink()
+	sink, err := metrics_prometheus.NewPrometheusSink()
 	if err != nil {
 		log.Fatal(err)
 	}
