@@ -11,10 +11,6 @@ before_install:
 # directories that do not contain executables (e.g. "mod_test").
 # We need to specify the bridge because it is used by the mod_test.
 install:
-  # TODO(secure): remove the following two lines once
-  # https://github.com/armon/go-metrics/pull/7 is merged.
-  - go get -d github.com/armon/go-metrics
-  - sed -i 's/^\s*return \(strings.Replace.*\)/return strings.Replace(\1, "-", "_", -1)/g' $HOME/gopath/src/github.com/armon/go-metrics/prometheus.go
   - go get ./cmd/... ./ github.com/robustirc/bridge/robustirc-bridge
 
 script:
@@ -23,6 +19,6 @@ script:
   - "gofmt -l $(find . -name '*.go' | tr '\\n' ' ') >/dev/null"
   # Check whether files were not gofmt'ed.
   - "gosrc=$(find . -name '*.go' | tr '\\n' ' '); [ $(gofmt -l $gosrc 2>&- | wc -l) -eq 0 ] || (echo 'gofmt was not run on these files:'; gofmt -l $gosrc 2>&-; false)"
-  - go vet github.com/robustirc/robustirc/...
+  - go vet ./...
 
 after_failure: head -500 /tmp/robustirc*/stderr.txt
