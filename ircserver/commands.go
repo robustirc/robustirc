@@ -164,7 +164,7 @@ func multipleChannels(targets string) map[lcChan]bool {
 }
 
 func anyChanInChannels(needles, haystack map[lcChan]bool) bool {
-	for needle, _ := range needles {
+	for needle := range needles {
 		if haystack[needle] {
 			return true
 		}
@@ -174,13 +174,13 @@ func anyChanInChannels(needles, haystack map[lcChan]bool) bool {
 
 func (i *IRCServer) cmdPing(s *Session, msg *irc.Message) []*irc.Message {
 	if len(msg.Params) < 1 {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOORIGIN,
 			Params:   []string{s.Nick},
 			Trailing: "No origin specified",
 		}}
 	}
-	return []*irc.Message{&irc.Message{
+	return []*irc.Message{{
 		Command: irc.PONG,
 		Params:  []string{msg.Params[0]},
 	}}
@@ -345,9 +345,9 @@ func (i *IRCServer) interestNick(sessionid types.RobustId, msg *irc.Message) map
 
 	result[i.nicks[NickToLower(msg.Trailing)].Id.Id] = true
 
-	for channelname, _ := range s.Channels {
+	for channelname := range s.Channels {
 		channel := i.channels[channelname]
-		for nick, _ := range channel.nicks {
+		for nick := range channel.nicks {
 			result[i.nicks[nick].Id.Id] = true
 		}
 	}
@@ -359,14 +359,14 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 	oldPrefix := s.ircPrefix
 
 	if len(msg.Params) < 1 {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NONICKNAMEGIVEN,
 			Trailing: "No nickname given",
 		}}
 	}
 
 	if !IsValidNickname(msg.Params[0]) {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_ERRONEUSNICKNAME,
 			Params:   []string{"*", msg.Params[0]},
 			Trailing: "Erroneous nickname",
@@ -374,7 +374,7 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	if _, ok := i.nicks[NickToLower(msg.Params[0])]; ok || IsServicesNickname(msg.Params[0]) {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NICKNAMEINUSE,
 			Params:   []string{"*", msg.Params[0]},
 			Trailing: "Nickname is already in use",
@@ -396,7 +396,7 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 	}
 	s.updateIrcPrefix()
 	if oldNick != "" {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Prefix:   &oldPrefix,
 			Command:  irc.NICK,
 			Trailing: msg.Params[0],
@@ -464,7 +464,7 @@ func (i *IRCServer) interestJoin(sessionid types.RobustId, msg *irc.Message) map
 	}
 
 	channel := i.channels[ChanToLower(msg.Trailing)]
-	for nick, _ := range channel.nicks {
+	for nick := range channel.nicks {
 		result[i.nicks[nick].Id.Id] = true
 	}
 
@@ -490,7 +490,7 @@ func relevantJoin(msg *irc.Message, prev, next logCursor) (bool, error) {
 			return true, nil
 		}
 		if nmsg.Command == irc.PART {
-			for channelname, _ := range multipleChannels(nmsg.Params[0]) {
+			for channelname := range multipleChannels(nmsg.Params[0]) {
 				delete(lcnames, channelname)
 			}
 			if len(lcnames) == 0 {
@@ -592,7 +592,7 @@ func (i *IRCServer) interestKick(sessionid types.RobustId, msg *irc.Message) map
 
 	channel, ok := i.channels[ChanToLower(msg.Params[0])]
 	if ok {
-		for nick, _ := range channel.nicks {
+		for nick := range channel.nicks {
 			result[i.nicks[nick].Id.Id] = true
 		}
 	}
@@ -607,7 +607,7 @@ func (i *IRCServer) cmdKick(s *Session, msg *irc.Message) []*irc.Message {
 	channelname := msg.Params[0]
 	c, ok := i.channels[ChanToLower(channelname)]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOSUCHCHANNEL,
 			Params:   []string{s.Nick, channelname},
 			Trailing: "No such nick/channel",
@@ -616,7 +616,7 @@ func (i *IRCServer) cmdKick(s *Session, msg *irc.Message) []*irc.Message {
 
 	perms, ok := c.nicks[NickToLower(s.Nick)]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOTONCHANNEL,
 			Params:   []string{s.Nick, channelname},
 			Trailing: "You're not on that channel",
@@ -624,7 +624,7 @@ func (i *IRCServer) cmdKick(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	if !perms[chanop] {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_CHANOPRIVSNEEDED,
 			Params:   []string{s.Nick, channelname},
 			Trailing: "You're not channel operator",
@@ -632,7 +632,7 @@ func (i *IRCServer) cmdKick(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	if _, ok := c.nicks[NickToLower(msg.Params[1])]; !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_USERNOTINCHANNEL,
 			Params:   []string{s.Nick, msg.Params[1], channelname},
 			Trailing: "They aren't on that channel",
@@ -646,7 +646,7 @@ func (i *IRCServer) cmdKick(s *Session, msg *irc.Message) []*irc.Message {
 	delete(c.nicks, NickToLower(msg.Params[1]))
 	i.maybeDeleteChannel(c)
 	delete(session.Channels, ChanToLower(channelname))
-	return []*irc.Message{&irc.Message{
+	return []*irc.Message{{
 		Prefix:   &s.ircPrefix,
 		Command:  irc.KICK,
 		Params:   []string{msg.Params[0], msg.Params[1]},
@@ -663,7 +663,7 @@ func (i *IRCServer) interestPart(sessionid types.RobustId, msg *irc.Message) map
 
 	channel, ok := i.channels[ChanToLower(msg.Params[0])]
 	if ok {
-		for nick, _ := range channel.nicks {
+		for nick := range channel.nicks {
 			result[i.nicks[nick].Id.Id] = true
 		}
 	}
@@ -743,7 +743,7 @@ func (i *IRCServer) interestQuit(sessionid types.RobustId, msg *irc.Message) map
 
 	s := i.sessions[sessionid]
 
-	for channelname, _ := range s.Channels {
+	for channelname := range s.Channels {
 		channel, ok := i.channels[channelname]
 		// If the channel does not exist anymore, it was deleted with this QUIT
 		// message, so there cannot be anyone else in there to receive our
@@ -751,7 +751,7 @@ func (i *IRCServer) interestQuit(sessionid types.RobustId, msg *irc.Message) map
 		if !ok {
 			continue
 		}
-		for nick, _ := range channel.nicks {
+		for nick := range channel.nicks {
 			result[i.nicks[nick].Id.Id] = true
 		}
 	}
@@ -804,7 +804,7 @@ func (i *IRCServer) interestPrivmsg(sessionid types.RobustId, msg *irc.Message) 
 
 	prefixnick := NickToLower(msg.Prefix.Name)
 
-	for nick, _ := range channel.nicks {
+	for nick := range channel.nicks {
 		session := i.nicks[nick].Id
 		// Senders do not see their own messages.
 		if nick == prefixnick {
@@ -818,7 +818,7 @@ func (i *IRCServer) interestPrivmsg(sessionid types.RobustId, msg *irc.Message) 
 
 func (i *IRCServer) cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 	if len(msg.Params) < 1 {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NORECIPIENT,
 			Params:   []string{s.Nick},
 			Trailing: "No recipient given (PRIVMSG)",
@@ -826,7 +826,7 @@ func (i *IRCServer) cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	if msg.Trailing == "" {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOTEXTTOSEND,
 			Params:   []string{s.Nick},
 			Trailing: "No text to send",
@@ -835,13 +835,13 @@ func (i *IRCServer) cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 
 	if strings.HasPrefix(msg.Params[0], "#") {
 		if _, ok := i.channels[ChanToLower(msg.Params[0])]; !ok {
-			return []*irc.Message{&irc.Message{
+			return []*irc.Message{{
 				Command:  irc.ERR_NOSUCHCHANNEL,
 				Params:   []string{s.Nick, msg.Params[0]},
 				Trailing: "No such channel",
 			}}
 		}
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Prefix:   &s.ircPrefix,
 			Command:  msg.Command,
 			Params:   []string{msg.Params[0]},
@@ -851,7 +851,7 @@ func (i *IRCServer) cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 
 	session, ok := i.nicks[NickToLower(msg.Params[0])]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOSUCHNICK,
 			Params:   []string{s.Nick, msg.Params[0]},
 			Trailing: "No such nick/channel",
@@ -897,7 +897,7 @@ func (i *IRCServer) interestMode(sessionid types.RobustId, msg *irc.Message) map
 		return result
 	}
 
-	for nick, _ := range channel.nicks {
+	for nick := range channel.nicks {
 		result[i.nicks[nick].Id.Id] = true
 	}
 
@@ -918,7 +918,7 @@ func (i *IRCServer) cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 		// UnrealIRCD is to silently ignore query-modes (like b) when combined
 		// with any other mode, even if it’s another query mode (like e).
 		if modestr == "+b" {
-			return []*irc.Message{&irc.Message{
+			return []*irc.Message{{
 				Command:  irc.RPL_ENDOFBANLIST,
 				Params:   []string{s.Nick, channelname},
 				Trailing: "End of Channel Ban List",
@@ -926,7 +926,7 @@ func (i *IRCServer) cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 		}
 		if strings.HasPrefix(modestr, "+") || strings.HasPrefix(modestr, "-") {
 			if !c.nicks[NickToLower(s.Nick)][chanop] && !s.Operator {
-				return []*irc.Message{&irc.Message{
+				return []*irc.Message{{
 					Command:  irc.ERR_CHANOPRIVSNEEDED,
 					Params:   []string{s.Nick, channelname},
 					Trailing: "You're not channel operator",
@@ -981,7 +981,7 @@ func (i *IRCServer) cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 			return replies
 		}
 		if len(msg.Params) > 1 && msg.Params[1] == "b" {
-			return []*irc.Message{&irc.Message{
+			return []*irc.Message{{
 				Command:  irc.RPL_ENDOFBANLIST,
 				Params:   []string{s.Nick, channelname},
 				Trailing: "End of Channel Ban List",
@@ -993,7 +993,7 @@ func (i *IRCServer) cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 					modestr += string(mode)
 				}
 			}
-			return []*irc.Message{&irc.Message{
+			return []*irc.Message{{
 				Command: irc.RPL_CHANNELMODEIS,
 				Params:  []string{s.Nick, channelname, modestr},
 			}}
@@ -1006,14 +1006,14 @@ func (i *IRCServer) cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 					modestr += string(mode)
 				}
 			}
-			return []*irc.Message{&irc.Message{
+			return []*irc.Message{{
 				Prefix:   &s.ircPrefix,
 				Command:  irc.MODE,
 				Params:   []string{s.Nick},
 				Trailing: modestr,
 			}}
 		} else {
-			return []*irc.Message{&irc.Message{
+			return []*irc.Message{{
 				Command:  irc.ERR_NOTONCHANNEL,
 				Params:   []string{s.Nick, channelname},
 				Trailing: "You're not on that channel",
@@ -1024,7 +1024,7 @@ func (i *IRCServer) cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 
 func (i *IRCServer) cmdWho(s *Session, msg *irc.Message) []*irc.Message {
 	if len(msg.Params) < 1 {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.RPL_ENDOFWHO,
 			Params:   []string{s.Nick},
 			Trailing: "End of /WHO list",
@@ -1053,7 +1053,7 @@ func (i *IRCServer) cmdWho(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	nicks := make([]string, 0, len(c.nicks))
-	for nick, _ := range c.nicks {
+	for nick := range c.nicks {
 		nicks = append(nicks, i.nicks[nick].Nick)
 	}
 
@@ -1088,7 +1088,7 @@ func (i *IRCServer) cmdOper(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	if !authenticated {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_PASSWDMISMATCH,
 			Params:   []string{s.Nick},
 			Trailing: "Password incorrect",
@@ -1106,12 +1106,12 @@ func (i *IRCServer) cmdOper(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	return []*irc.Message{
-		&irc.Message{
+		{
 			Command:  irc.RPL_YOUREOPER,
 			Params:   []string{s.Nick},
 			Trailing: "You are now an IRC operator",
 		},
-		&irc.Message{
+		{
 			Prefix:   msg.Prefix,
 			Command:  irc.MODE,
 			Params:   []string{s.Nick},
@@ -1122,7 +1122,7 @@ func (i *IRCServer) cmdOper(s *Session, msg *irc.Message) []*irc.Message {
 
 func (i *IRCServer) cmdKill(s *Session, msg *irc.Message) []*irc.Message {
 	if strings.TrimSpace(msg.Trailing) == "" {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NEEDMOREPARAMS,
 			Params:   []string{s.Nick, msg.Command},
 			Trailing: "Not enough parameters",
@@ -1130,7 +1130,7 @@ func (i *IRCServer) cmdKill(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	if !s.Operator {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOPRIVILEGES,
 			Params:   []string{s.Nick},
 			Trailing: "Permission Denied - You're not an IRC operator",
@@ -1139,7 +1139,7 @@ func (i *IRCServer) cmdKill(s *Session, msg *irc.Message) []*irc.Message {
 
 	session, ok := i.nicks[NickToLower(msg.Params[0])]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOSUCHNICK,
 			Params:   []string{s.Nick, msg.Params[0]},
 			Trailing: "No such nick/channel",
@@ -1148,7 +1148,7 @@ func (i *IRCServer) cmdKill(s *Session, msg *irc.Message) []*irc.Message {
 
 	prefix := session.ircPrefix
 	i.DeleteSession(session)
-	return []*irc.Message{&irc.Message{
+	return []*irc.Message{{
 		Prefix:   &prefix,
 		Command:  irc.QUIT,
 		Trailing: "Killed by " + s.Nick + ": " + msg.Trailing,
@@ -1158,13 +1158,13 @@ func (i *IRCServer) cmdKill(s *Session, msg *irc.Message) []*irc.Message {
 func (i *IRCServer) cmdAway(s *Session, msg *irc.Message) []*irc.Message {
 	s.AwayMsg = strings.TrimSpace(msg.Trailing)
 	if s.AwayMsg != "" {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.RPL_NOWAWAY,
 			Params:   []string{s.Nick},
 			Trailing: "You have been marked as being away",
 		}}
 	} else {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.RPL_UNAWAY,
 			Params:   []string{s.Nick},
 			Trailing: "You are no longer marked as being away",
@@ -1209,7 +1209,7 @@ func (i *IRCServer) interestTopic(sessionid types.RobustId, msg *irc.Message) ma
 	}
 
 	channel := i.channels[ChanToLower(msg.Params[0])]
-	for nick, _ := range channel.nicks {
+	for nick := range channel.nicks {
 		result[i.nicks[nick].Id.Id] = true
 	}
 
@@ -1220,7 +1220,7 @@ func (i *IRCServer) cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 	channel := msg.Params[0]
 	c, ok := i.channels[ChanToLower(channel)]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOSUCHCHANNEL,
 			Params:   []string{s.Nick, channel},
 			Trailing: "No such channel",
@@ -1234,14 +1234,14 @@ func (i *IRCServer) cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 		c.topic = ""
 
 		return []*irc.Message{
-			&irc.Message{
+			{
 				Prefix:        &s.ircPrefix,
 				Command:       irc.TOPIC,
 				Params:        []string{channel},
 				Trailing:      msg.Trailing,
 				EmptyTrailing: true,
 			},
-			&irc.Message{
+			{
 				Prefix:        &irc.Prefix{Name: s.Nick},
 				Command:       irc.TOPIC,
 				Params:        []string{channel, s.Nick, "0"},
@@ -1252,7 +1252,7 @@ func (i *IRCServer) cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	if !s.Channels[ChanToLower(channel)] {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOTONCHANNEL,
 			Params:   []string{s.Nick, channel},
 			Trailing: "You're not on that channel",
@@ -1262,7 +1262,7 @@ func (i *IRCServer) cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 	// “TOPIC”, i.e. get the topic.
 	if msg.Trailing == "" {
 		if c.topicTime.IsZero() {
-			return []*irc.Message{&irc.Message{
+			return []*irc.Message{{
 				Command:  irc.RPL_NOTOPIC,
 				Params:   []string{s.Nick, channel},
 				Trailing: "No topic is set",
@@ -1272,12 +1272,12 @@ func (i *IRCServer) cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 		// TODO(secure): if the channel is secret, return ERR_NOTONCHANNEL
 
 		return []*irc.Message{
-			&irc.Message{
+			{
 				Command:  irc.RPL_TOPIC,
 				Params:   []string{s.Nick, channel},
 				Trailing: c.topic,
 			},
-			&irc.Message{
+			{
 				// RPL_TOPICWHOTIME (ircu-specific, not in the RFC)
 				Command: "333",
 				Params:  []string{s.Nick, channel, c.topicNick, strconv.FormatInt(c.topicTime.Unix(), 10)},
@@ -1286,7 +1286,7 @@ func (i *IRCServer) cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	if c.modes['t'] && !c.nicks[NickToLower(s.Nick)][chanop] {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_CHANOPRIVSNEEDED,
 			Params:   []string{s.Nick, channel},
 			Trailing: "You're not channel operator",
@@ -1298,13 +1298,13 @@ func (i *IRCServer) cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 	c.topic = msg.Trailing
 
 	return []*irc.Message{
-		&irc.Message{
+		{
 			Prefix:   &s.ircPrefix,
 			Command:  irc.TOPIC,
 			Params:   []string{channel},
 			Trailing: msg.Trailing,
 		},
-		&irc.Message{
+		{
 			Prefix:   &irc.Prefix{Name: s.Nick},
 			Command:  irc.TOPIC,
 			Params:   []string{channel, c.topicNick, strconv.FormatInt(c.topicTime.Unix(), 10)},
@@ -1315,18 +1315,18 @@ func (i *IRCServer) cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 
 func (i *IRCServer) cmdMotd(s *Session, msg *irc.Message) []*irc.Message {
 	return []*irc.Message{
-		&irc.Message{
+		{
 			Command:  irc.RPL_MOTDSTART,
 			Params:   []string{s.Nick},
 			Trailing: "- " + i.ServerPrefix.Name + " Message of the day -",
 		},
 		// TODO(secure): make motd configurable
-		&irc.Message{
+		{
 			Command:  irc.RPL_MOTD,
 			Params:   []string{s.Nick},
 			Trailing: "- No MOTD configured yet.",
 		},
-		&irc.Message{
+		{
 			Command:  irc.RPL_ENDOFMOTD,
 			Params:   []string{s.Nick},
 			Trailing: "End of MOTD command",
@@ -1367,7 +1367,7 @@ func (i *IRCServer) cmdPass(s *Session, msg *irc.Message) []*irc.Message {
 func (i *IRCServer) cmdWhois(s *Session, msg *irc.Message) []*irc.Message {
 	session, ok := i.nicks[NickToLower(msg.Params[0])]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOSUCHNICK,
 			Params:   []string{s.Nick, msg.Params[0]},
 			Trailing: "No such nick/channel",
@@ -1383,7 +1383,7 @@ func (i *IRCServer) cmdWhois(s *Session, msg *irc.Message) []*irc.Message {
 	})
 
 	var channels []string
-	for channel, _ := range session.Channels {
+	for channel := range session.Channels {
 		var prefix string
 		c := i.channels[channel]
 		if c.modes['s'] && !s.Operator && !s.Channels[channel] {
@@ -1457,7 +1457,7 @@ func (i *IRCServer) cmdList(s *Session, msg *irc.Message) []*irc.Message {
 			}
 		}
 	} else {
-		for channel, _ := range i.channels {
+		for channel := range i.channels {
 			channels = append(channels, string(channel))
 		}
 		sort.Strings(channels)
@@ -1501,7 +1501,7 @@ func (i *IRCServer) cmdInvite(s *Session, msg *irc.Message) []*irc.Message {
 	channelname := msg.Params[1]
 	c, ok := i.channels[ChanToLower(channelname)]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOTONCHANNEL,
 			Params:   []string{s.Nick, msg.Params[1]},
 			Trailing: "You're not on that channel",
@@ -1509,21 +1509,21 @@ func (i *IRCServer) cmdInvite(s *Session, msg *irc.Message) []*irc.Message {
 	}
 	session, ok := i.nicks[NickToLower(nickname)]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOSUCHNICK,
 			Params:   []string{s.Nick, msg.Params[0]},
 			Trailing: "No such nick/channel",
 		}}
 	}
 	if _, ok := c.nicks[NickToLower(nickname)]; ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_USERONCHANNEL,
 			Params:   []string{s.Nick, session.Nick, c.name},
 			Trailing: "is already on channel",
 		}}
 	}
 	if c.modes['i'] && !c.nicks[NickToLower(s.Nick)][chanop] {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_CHANOPRIVSNEEDED,
 			Params:   []string{s.Nick, c.name},
 			Trailing: "You're not channel operator",
@@ -1574,7 +1574,7 @@ func (i *IRCServer) cmdUserhost(s *Session, msg *irc.Message) []*irc.Message {
 		}
 		userhosts = append(userhosts, fmt.Sprintf("%s=%s%s", nick, awayPrefix, session.ircPrefix.String()))
 	}
-	return []*irc.Message{&irc.Message{
+	return []*irc.Message{{
 		Command:       irc.RPL_USERHOST,
 		Params:        []string{s.Nick},
 		Trailing:      strings.Join(userhosts, " "),

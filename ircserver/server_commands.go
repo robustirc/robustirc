@@ -55,7 +55,7 @@ func servicesPrefix(prefix *irc.Prefix) *irc.Prefix {
 }
 
 func (i *IRCServer) unknownCmd(s *Session, msg *irc.Message) []*irc.Message {
-	return []*irc.Message{&irc.Message{
+	return []*irc.Message{{
 		Prefix:   i.ServerPrefix,
 		Command:  irc.ERR_UNKNOWNCOMMAND,
 		Params:   []string{s.Nick, msg.Command},
@@ -78,7 +78,7 @@ func (i *IRCServer) cmdServerKick(s *Session, msg *irc.Message) []*irc.Message {
 	channelname := msg.Params[0]
 	c, ok := i.channels[ChanToLower(channelname)]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOSUCHCHANNEL,
 			Params:   []string{"*", channelname},
 			Trailing: "No such nick/channel",
@@ -86,7 +86,7 @@ func (i *IRCServer) cmdServerKick(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	if _, ok := c.nicks[NickToLower(msg.Params[1])]; !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_USERNOTINCHANNEL,
 			Params:   []string{"*", msg.Params[1], channelname},
 			Trailing: "They aren't on that channel",
@@ -100,7 +100,7 @@ func (i *IRCServer) cmdServerKick(s *Session, msg *irc.Message) []*irc.Message {
 	delete(c.nicks, NickToLower(msg.Params[1]))
 	i.maybeDeleteChannel(c)
 	delete(session.Channels, ChanToLower(channelname))
-	return []*irc.Message{&irc.Message{
+	return []*irc.Message{{
 		Prefix: &irc.Prefix{
 			Name: msg.Prefix.Name,
 			User: "services",
@@ -114,7 +114,7 @@ func (i *IRCServer) cmdServerKick(s *Session, msg *irc.Message) []*irc.Message {
 
 func (i *IRCServer) cmdServerKill(s *Session, msg *irc.Message) []*irc.Message {
 	if strings.TrimSpace(msg.Trailing) == "" {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NEEDMOREPARAMS,
 			Params:   []string{"*", msg.Command},
 			Trailing: "Not enough parameters",
@@ -123,7 +123,7 @@ func (i *IRCServer) cmdServerKill(s *Session, msg *irc.Message) []*irc.Message {
 
 	session, ok := i.nicks[NickToLower(msg.Params[0])]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOSUCHNICK,
 			Params:   []string{"*", msg.Params[0]},
 			Trailing: "No such nick/channel",
@@ -131,7 +131,7 @@ func (i *IRCServer) cmdServerKill(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	i.DeleteSession(session)
-	return []*irc.Message{&irc.Message{
+	return []*irc.Message{{
 		Prefix:   &session.ircPrefix,
 		Command:  irc.QUIT,
 		Trailing: "Killed: " + msg.Trailing,
@@ -166,7 +166,7 @@ func (i *IRCServer) cmdServerQuit(s *Session, msg *irc.Message) []*irc.Message {
 			continue
 		}
 		i.DeleteSession(session)
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Prefix:   &session.ircPrefix,
 			Command:  irc.QUIT,
 			Trailing: msg.Trailing,
@@ -186,7 +186,7 @@ func (i *IRCServer) cmdServerNick(s *Session, msg *irc.Message) []*irc.Message {
 	}
 
 	if _, ok := i.nicks[NickToLower(msg.Params[0])]; ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NICKNAMEINUSE,
 			Params:   []string{"*", msg.Params[0]},
 			Trailing: "Nickname is already in use",
@@ -215,7 +215,7 @@ func (i *IRCServer) cmdServerMode(s *Session, msg *irc.Message) []*irc.Message {
 	// TODO(secure): properly distinguish between users and channels
 	c, ok := i.channels[ChanToLower(channelname)]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOSUCHCHANNEL,
 			Params:   []string{msg.Prefix.Name, msg.Params[0]},
 			Trailing: "No such nick/channel",
@@ -228,7 +228,7 @@ func (i *IRCServer) cmdServerMode(s *Session, msg *irc.Message) []*irc.Message {
 		modestr = msg.Params[1]
 	}
 	if !strings.HasPrefix(modestr, "+") && !strings.HasPrefix(modestr, "-") {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_UNKNOWNMODE,
 			Params:   []string{msg.Prefix.Name, modestr},
 			Trailing: "is unknown mode char to me",
@@ -291,7 +291,7 @@ func (i *IRCServer) cmdServer(s *Session, msg *irc.Message) []*irc.Message {
 		}
 	}
 	if !authenticated {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Prefix:   &irc.Prefix{},
 			Command:  irc.ERROR,
 			Trailing: "Invalid password",
@@ -302,7 +302,7 @@ func (i *IRCServer) cmdServer(s *Session, msg *irc.Message) []*irc.Message {
 		Name: msg.Params[0],
 	}
 	i.serverSessions = append(i.serverSessions, s.Id.Id)
-	replies := []*irc.Message{&irc.Message{
+	replies := []*irc.Message{{
 		Prefix:  &irc.Prefix{},
 		Command: "SERVER",
 		Params: []string{
@@ -312,7 +312,7 @@ func (i *IRCServer) cmdServer(s *Session, msg *irc.Message) []*irc.Message {
 		},
 	}}
 	nicks := make([]string, 0, len(i.nicks))
-	for nick, _ := range i.nicks {
+	for nick := range i.nicks {
 		nicks = append(nicks, string(nick))
 	}
 	sort.Strings(nicks)
@@ -368,7 +368,7 @@ func (i *IRCServer) cmdServer(s *Session, msg *irc.Message) []*irc.Message {
 func (i *IRCServer) cmdServerSvsmode(s *Session, msg *irc.Message) []*irc.Message {
 	session, ok := i.nicks[NickToLower(msg.Params[0])]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOSUCHNICK,
 			Params:   []string{"*", msg.Params[0]},
 			Trailing: "No such nick/channel",
@@ -376,7 +376,7 @@ func (i *IRCServer) cmdServerSvsmode(s *Session, msg *irc.Message) []*irc.Messag
 	}
 	modestr := msg.Params[1]
 	if !strings.HasPrefix(modestr, "+") && !strings.HasPrefix(modestr, "-") {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_UMODEUNKNOWNFLAG,
 			Params:   []string{"*"},
 			Trailing: "Unknown MODE flag",
@@ -425,7 +425,7 @@ func (i *IRCServer) cmdServerSvsmode(s *Session, msg *irc.Message) []*irc.Messag
 func (i *IRCServer) cmdServerSvsnick(s *Session, msg *irc.Message) []*irc.Message {
 	// e.g. “SVSNICK blArgh Guest30503 :1425036445”
 	if !IsValidNickname(msg.Params[1]) {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_ERRONEUSNICKNAME,
 			Params:   []string{"*", msg.Params[1]},
 			Trailing: "Erroneous nickname",
@@ -434,7 +434,7 @@ func (i *IRCServer) cmdServerSvsnick(s *Session, msg *irc.Message) []*irc.Messag
 
 	session, ok := i.nicks[NickToLower(msg.Params[0])]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOSUCHNICK,
 			Params:   []string{"*", msg.Params[0]},
 			Trailing: "No such nick/channel",
@@ -454,7 +454,7 @@ func (i *IRCServer) cmdServerSvsnick(s *Session, msg *irc.Message) []*irc.Messag
 		delete(c.nicks, oldNick)
 	}
 	session.updateIrcPrefix()
-	return []*irc.Message{&irc.Message{
+	return []*irc.Message{{
 		Prefix:   &oldPrefix,
 		Command:  irc.NICK,
 		Trailing: session.Nick,
@@ -543,7 +543,7 @@ func (i *IRCServer) cmdServerTopic(s *Session, msg *irc.Message) []*irc.Message 
 	channel := msg.Params[0]
 	c, ok := i.channels[ChanToLower(channel)]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOSUCHCHANNEL,
 			Params:   []string{msg.Prefix.Name, channel},
 			Trailing: "No such channel",
@@ -555,7 +555,7 @@ func (i *IRCServer) cmdServerTopic(s *Session, msg *irc.Message) []*irc.Message 
 		c.topicNick = ""
 		c.topicTime = time.Time{}
 		c.topic = ""
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Prefix:        servicesPrefix(msg.Prefix),
 			Command:       irc.TOPIC,
 			Params:        []string{channel},
@@ -566,7 +566,7 @@ func (i *IRCServer) cmdServerTopic(s *Session, msg *irc.Message) []*irc.Message 
 
 	ts, err := strconv.ParseInt(msg.Params[2], 0, 64)
 	if err != nil {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NEEDMOREPARAMS,
 			Params:   []string{"*", channel},
 			Trailing: fmt.Sprintf("Could not parse timestamp: %v", err),
@@ -577,7 +577,7 @@ func (i *IRCServer) cmdServerTopic(s *Session, msg *irc.Message) []*irc.Message 
 	c.topicTime = time.Unix(ts, 0)
 	c.topic = msg.Trailing
 
-	return []*irc.Message{&irc.Message{
+	return []*irc.Message{{
 		Prefix:   servicesPrefix(msg.Prefix),
 		Command:  irc.TOPIC,
 		Params:   []string{channel},
@@ -589,7 +589,7 @@ func (i *IRCServer) cmdServerTopic(s *Session, msg *irc.Message) []*irc.Message 
 // TODO(secure): refactor this with cmdPrivmsg possibly?
 func (i *IRCServer) cmdServerPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 	if len(msg.Params) < 1 {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NORECIPIENT,
 			Params:   []string{msg.Prefix.Name},
 			Trailing: fmt.Sprintf("No recipient given (%s)", msg.Command),
@@ -597,7 +597,7 @@ func (i *IRCServer) cmdServerPrivmsg(s *Session, msg *irc.Message) []*irc.Messag
 	}
 
 	if msg.Trailing == "" {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOTEXTTOSEND,
 			Params:   []string{msg.Prefix.Name},
 			Trailing: "No text to send",
@@ -605,7 +605,7 @@ func (i *IRCServer) cmdServerPrivmsg(s *Session, msg *irc.Message) []*irc.Messag
 	}
 
 	if strings.HasPrefix(msg.Params[0], "#") {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Prefix:   servicesPrefix(msg.Prefix),
 			Command:  msg.Command,
 			Params:   []string{msg.Params[0]},
@@ -614,7 +614,7 @@ func (i *IRCServer) cmdServerPrivmsg(s *Session, msg *irc.Message) []*irc.Messag
 	}
 
 	if _, ok := i.nicks[NickToLower(msg.Params[0])]; !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOSUCHNICK,
 			Params:   []string{msg.Prefix.Name, msg.Params[0]},
 			Trailing: "No such nick/channel",
@@ -641,7 +641,7 @@ func (i *IRCServer) cmdServerInvite(s *Session, msg *irc.Message) []*irc.Message
 
 	session, ok := i.nicks[NickToLower(nickname)]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOSUCHNICK,
 			Params:   []string{msg.Prefix.Name, msg.Params[0]},
 			Trailing: "No such nick/channel",
@@ -650,7 +650,7 @@ func (i *IRCServer) cmdServerInvite(s *Session, msg *irc.Message) []*irc.Message
 
 	c, ok := i.channels[ChanToLower(channelname)]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_NOSUCHCHANNEL,
 			Params:   []string{msg.Prefix.Name, msg.Params[1]},
 			Trailing: "No such channel",
@@ -658,7 +658,7 @@ func (i *IRCServer) cmdServerInvite(s *Session, msg *irc.Message) []*irc.Message
 	}
 
 	if _, ok := c.nicks[NickToLower(nickname)]; ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Command:  irc.ERR_USERONCHANNEL,
 			Params:   []string{msg.Prefix.Name, session.Nick, c.name},
 			Trailing: "is already on channel",

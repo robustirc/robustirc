@@ -10,7 +10,7 @@ import (
 
 func addEmptyMsg(os *OutputStream, id, reply int64) {
 	os.Add([]*types.RobustMessage{
-		&types.RobustMessage{Id: types.RobustId{Id: id, Reply: reply}}})
+		{Id: types.RobustId{Id: id, Reply: reply}}})
 }
 
 func testBlocking(t *testing.T, os *OutputStream, lastseen types.RobustId, want types.RobustId) {
@@ -29,7 +29,7 @@ func testBlocking(t *testing.T, os *OutputStream, lastseen types.RobustId, want 
 	default:
 	}
 
-	os.Add([]*types.RobustMessage{&types.RobustMessage{Id: want}})
+	os.Add([]*types.RobustMessage{{Id: want}})
 
 	select {
 	case msgs := <-next:

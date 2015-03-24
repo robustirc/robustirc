@@ -408,7 +408,7 @@ func (i *IRCServer) ProcessMessage(session types.RobustId, message *irc.Message)
 		command != irc.PASS &&
 		command != irc.QUIT &&
 		command != irc.SERVER {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Prefix:   i.ServerPrefix,
 			Command:  irc.ERR_NOTREGISTERED,
 			Params:   []string{command},
@@ -422,7 +422,7 @@ func (i *IRCServer) ProcessMessage(session types.RobustId, message *irc.Message)
 	}
 	cmd, ok := commands[serverPrefix+command]
 	if !ok {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Prefix:   i.ServerPrefix,
 			Command:  irc.ERR_UNKNOWNCOMMAND,
 			Params:   []string{s.Nick, command},
@@ -431,7 +431,7 @@ func (i *IRCServer) ProcessMessage(session types.RobustId, message *irc.Message)
 	}
 
 	if len(message.Params) < cmd.MinParams {
-		return []*irc.Message{&irc.Message{
+		return []*irc.Message{{
 			Prefix:   i.ServerPrefix,
 			Command:  irc.ERR_NEEDMOREPARAMS,
 			Params:   []string{s.Nick, command},

@@ -358,7 +358,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	}()
 	defer func() {
 		done <- true
-		for _ = range msgschan {
+		for range msgschan {
 		}
 	}()
 	for {

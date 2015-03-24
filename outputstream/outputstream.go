@@ -97,7 +97,7 @@ func (os *OutputStream) Delete(inputId types.RobustId) {
 		// previous message to avoid blocking in GetNext() forever.
 		keys := make([]int64, len(os.messages))
 		var i int
-		for key, _ := range os.messages {
+		for key := range os.messages {
 			keys[i] = key
 			i++
 		}
@@ -145,7 +145,7 @@ func (os *OutputStream) GetNext(lastseen types.RobustId) []*types.RobustMessage 
 		// TODO: add a counter
 		keys := make([]int64, len(os.messages))
 		var i int
-		for key, _ := range os.messages {
+		for key := range os.messages {
 			keys[i] = key
 			i++
 		}
