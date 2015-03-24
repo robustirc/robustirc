@@ -22,7 +22,7 @@ var (
 		"path to write output to")
 )
 
-type CoverBlock struct {
+type coverBlock struct {
 	Stmts uint16
 	Count uint32
 }
@@ -30,7 +30,7 @@ type CoverBlock struct {
 func main() {
 	flag.Parse()
 
-	total := make(map[string]CoverBlock)
+	total := make(map[string]coverBlock)
 
 	for _, name := range strings.Split(*inputName, ",") {
 		in, err := os.Open(name)
@@ -43,7 +43,7 @@ func main() {
 		// Skip the first line, it contains “mode: count”
 		scanner.Scan()
 		for scanner.Scan() {
-			var b CoverBlock
+			var b coverBlock
 			var name string
 
 			_, err := fmt.Sscanf(scanner.Text(), "%s %d %d", &name,

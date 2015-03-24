@@ -405,9 +405,8 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 
 	if !loggedIn && s.loggedIn() {
 		return i.login(s, msg)
-	} else {
-		return []*irc.Message{}
 	}
+	return []*irc.Message{}
 }
 
 func relevantUser(msg *irc.Message, prev, next logCursor) (bool, error) {
@@ -986,40 +985,37 @@ func (i *IRCServer) cmdMode(s *Session, msg *irc.Message) []*irc.Message {
 				Params:   []string{s.Nick, channelname},
 				Trailing: "End of Channel Ban List",
 			}}
-		} else {
-			modestr := "+"
-			for mode := 'A'; mode < 'z'; mode++ {
-				if c.modes[mode] {
-					modestr += string(mode)
-				}
-			}
-			return []*irc.Message{{
-				Command: irc.RPL_CHANNELMODEIS,
-				Params:  []string{s.Nick, channelname, modestr},
-			}}
 		}
-	} else {
-		if NickToLower(channelname) == NickToLower(s.Nick) {
-			modestr := "+"
-			for mode := 'A'; mode < 'z'; mode++ {
-				if s.modes[mode] {
-					modestr += string(mode)
-				}
+		modestr = "+"
+		for mode := 'A'; mode < 'z'; mode++ {
+			if c.modes[mode] {
+				modestr += string(mode)
 			}
-			return []*irc.Message{{
-				Prefix:   &s.ircPrefix,
-				Command:  irc.MODE,
-				Params:   []string{s.Nick},
-				Trailing: modestr,
-			}}
-		} else {
-			return []*irc.Message{{
-				Command:  irc.ERR_NOTONCHANNEL,
-				Params:   []string{s.Nick, channelname},
-				Trailing: "You're not on that channel",
-			}}
 		}
+		return []*irc.Message{{
+			Command: irc.RPL_CHANNELMODEIS,
+			Params:  []string{s.Nick, channelname, modestr},
+		}}
 	}
+	if NickToLower(channelname) == NickToLower(s.Nick) {
+		modestr := "+"
+		for mode := 'A'; mode < 'z'; mode++ {
+			if s.modes[mode] {
+				modestr += string(mode)
+			}
+		}
+		return []*irc.Message{{
+			Prefix:   &s.ircPrefix,
+			Command:  irc.MODE,
+			Params:   []string{s.Nick},
+			Trailing: modestr,
+		}}
+	}
+	return []*irc.Message{{
+		Command:  irc.ERR_NOTONCHANNEL,
+		Params:   []string{s.Nick, channelname},
+		Trailing: "You're not on that channel",
+	}}
 }
 
 func (i *IRCServer) cmdWho(s *Session, msg *irc.Message) []*irc.Message {
@@ -1163,13 +1159,12 @@ func (i *IRCServer) cmdAway(s *Session, msg *irc.Message) []*irc.Message {
 			Params:   []string{s.Nick},
 			Trailing: "You have been marked as being away",
 		}}
-	} else {
-		return []*irc.Message{{
-			Command:  irc.RPL_UNAWAY,
-			Params:   []string{s.Nick},
-			Trailing: "You are no longer marked as being away",
-		}}
 	}
+	return []*irc.Message{{
+		Command:  irc.RPL_UNAWAY,
+		Params:   []string{s.Nick},
+		Trailing: "You are no longer marked as being away",
+	}}
 }
 
 func relevantTopic(msg *irc.Message, prev, next logCursor) (bool, error) {

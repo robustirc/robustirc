@@ -297,7 +297,7 @@ func (l *localnet) StartBridge() {
 	}
 }
 
-func (l *localnet) Kill(delete_tempdirs bool) {
+func (l *localnet) Kill(deleteTempdirs bool) {
 	pidsFile := filepath.Join(l.dir, "pids")
 	if _, err := os.Stat(pidsFile); os.IsNotExist(err) {
 		log.Panicf("-stop specified, but no localnet instance found in -localnet_dir=%q", l.dir)
@@ -329,7 +329,7 @@ func (l *localnet) Kill(delete_tempdirs bool) {
 
 	os.Remove(pidsFile)
 
-	if !delete_tempdirs {
+	if !deleteTempdirs {
 		return
 	}
 

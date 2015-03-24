@@ -84,10 +84,10 @@ func TestCompaction(t *testing.T) {
 	logs = appendLog(logs, `{"Id": {"Id": 9}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #i3"}`)
 
 	// These messages are too new to be compacted.
-	nowId := time.Now().UnixNano()
-	logs = appendLog(logs, `{"Id": {"Id": `+strconv.FormatInt(nowId, 10)+`}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #chaos-hd"}`)
-	nowId += 1
-	logs = appendLog(logs, `{"Id": {"Id": `+strconv.FormatInt(nowId, 10)+`}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`)
+	nowID := time.Now().UnixNano()
+	logs = appendLog(logs, `{"Id": {"Id": `+strconv.FormatInt(nowID, 10)+`}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #chaos-hd"}`)
+	nowID++
+	logs = appendLog(logs, `{"Id": {"Id": `+strconv.FormatInt(nowID, 10)+`}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`)
 
 	if err := logstore.StoreLogs(logs); err != nil {
 		t.Fatalf("Unexpected error in store.StoreLogs: %v", err)

@@ -44,11 +44,11 @@ var (
 	validNickRe    = regexp.MustCompile(`^[` + letter + special + `][` + letter + digit + special + `-]{0,` + maxNickLen + `}$`)
 	validChannelRe = regexp.MustCompile(`^#[` + chanstring + `]{0,` + maxChannelLen + `}$`)
 
-	// The session was not (yet?) seen on this follower. We cannot say with
-	// confidence that it does not exist.
+	// ErrSessionNotYetSeen is returned when the session was not (yet?) seen on
+	// this follower. We cannot say with confidence that it does not exist.
 	ErrSessionNotYetSeen = errors.New("Session not yet seen")
 
-	// The session definitely does not exist.
+	// ErrNoSuchSession is returned when the session definitely does not exist.
 	ErrNoSuchSession = errors.New("No such session")
 
 	// CursorEOF is returned by a logCursor when there are no more messages.

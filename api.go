@@ -29,6 +29,8 @@ import (
 )
 
 var (
+	// GetMessageRequests contains information about each GetMessages request
+	// to be exposed on the HTTP status handler.
 	GetMessageRequests    = make(map[string]GetMessageStats)
 	getMessagesRequestsMu sync.Mutex
 
@@ -45,12 +47,15 @@ var (
 	nodeProxiesMu sync.RWMutex
 )
 
+// GetMessageStats encapsulates information about a GetMessages request.
 type GetMessageStats struct {
 	Session types.RobustId
 	Nick    string
 	Started time.Time
 }
 
+// StartedAndRelative converts |stats.Started| into a human-readable formatted
+// time, followed by a relative time specification.
 func (stats GetMessageStats) StartedAndRelative() string {
 	return stats.Started.Format("2006-01-02 15:04:05 -07:00") + " (" +
 		time.Now().Round(time.Second).Sub(stats.Started.Round(time.Second)).String() + " ago)"

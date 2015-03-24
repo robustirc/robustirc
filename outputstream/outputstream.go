@@ -25,9 +25,9 @@ func (p int64Slice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 type messageBatch struct {
 	Messages []*types.RobustMessage
 
-	// nextId is the id of the next message, or math.MaxInt64 if there is no
+	// nextID is the id of the next message, or math.MaxInt64 if there is no
 	// next message yet.
-	nextId int64
+	nextID int64
 }
 
 type OutputStream struct {
@@ -55,7 +55,7 @@ func (os *OutputStream) Reset() {
 	defer os.messagesMu.Unlock()
 
 	os.messages = make(map[int64]*messageBatch)
-	os.lastseen = &messageBatch{nextId: math.MaxInt64}
+	os.lastseen = &messageBatch{nextID: math.MaxInt64}
 	os.messages[0] = os.lastseen
 }
 
@@ -64,10 +64,10 @@ func (os *OutputStream) Reset() {
 func (os *OutputStream) Add(msgs []*types.RobustMessage) {
 	os.messagesMu.Lock()
 	defer os.messagesMu.Unlock()
-	os.lastseen.nextId = msgs[0].Id.Id
+	os.lastseen.nextID = msgs[0].Id.Id
 	os.lastseen = &messageBatch{
 		Messages: msgs,
-		nextId:   math.MaxInt64,
+		nextID:   math.MaxInt64,
 	}
 	os.messages[msgs[0].Id.Id] = os.lastseen
 	os.newMessage.Broadcast()
@@ -78,17 +78,16 @@ func (os *OutputStream) LastSeen() types.RobustId {
 	defer os.messagesMu.RUnlock()
 	if len(os.lastseen.Messages) > 0 {
 		return os.lastseen.Messages[0].Id
-	} else {
-		return types.RobustId{Id: 0}
 	}
+	return types.RobustId{Id: 0}
 }
 
 // Delete deletes all IRC output messages that were generated in reply to the
-// input message with inputId.
-func (os *OutputStream) Delete(inputId types.RobustId) {
+// input message with inputID.
+func (os *OutputStream) Delete(inputID types.RobustId) {
 	os.messagesMu.Lock()
 	defer os.messagesMu.Unlock()
-	if os.messages[inputId.Id] == os.lastseen {
+	if os.messages[inputID.Id] == os.lastseen {
 		if len(os.messages) == 1 {
 			// We should always have the first message (RobustId{Id: 0}).
 			log.Panicf("Delete() called on _all_ messages")
@@ -103,9 +102,9 @@ func (os *OutputStream) Delete(inputId types.RobustId) {
 		}
 		sort.Sort(int64Slice(keys))
 		os.lastseen = os.messages[keys[len(keys)-2]]
-		os.lastseen.nextId = math.MaxInt64
+		os.lastseen.nextID = math.MaxInt64
 	}
-	delete(os.messages, inputId.Id)
+	delete(os.messages, inputID.Id)
 }
 
 // GetNext returns the next IRC output message after lastseen, even if lastseen
@@ -129,13 +128,13 @@ func (os *OutputStream) GetNext(lastseen types.RobustId) []*types.RobustMessage 
 
 	os.messagesMu.RLock()
 	current, ok := os.messages[lastseen.Id]
-	if ok && current.nextId < math.MaxInt64 {
-		next, okNext := os.messages[current.nextId]
+	if ok && current.nextID < math.MaxInt64 {
+		next, okNext := os.messages[current.nextID]
 		if okNext {
 			os.messagesMu.RUnlock()
 			return next.Messages
 		}
-		// nextId points to a deleted message, fall back to binary search.
+		// nextID points to a deleted message, fall back to binary search.
 		ok = false
 	}
 
@@ -150,12 +149,12 @@ func (os *OutputStream) GetNext(lastseen types.RobustId) []*types.RobustMessage 
 			i++
 		}
 		sort.Sort(int64Slice(keys))
-		nextIdx := sort.Search(len(keys), func(i int) bool {
+		nextIDx := sort.Search(len(keys), func(i int) bool {
 			return keys[i] > lastseen.Id
 		})
 		// There is an output message which is more recent than lastseen.
-		if nextIdx < len(keys) {
-			msg := os.messages[keys[nextIdx]]
+		if nextIDx < len(keys) {
+			msg := os.messages[keys[nextIDx]]
 			os.messagesMu.RUnlock()
 			return msg.Messages
 		}
@@ -169,7 +168,7 @@ func (os *OutputStream) GetNext(lastseen types.RobustId) []*types.RobustMessage 
 	// Wait until a new message appears.
 	os.messagesMu.Lock()
 	for {
-		next, ok := os.messages[current.nextId]
+		next, ok := os.messages[current.nextID]
 		if ok {
 			os.messagesMu.Unlock()
 			return next.Messages

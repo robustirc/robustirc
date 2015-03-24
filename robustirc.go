@@ -89,9 +89,9 @@ var (
 
 	netConfig = config.DefaultConfig
 
-	executablehash string = executableHash()
+	executablehash = executableHash()
 
-	// Overwritten by Makefile.
+	// Version is overwritten by Makefile.
 	Version = "unknown"
 
 	isLeaderGauge = prometheus.NewGaugeFunc(
@@ -103,9 +103,8 @@ var (
 		func() float64 {
 			if node.State() == raft.Leader {
 				return 1
-			} else {
-				return 0
 			}
+			return 0
 		},
 	)
 

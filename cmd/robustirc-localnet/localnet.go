@@ -24,7 +24,7 @@ var (
 		false,
 		"Whether to stop the currently running localnet instead of starting a new one")
 
-	delete_tempdirs = flag.Bool("delete_tempdirs",
+	deleteTempdirs = flag.Bool("deleteTempdirs",
 		true,
 		"If false, temporary directories are left behind for manual inspection")
 
@@ -42,7 +42,7 @@ func main() {
 	}
 
 	if *stop {
-		l.Kill(*delete_tempdirs)
+		l.Kill(*deleteTempdirs)
 		return
 	}
 
@@ -57,7 +57,7 @@ func main() {
 			return
 		}
 		log.Printf("Could not successfully set up localnet, cleaning up.\n")
-		l.Kill(*delete_tempdirs)
+		l.Kill(*deleteTempdirs)
 	}()
 
 	l.StartIRCServer(true)
