@@ -571,7 +571,7 @@ func handlePostConfig(w http.ResponseWriter, r *http.Request) {
 	configMu.Lock()
 
 	if got, want := int(revision), netConfig.Revision; got != want {
-		http.Error(w, fmt.Sprintf("Revision mismatch (got %s, want %s). Try again.", got, want), http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("Revision mismatch (got %d, want %d). Try again.", got, want), http.StatusBadRequest)
 		return
 	}
 

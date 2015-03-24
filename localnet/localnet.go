@@ -384,7 +384,7 @@ func NewLocalnet(port int, dir string) (*localnet, error) {
 		var err error
 		result.NetworkPassword, err = randomPassword(20)
 		if err != nil {
-			return nil, fmt.Errorf("Could not generate password: %v")
+			return nil, fmt.Errorf("Could not generate password: %v", err)
 		}
 	}
 
