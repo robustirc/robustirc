@@ -123,6 +123,10 @@ func init() {
 		StillRelevant: neverRelevant,
 		MinParams:     1,
 	}
+	commands["NAMES"] = &ircCommand{
+		Func:          (*IRCServer).cmdNames,
+		StillRelevant: neverRelevant,
+	}
 	serviceAlias := &ircCommand{
 		Func:          (*IRCServer).cmdServiceAlias,
 		StillRelevant: neverRelevant,
@@ -539,17 +543,6 @@ func (i *IRCServer) cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 		}
 		s.Channels[ChanToLower(channelname)] = true
 
-		nicks := make([]string, 0, len(c.nicks))
-		for nick, perms := range c.nicks {
-			var prefix string
-			if perms[chanop] {
-				prefix = prefix + string('@')
-			}
-			nicks = append(nicks, prefix+i.nicks[nick].Nick)
-		}
-
-		sort.Strings(nicks)
-
 		replies = append(replies, &irc.Message{
 			Prefix:   &s.ircPrefix,
 			Command:  irc.JOIN,
@@ -566,17 +559,7 @@ func (i *IRCServer) cmdJoin(s *Session, msg *irc.Message) []*irc.Message {
 		})
 		// Integrate the topic response by simulating a TOPIC command.
 		replies = append(replies, i.cmdTopic(s, &irc.Message{Command: irc.TOPIC, Params: []string{channelname}})...)
-		// TODO(secure): why the = param?
-		replies = append(replies, &irc.Message{
-			Command:  irc.RPL_NAMREPLY,
-			Params:   []string{s.Nick, "=", channelname},
-			Trailing: strings.Join(nicks, " "),
-		})
-		replies = append(replies, &irc.Message{
-			Command:  irc.RPL_ENDOFNAMES,
-			Params:   []string{s.Nick, channelname},
-			Trailing: "End of /NAMES list.",
-		})
+		replies = append(replies, i.cmdNames(s, &irc.Message{Command: irc.NAMES, Params: []string{channelname}})...)
 	}
 
 	return replies
@@ -1600,4 +1583,39 @@ func (i *IRCServer) cmdServiceAlias(s *Session, msg *irc.Message) []*irc.Message
 	}
 	// Unreached.
 	return []*irc.Message{}
+}
+
+func (i *IRCServer) cmdNames(s *Session, msg *irc.Message) []*irc.Message {
+	if len(msg.Params) > 0 {
+		channelname := msg.Params[0]
+		if c, ok := i.channels[ChanToLower(channelname)]; ok {
+			nicks := make([]string, 0, len(c.nicks))
+			for nick, perms := range c.nicks {
+				var prefix string
+				if perms[chanop] {
+					prefix = prefix + string('@')
+				}
+				nicks = append(nicks, prefix+i.nicks[nick].Nick)
+			}
+
+			sort.Strings(nicks)
+
+			return []*irc.Message{
+				{
+					Command:  irc.RPL_NAMREPLY,
+					Params:   []string{s.Nick, "=", channelname},
+					Trailing: strings.Join(nicks, " "),
+				},
+				{
+					Command:  irc.RPL_ENDOFNAMES,
+					Params:   []string{s.Nick, channelname},
+					Trailing: "End of /NAMES list.",
+				}}
+		}
+	}
+	return []*irc.Message{{
+		Command:  irc.RPL_ENDOFNAMES,
+		Params:   []string{s.Nick, "*"},
+		Trailing: "End of /NAMES list.",
+	}}
 }

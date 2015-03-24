@@ -1436,3 +1436,21 @@ func TestServiceAliases(t *testing.T) {
 			":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad "+expanded+"IDENTIFY foobar baz")
 	}
 }
+
+func TestNames(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(ids["xeen"], irc.ParseMessage("JOIN #test"))
+
+	mustMatchMsg(t,
+		i.ProcessMessage(ids["secure"], irc.ParseMessage("NAMES")),
+		":robustirc.net 366 sECuRE * :End of /NAMES list.")
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["secure"], irc.ParseMessage("NAMES #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 353 sECuRE = #test :@sECuRE xeen"),
+			irc.ParseMessage(":robustirc.net 366 sECuRE #test :End of /NAMES list."),
+		})
+}
