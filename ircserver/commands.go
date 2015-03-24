@@ -127,6 +127,11 @@ func init() {
 		Func:          (*IRCServer).cmdNames,
 		StillRelevant: neverRelevant,
 	}
+	commands["KNOCK"] = &ircCommand{
+		Func:          (*IRCServer).cmdKnock,
+		StillRelevant: neverRelevant,
+		MinParams:     1,
+	}
 	serviceAlias := &ircCommand{
 		Func:          (*IRCServer).cmdServiceAlias,
 		StillRelevant: neverRelevant,
@@ -221,7 +226,9 @@ func (i *IRCServer) login(s *Session, msg *irc.Message) []*irc.Message {
 		Trailing: i.ServerPrefix.Name + " v1 i nst",
 	})
 
-	// send ISUPPORT as per http://www.irc.org/tech_docs/draft-brocklesby-irc-isupport-03.txt
+	// send ISUPPORT as per:
+	// http://www.irc.org/tech_docs/draft-brocklesby-irc-isupport-03.txt
+	// http://www.irc.org/tech_docs/005.html
 	replies = append(replies, &irc.Message{
 		Command: "005",
 		Params: []string{
@@ -230,6 +237,7 @@ func (i *IRCServer) login(s *Session, msg *irc.Message) []*irc.Message {
 			"NICKLEN=" + maxNickLen,
 			"MODES=1",
 			"PREFIX=(o)@",
+			"KNOCK",
 		},
 		Trailing: "are supported by this server",
 	})
@@ -1618,4 +1626,44 @@ func (i *IRCServer) cmdNames(s *Session, msg *irc.Message) []*irc.Message {
 		Params:   []string{s.Nick, "*"},
 		Trailing: "End of /NAMES list.",
 	}}
+}
+
+func (i *IRCServer) cmdKnock(s *Session, msg *irc.Message) []*irc.Message {
+	channelname := msg.Params[0]
+	c, ok := i.channels[ChanToLower(channelname)]
+	if !ok {
+		return []*irc.Message{{
+			Command:  "480",
+			Params:   []string{s.Nick},
+			Trailing: fmt.Sprintf("Cannot knock on %s (Channel does not exist)", channelname),
+		}}
+	}
+
+	if !c.modes['i'] {
+		return []*irc.Message{{
+			Command:  "480",
+			Params:   []string{s.Nick},
+			Trailing: fmt.Sprintf("Cannot knock on %s (Channel is not invite only)", channelname),
+		}}
+	}
+
+	reason := "no reason specified"
+	if len(msg.Params) > 1 {
+		reason = strings.Join(msg.Params[1:], " ")
+	}
+	if msg.Trailing != "" {
+		reason = msg.Trailing
+	}
+
+	return []*irc.Message{
+		{
+			Command:  irc.NOTICE,
+			Params:   []string{c.name},
+			Trailing: fmt.Sprintf("[Knock] by %s (%s)", s.ircPrefix.String(), reason),
+		},
+		{
+			Command:  irc.NOTICE,
+			Params:   []string{s.Nick},
+			Trailing: fmt.Sprintf("Knocked on %s", c.name),
+		}}
 }
