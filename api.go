@@ -144,7 +144,7 @@ func sessionOrProxy(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 	return sessionid, err
 }
 
-// handlePostMessage is called by the robustirc-brigde whenever a message should be
+// handlePostMessage is called by the robustirc-bridge whenever a message should be
 // posted. The handler blocks until either the data was written or an error
 // occurred. If successful, it returns the unique id of the message.
 func handlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {

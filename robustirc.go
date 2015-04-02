@@ -592,6 +592,42 @@ func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
 	return tc, nil
 }
 
+// exitOnRecover is used to circumvent the recover handler that net/http
+// installs. We need to exit in order to get restarted by the init
+// system/supervisor and get into a clean state again.
+func exitOnRecover() {
+	if r := recover(); r != nil {
+		// This mimics go/src/net/http/server.go.
+		const size = 64 << 10
+		buf := make([]byte, size)
+		buf = buf[:runtime.Stack(buf, false)]
+		glog.Errorf("http: panic serving: %v\n%s", r, buf)
+		glog.Flush()
+		os.Exit(1)
+	}
+}
+
+func exitOnRecoverHandleFunc(h func(http.ResponseWriter, *http.Request)) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer exitOnRecover()
+		h(w, r)
+	})
+}
+
+func exitOnRecoverHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer exitOnRecover()
+		h.ServeHTTP(w, r)
+	})
+}
+
+func exitOnRecoverHandle(h httprouter.Handle) httprouter.Handle {
+	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+		defer exitOnRecover()
+		h(w, r, ps)
+	}
+}
+
 func printDefault(f *flag.Flag) {
 	format := "  -%s=%s: %s\n"
 	if getter, ok := f.Value.(flag.Getter); ok {
@@ -759,23 +795,23 @@ func main() {
 	}
 
 	privaterouter := httprouter.New()
-	privaterouter.HandlerFunc("GET", "/", handleStatus)
-	privaterouter.HandlerFunc("GET", "/irclog", handleIrclog)
-	privaterouter.Handler("POST", "/raft/*rest", transport)
-	privaterouter.HandlerFunc("POST", "/join", handleJoin)
-	privaterouter.HandlerFunc("GET", "/snapshot", handleSnapshot)
-	privaterouter.HandlerFunc("GET", "/leader", handleLeader)
-	privaterouter.HandlerFunc("GET", "/canarylog", handleCanaryLog)
-	privaterouter.HandlerFunc("POST", "/quit", handleQuit)
-	privaterouter.HandlerFunc("GET", "/config", handleGetConfig)
-	privaterouter.HandlerFunc("POST", "/config", handlePostConfig)
-	privaterouter.Handler("GET", "/metrics", prometheus.Handler())
+	privaterouter.Handler("GET", "/", exitOnRecoverHandleFunc(handleStatus))
+	privaterouter.Handler("GET", "/irclog", exitOnRecoverHandleFunc(handleIrclog))
+	privaterouter.Handler("POST", "/raft/*rest", exitOnRecoverHandler(transport))
+	privaterouter.Handler("POST", "/join", exitOnRecoverHandleFunc(handleJoin))
+	privaterouter.Handler("GET", "/snapshot", exitOnRecoverHandleFunc(handleSnapshot))
+	privaterouter.Handler("GET", "/leader", exitOnRecoverHandleFunc(handleLeader))
+	privaterouter.Handler("GET", "/canarylog", exitOnRecoverHandleFunc(handleCanaryLog))
+	privaterouter.Handler("POST", "/quit", exitOnRecoverHandleFunc(handleQuit))
+	privaterouter.Handler("GET", "/config", exitOnRecoverHandleFunc(handleGetConfig))
+	privaterouter.Handler("POST", "/config", exitOnRecoverHandleFunc(handlePostConfig))
+	privaterouter.Handler("GET", "/metrics", exitOnRecoverHandler(prometheus.Handler()))
 
 	publicrouter := httprouter.New()
-	publicrouter.Handle("POST", "/robustirc/v1/:sessionid", handleCreateSession)
-	publicrouter.Handle("POST", "/robustirc/v1/:sessionid/message", handlePostMessage)
-	publicrouter.Handle("GET", "/robustirc/v1/:sessionid/messages", handleGetMessages)
-	publicrouter.Handle("DELETE", "/robustirc/v1/:sessionid", handleDeleteSession)
+	publicrouter.Handle("POST", "/robustirc/v1/:sessionid", exitOnRecoverHandle(handleCreateSession))
+	publicrouter.Handle("POST", "/robustirc/v1/:sessionid/message", exitOnRecoverHandle(handlePostMessage))
+	publicrouter.Handle("GET", "/robustirc/v1/:sessionid/messages", exitOnRecoverHandle(handleGetMessages))
+	publicrouter.Handle("DELETE", "/robustirc/v1/:sessionid", exitOnRecoverHandle(handleDeleteSession))
 
 	a := auth.NewBasicAuthenticator("robustirc", func(user, realm string) string {
 		if user == "robustirc" {
