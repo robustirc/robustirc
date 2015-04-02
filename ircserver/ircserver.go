@@ -231,6 +231,10 @@ func NewIRCServer(networkname string, serverCreation time.Time) *IRCServer {
 // to be higher than the last processed message (it panics otherwise) so that
 // timestamp drift is loudly complained about instead of silently accepted to
 // the point where it breaks the network’s regular operation.
+//
+// NewRobustMessage should only be called while node.State() == raft.Leader,
+// otherwise it might panic due to time drift in the network, leading to the
+// node exiting (and being restarted).
 func (i *IRCServer) NewRobustMessage(t types.RobustType, session types.RobustId, data string) *types.RobustMessage {
 	unixnano := time.Now().UnixNano()
 	i.lastProcessedMu.RLock()

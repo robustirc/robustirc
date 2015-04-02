@@ -185,6 +185,11 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		return
 	}
 
+	if node.State() != raft.Leader {
+		maybeProxyToLeader(w, r, nopCloser{&body})
+		return
+	}
+
 	applyMu.Lock()
 	msg := ircServer.NewRobustMessage(types.RobustIRCFromClient, session, req.Data)
 	msg.ClientMessageId = req.ClientMessageId
@@ -418,6 +423,12 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request, ps httprouter.P
 		http.Error(w, "Not found", http.StatusNotFound)
 		return
 	}
+
+	if node.State() != raft.Leader {
+		maybeProxyToLeader(w, r, nopCloser{bytes.NewBuffer(nil)})
+		return
+	}
+
 	b := make([]byte, 128)
 	if _, err := rand.Read(b); err != nil {
 		http.Error(w, fmt.Sprintf("Cannot generate SessionAuth cookie: %v", err), http.StatusInternalServerError)
@@ -470,6 +481,11 @@ func handleDeleteSession(w http.ResponseWriter, r *http.Request, ps httprouter.P
 	rd := io.TeeReader(r.Body, &body)
 	if err := json.NewDecoder(rd).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Could not decode request: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if node.State() != raft.Leader {
+		maybeProxyToLeader(w, r, nopCloser{&body})
 		return
 	}
 
@@ -585,6 +601,11 @@ func handlePostConfig(w http.ResponseWriter, r *http.Request) {
 	if _, err := toml.DecodeReader(io.TeeReader(r.Body, &body), &unused); err != nil {
 		configMu.Unlock()
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if node.State() != raft.Leader {
+		maybeProxyToLeader(w, r, nopCloser{&body})
 		return
 	}
 
