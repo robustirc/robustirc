@@ -353,9 +353,8 @@ func (i *IRCServer) interestNick(sessionid types.RobustId, msg *irc.Message) map
 		return result
 	}
 
-	s := i.sessions[sessionid]
-
-	result[i.nicks[NickToLower(msg.Trailing)].Id.Id] = true
+	s := i.nicks[NickToLower(msg.Trailing)]
+	result[s.Id.Id] = true
 
 	for channelname := range s.Channels {
 		channel := i.channels[channelname]

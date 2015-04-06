@@ -135,6 +135,11 @@ func TestServerSvsnick(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 353 xeen = #TEST :@socoro xeen"),
 			irc.ParseMessage(":robustirc.net 366 xeen #TEST :End of /NAMES list."),
 		})
+
+	mustMatchInterested(t, i,
+		ids["services"], irc.ParseMessage("SVSNICK socoro sucuru :1"),
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{true, false, true})
 }
 
 func TestServerSvsmode(t *testing.T) {
