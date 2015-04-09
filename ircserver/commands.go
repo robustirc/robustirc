@@ -255,7 +255,8 @@ func (i *IRCServer) login(s *Session, msg *irc.Message) []*irc.Message {
 			s.svid,
 			"+",
 		},
-		Trailing: s.Realname,
+		Trailing:      s.Realname,
+		EmptyTrailing: true,
 	})
 
 	if pass := extractPassword(s.Pass, "nickserv"); pass != "" {
