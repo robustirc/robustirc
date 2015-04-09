@@ -340,5 +340,5 @@ func TestServerQuit(t *testing.T) {
 
 	mustMatchMsg(t,
 		i.ProcessMessage(ids["services"], irc.ParseMessage(":blorgh QUIT")),
-		":blorgh!enforcer@robust/0x13c6cdee3e749faf QUIT")
+		":blorgh!enforcer@robust/0x13c6cdee3e749faf QUIT :")
 }

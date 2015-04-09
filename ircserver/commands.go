@@ -637,10 +637,11 @@ func (i *IRCServer) cmdKick(s *Session, msg *irc.Message) []*irc.Message {
 	i.maybeDeleteChannel(c)
 	delete(session.Channels, ChanToLower(channelname))
 	return []*irc.Message{{
-		Prefix:   &s.ircPrefix,
-		Command:  irc.KICK,
-		Params:   []string{msg.Params[0], msg.Params[1]},
-		Trailing: msg.Trailing,
+		Prefix:        &s.ircPrefix,
+		Command:       irc.KICK,
+		Params:        []string{msg.Params[0], msg.Params[1]},
+		Trailing:      msg.Trailing,
+		EmptyTrailing: true,
 	}}
 }
 
@@ -770,9 +771,10 @@ func (i *IRCServer) cmdQuit(s *Session, msg *irc.Message) []*irc.Message {
 	i.DeleteSession(s)
 	if s.loggedIn() {
 		replies = append(replies, &irc.Message{
-			Prefix:   &s.ircPrefix,
-			Command:  irc.QUIT,
-			Trailing: msg.Trailing,
+			Prefix:        &s.ircPrefix,
+			Command:       irc.QUIT,
+			Trailing:      msg.Trailing,
+			EmptyTrailing: true,
 		})
 	}
 
@@ -832,10 +834,11 @@ func (i *IRCServer) cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 			}}
 		}
 		return []*irc.Message{{
-			Prefix:   &s.ircPrefix,
-			Command:  msg.Command,
-			Params:   []string{msg.Params[0]},
-			Trailing: msg.Trailing,
+			Prefix:        &s.ircPrefix,
+			Command:       msg.Command,
+			Params:        []string{msg.Params[0]},
+			Trailing:      msg.Trailing,
+			EmptyTrailing: true,
 		}}
 	}
 
@@ -851,17 +854,19 @@ func (i *IRCServer) cmdPrivmsg(s *Session, msg *irc.Message) []*irc.Message {
 	var replies []*irc.Message
 
 	replies = append(replies, &irc.Message{
-		Prefix:   &s.ircPrefix,
-		Command:  msg.Command,
-		Params:   []string{msg.Params[0]},
-		Trailing: msg.Trailing,
+		Prefix:        &s.ircPrefix,
+		Command:       msg.Command,
+		Params:        []string{msg.Params[0]},
+		Trailing:      msg.Trailing,
+		EmptyTrailing: true,
 	})
 
 	if session.AwayMsg != "" && msg.Command == irc.PRIVMSG {
 		replies = append(replies, &irc.Message{
-			Command:  irc.RPL_AWAY,
-			Params:   []string{s.Nick, msg.Params[0]},
-			Trailing: session.AwayMsg,
+			Command:       irc.RPL_AWAY,
+			Params:        []string{s.Nick, msg.Params[0]},
+			Trailing:      session.AwayMsg,
+			EmptyTrailing: true,
 		})
 	}
 
@@ -1259,9 +1264,10 @@ func (i *IRCServer) cmdTopic(s *Session, msg *irc.Message) []*irc.Message {
 
 		return []*irc.Message{
 			{
-				Command:  irc.RPL_TOPIC,
-				Params:   []string{s.Nick, channel},
-				Trailing: c.topic,
+				Command:       irc.RPL_TOPIC,
+				Params:        []string{s.Nick, channel},
+				Trailing:      c.topic,
+				EmptyTrailing: true,
 			},
 			{
 				// RPL_TOPICWHOTIME (ircu-specific, not in the RFC)
@@ -1363,9 +1369,10 @@ func (i *IRCServer) cmdWhois(s *Session, msg *irc.Message) []*irc.Message {
 	var replies []*irc.Message
 
 	replies = append(replies, &irc.Message{
-		Command:  irc.RPL_WHOISUSER,
-		Params:   []string{s.Nick, session.Nick, session.ircPrefix.User, session.ircPrefix.Host, "*"},
-		Trailing: session.Realname,
+		Command:       irc.RPL_WHOISUSER,
+		Params:        []string{s.Nick, session.Nick, session.ircPrefix.User, session.ircPrefix.Host, "*"},
+		Trailing:      session.Realname,
+		EmptyTrailing: true,
 	})
 
 	var channels []string
@@ -1408,9 +1415,10 @@ func (i *IRCServer) cmdWhois(s *Session, msg *irc.Message) []*irc.Message {
 
 	if session.AwayMsg != "" {
 		replies = append(replies, &irc.Message{
-			Command:  irc.RPL_AWAY,
-			Params:   []string{s.Nick, session.Nick},
-			Trailing: session.AwayMsg,
+			Command:       irc.RPL_AWAY,
+			Params:        []string{s.Nick, session.Nick},
+			Trailing:      session.AwayMsg,
+			EmptyTrailing: true,
 		})
 	}
 

@@ -106,9 +106,10 @@ func (i *IRCServer) cmdServerKick(s *Session, msg *irc.Message) []*irc.Message {
 			User: "services",
 			Host: "services",
 		},
-		Command:  irc.KICK,
-		Params:   []string{msg.Params[0], msg.Params[1]},
-		Trailing: msg.Trailing,
+		Command:       irc.KICK,
+		Params:        []string{msg.Params[0], msg.Params[1]},
+		Trailing:      msg.Trailing,
+		EmptyTrailing: true,
 	}}
 }
 
@@ -151,9 +152,10 @@ func (i *IRCServer) cmdServerQuit(s *Session, msg *irc.Message) []*irc.Message {
 			}
 			i.DeleteSession(session)
 			replies = append(replies, &irc.Message{
-				Prefix:   &session.ircPrefix,
-				Command:  irc.QUIT,
-				Trailing: msg.Trailing,
+				Prefix:        &session.ircPrefix,
+				Command:       irc.QUIT,
+				Trailing:      msg.Trailing,
+				EmptyTrailing: true,
 			})
 		}
 		return replies
@@ -167,9 +169,10 @@ func (i *IRCServer) cmdServerQuit(s *Session, msg *irc.Message) []*irc.Message {
 		}
 		i.DeleteSession(session)
 		return []*irc.Message{{
-			Prefix:   &session.ircPrefix,
-			Command:  irc.QUIT,
-			Trailing: msg.Trailing,
+			Prefix:        &session.ircPrefix,
+			Command:       irc.QUIT,
+			Trailing:      msg.Trailing,
+			EmptyTrailing: true,
 		}}
 	}
 	return []*irc.Message{}
@@ -342,7 +345,8 @@ func (i *IRCServer) cmdServer(s *Session, msg *irc.Message) []*irc.Message {
 				session.svid,
 				modestr,
 			},
-			Trailing: session.Realname,
+			Trailing:      session.Realname,
+			EmptyTrailing: true,
 		})
 		channelnames := make([]string, 0, len(session.Channels))
 		for channelname := range session.Channels {
@@ -578,10 +582,11 @@ func (i *IRCServer) cmdServerTopic(s *Session, msg *irc.Message) []*irc.Message 
 	c.topic = msg.Trailing
 
 	return []*irc.Message{{
-		Prefix:   servicesPrefix(msg.Prefix),
-		Command:  irc.TOPIC,
-		Params:   []string{channel},
-		Trailing: msg.Trailing,
+		Prefix:        servicesPrefix(msg.Prefix),
+		Command:       irc.TOPIC,
+		Params:        []string{channel},
+		Trailing:      msg.Trailing,
+		EmptyTrailing: true,
 	}}
 }
 
@@ -606,10 +611,11 @@ func (i *IRCServer) cmdServerPrivmsg(s *Session, msg *irc.Message) []*irc.Messag
 
 	if strings.HasPrefix(msg.Params[0], "#") {
 		return []*irc.Message{{
-			Prefix:   servicesPrefix(msg.Prefix),
-			Command:  msg.Command,
-			Params:   []string{msg.Params[0]},
-			Trailing: msg.Trailing,
+			Prefix:        servicesPrefix(msg.Prefix),
+			Command:       msg.Command,
+			Params:        []string{msg.Params[0]},
+			Trailing:      msg.Trailing,
+			EmptyTrailing: true,
 		}}
 	}
 
@@ -624,10 +630,11 @@ func (i *IRCServer) cmdServerPrivmsg(s *Session, msg *irc.Message) []*irc.Messag
 	var replies []*irc.Message
 
 	replies = append(replies, &irc.Message{
-		Prefix:   servicesPrefix(msg.Prefix),
-		Command:  msg.Command,
-		Params:   []string{msg.Params[0]},
-		Trailing: msg.Trailing,
+		Prefix:        servicesPrefix(msg.Prefix),
+		Command:       msg.Command,
+		Params:        []string{msg.Params[0]},
+		Trailing:      msg.Trailing,
+		EmptyTrailing: true,
 	})
 
 	return replies
