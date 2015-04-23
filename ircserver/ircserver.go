@@ -535,6 +535,13 @@ func (i *IRCServer) SendMessages(replies []*irc.Message, session types.RobustId,
 			continue
 		}
 
+		if reply.Command == irc.ERROR {
+			robustmsg.InterestingFor = make(map[int64]bool)
+			robustmsg.InterestingFor[session.Id] = true
+			robustreplies[idx] = robustmsg
+			continue
+		}
+
 		robustmsg.InterestingFor = make(map[int64]bool)
 		robustreplies[idx] = robustmsg
 	}
