@@ -497,10 +497,13 @@ func relevantJoin(msg *irc.Message, prev, next logCursor) (bool, error) {
 			return true, err
 		}
 		nmsg := irc.ParseMessage(rmsg.Data)
-		if nmsg.Command == irc.TOPIC && lcnames[ChanToLower(nmsg.Params[0])] {
+		if nmsg.Command == irc.TOPIC &&
+			len(nmsg.Params) > 0 &&
+			lcnames[ChanToLower(nmsg.Params[0])] {
 			return true, nil
 		}
-		if nmsg.Command == irc.PART {
+		// TODO: support KICK
+		if nmsg.Command == irc.PART && len(nmsg.Params) > 0 {
 			for channelname := range multipleChannels(nmsg.Params[0]) {
 				delete(lcnames, channelname)
 			}
