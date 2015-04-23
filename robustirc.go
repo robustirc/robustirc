@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -145,6 +146,7 @@ type robustSnapshot struct {
 	del        map[uint64]bool
 	parsed     map[uint64]*types.RobustMessage
 	sliced     map[int64][]*types.RobustMessage
+	servers    map[int64]bool
 }
 
 func (s *robustSnapshot) canCompact(session types.RobustId, msg *types.RobustMessage, logIndex uint64) (bool, int, error) {
@@ -324,7 +326,7 @@ func (s *robustSnapshot) canCompact(session types.RobustId, msg *types.RobustMes
 	case types.RobustIRCFromClient:
 		p := irc.ParseMessage(msg.Data)
 
-		relevantFast, errFast := ircServer.StillRelevant(p, prevFast, nextFast, reset)
+		relevantFast, errFast := ircServer.StillRelevant(s.servers[session.Id], p, prevFast, nextFast, reset)
 		return !relevantFast, slicedIdx, errFast
 
 	case types.RobustMessageOfDeath:
@@ -409,6 +411,13 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 			if len(vmsgs) > 0 && onlyerrors {
 				s.del[i] = true
 				continue
+			}
+
+			// Kind of a hack: we need to keep track of which sessions are
+			// services connections and which are not, so that we can look at
+			// the correct relevant-function (e.g. server_NICK vs. NICK).
+			if strings.HasPrefix(strings.ToUpper(parsed.Data), "SERVER") {
+				s.servers[parsed.Session.Id] = true
 			}
 
 			// Every session which is interested in at least one of the output
@@ -642,13 +651,15 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &robustSnapshot{
-		first,
-		last,
-		fsm.ircstore,
-		make(map[uint64]bool),
-		make(map[uint64]*types.RobustMessage),
-		make(map[int64][]*types.RobustMessage),
+		firstIndex: first,
+		lastIndex:  last,
+		store:      fsm.ircstore,
+		del:        make(map[uint64]bool),
+		parsed:     make(map[uint64]*types.RobustMessage),
+		sliced:     make(map[int64][]*types.RobustMessage),
+		servers:    make(map[int64]bool),
 	}, err
 }
 

@@ -657,12 +657,16 @@ func (i *IRCServer) LastPostMessage(sessionid types.RobustId) (uint64, []byte) {
 //
 // 'prev' and 'next' are cursors with which the message-specific handler can
 // look at other messages to figure out whether the message is still relevant.
-func (i *IRCServer) StillRelevant(ircmsg *irc.Message, prev, next logCursor, reset logReset) (bool, error) {
+func (i *IRCServer) StillRelevant(server bool, ircmsg *irc.Message, prev, next logCursor, reset logReset) (bool, error) {
 	if ircmsg == nil {
 		return true, nil
 	}
 
-	c, ok := commands[strings.ToUpper(ircmsg.Command)]
+	var serverPrefix string
+	if server {
+		serverPrefix = "server_"
+	}
+	c, ok := commands[serverPrefix+strings.ToUpper(ircmsg.Command)]
 	if !ok {
 		return true, nil
 	}

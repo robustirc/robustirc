@@ -37,8 +37,14 @@ func init() {
 	commands["server_MODE"] = &ircCommand{Func: (*IRCServer).cmdServerMode}
 	commands["server_JOIN"] = &ircCommand{Func: (*IRCServer).cmdServerJoin}
 	commands["server_PART"] = &ircCommand{Func: (*IRCServer).cmdServerPart}
-	commands["server_PRIVMSG"] = &ircCommand{Func: (*IRCServer).cmdServerPrivmsg}
-	commands["server_NOTICE"] = &ircCommand{Func: (*IRCServer).cmdServerPrivmsg}
+	commands["server_PRIVMSG"] = &ircCommand{
+		Func:          (*IRCServer).cmdServerPrivmsg,
+		StillRelevant: neverRelevant,
+	}
+	commands["server_NOTICE"] = &ircCommand{
+		Func:          (*IRCServer).cmdServerPrivmsg,
+		StillRelevant: neverRelevant,
+	}
 	commands["server_TOPIC"] = &ircCommand{Func: (*IRCServer).cmdServerTopic, MinParams: 3}
 	commands["server_SVSNICK"] = &ircCommand{Func: (*IRCServer).cmdServerSvsnick, MinParams: 2}
 	commands["server_SVSMODE"] = &ircCommand{Func: (*IRCServer).cmdServerSvsmode, MinParams: 2}
