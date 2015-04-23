@@ -1,5 +1,8 @@
 package main
 
+// Generate errors.go which is used in canCompact() below.
+//go:generate go run generrors.go
+
 import (
 	"bytes"
 	"crypto/sha1"
