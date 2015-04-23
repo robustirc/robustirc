@@ -140,22 +140,29 @@ type robustSnapshot struct {
 	lastIndex  uint64
 	store      *raft_store.LevelDBStore
 	del        map[uint64]bool
-	parsed     map[uint64]types.RobustMessage
+	parsed     map[uint64]*types.RobustMessage
+	sliced     map[int64][]*types.RobustMessage
 }
 
-func (s *robustSnapshot) canCompact(compactionStart time.Time, elog *raft.Log) (bool, error) {
-	// TODO: compact raft messages as well, so that peer changes are not kept forever
-	if elog.Type != raft.LogCommand {
-		return false, nil
+func (s *robustSnapshot) canCompact(session types.RobustId, msg *types.RobustMessage, logIndex uint64) (bool, int, error) {
+	slicedIdx := -1
+	// TODO: Instead of doing a full scan, we should be able to use binary
+	// search here since the message IDs are strictly monotonically increasing
+	// and appended in-order, hence sorted.
+	for idx, smsg := range s.sliced[session.Id] {
+		if smsg != nil && smsg.Id == msg.Id {
+			slicedIdx = idx
+		}
+	}
+	if slicedIdx == -1 && msg.Type != types.RobustConfig && msg.Type != types.RobustMessageOfDeath {
+		log.Printf("WARNING: message with id %v (logidx %d), type %s for session %v (data = %s) not found in s.sliced, using slow path\n", msg.Id, logIndex, msg.Type, msg.Session, msg.Data)
+		p := irc.ParseMessage(msg.Data)
+		if p != nil {
+			log.Printf(" (parsed: %s)\n", p.Bytes())
+		}
 	}
 
-	msg := types.NewRobustMessageFromBytes(elog.Data)
-
-	if compactionStart.Sub(time.Unix(0, msg.Id.Id)) < 7*24*time.Hour {
-		return false, nil
-	}
-
-	// TODO(secure): stop searching with prev() when arriving at the session’s startmessage?
+	// TODO: deprecate get, prevSlow, nextSlow once there have been no fallbacks to the slow path for a week.
 
 	// The prev and next functions are cursors, see ircserver’s StillRelevant
 	// function. They return the previous message (or next message,
@@ -174,22 +181,19 @@ func (s *robustSnapshot) canCompact(compactionStart time.Time, elog *raft.Log) (
 			return nil
 		}
 
-		session := msg.Session
-		if msg.Type == types.RobustCreateSession {
-			session = msg.Id
-		}
-
 		if nmsg.Session != session &&
 			(nmsg.Type != types.RobustCreateSession ||
 				nmsg.Id != session) {
 			return nil
 		}
-		return &nmsg
+		return nmsg
 	}
 
-	nextIndex := elog.Index
+	nextIndex := logIndex
+	nextIndexSliced := slicedIdx
+	trace := false
 
-	prev := func(wantType types.RobustType) (*types.RobustMessage, error) {
+	prevSlow := func(wantType types.RobustType) (*types.RobustMessage, error) {
 		for {
 			nextIndex--
 
@@ -198,12 +202,49 @@ func (s *robustSnapshot) canCompact(compactionStart time.Time, elog *raft.Log) (
 			}
 
 			if ircmsg := get(nextIndex, wantType); ircmsg != nil {
+				if trace {
+					log.Printf("Returning idx=%d: %v\n", nextIndex, ircmsg.Data)
+				}
 				return ircmsg, nil
 			}
 		}
 	}
 
-	next := func(wantType types.RobustType) (*types.RobustMessage, error) {
+	prevFast := func(wantType types.RobustType) (*types.RobustMessage, error) {
+		if nextIndexSliced == -1 {
+			glog.Errorf("Compaction: falling back to prevSlow() for log index %d, msg id %v\n", logIndex, msg.Id)
+			return prevSlow(wantType)
+		}
+		for {
+			nextIndexSliced--
+			if nextIndexSliced < 0 {
+				return nil, ircserver.CursorEOF
+			}
+			nmsg := s.sliced[session.Id][nextIndexSliced]
+
+			if nmsg == nil {
+				continue
+			}
+
+			// TODO: introduce a parameter so that the relevant* functions
+			// can specify whether they want just messages from _the same_
+			// session or messages that are relevant to the session.
+			if nmsg.Session != session &&
+				(nmsg.Type != types.RobustCreateSession ||
+					nmsg.Id != session) {
+				continue
+			}
+
+			if wantType == types.RobustAny || wantType == nmsg.Type {
+				if trace {
+					log.Printf("Returning sliceidx=%d: %v\n", nextIndexSliced, nmsg.Data)
+				}
+				return nmsg, nil
+			}
+		}
+	}
+
+	nextSlow := func(wantType types.RobustType) (*types.RobustMessage, error) {
 		for {
 			nextIndex++
 
@@ -212,36 +253,92 @@ func (s *robustSnapshot) canCompact(compactionStart time.Time, elog *raft.Log) (
 			}
 
 			if ircmsg := get(nextIndex, wantType); ircmsg != nil {
+				if trace {
+					log.Printf("Returning idx=%d: %v\n", nextIndex, ircmsg.Data)
+				}
 				return ircmsg, nil
 			}
 		}
 	}
 
-	if msg.Type == types.RobustDeleteSession {
-		rmsg, err := prev(types.RobustAny)
-		if err != nil && err != ircserver.CursorEOF {
-			return false, err
+	nextFast := func(wantType types.RobustType) (*types.RobustMessage, error) {
+		if nextIndexSliced == -1 {
+			glog.Errorf("Compaction: falling back to nextSlow() for log index %d, msg id %v\n", logIndex, msg.Id)
+			return nextSlow(wantType)
 		}
-		return err == nil && rmsg.Type == types.RobustCreateSession, nil
+
+		for {
+			nextIndexSliced++
+			if nextIndexSliced >= len(s.sliced[session.Id]) {
+				return nil, ircserver.CursorEOF
+			}
+			nmsg := s.sliced[session.Id][nextIndexSliced]
+
+			if nmsg == nil {
+				continue
+			}
+
+			// TODO: introduce a parameter so that the relevant* functions
+			// can specify whether they want just messages from _the same_
+			// session or messages that are relevant to the session.
+			if nmsg.Session != session &&
+				(nmsg.Type != types.RobustCreateSession ||
+					nmsg.Id != session) {
+				continue
+			}
+
+			if wantType == types.RobustAny || wantType == nmsg.Type {
+				if trace {
+					log.Printf("Returning sliceidx=%d: %v\n", nextIndexSliced, nmsg.Data)
+				}
+				return nmsg, nil
+			}
+		}
 	}
 
-	if msg.Type == types.RobustCreateSession {
-		_, err := next(types.RobustAny)
+	switch msg.Type {
+	case types.RobustDeleteSession:
+		rmsg, err := prevSlow(types.RobustAny)
 		if err != nil && err != ircserver.CursorEOF {
-			return false, err
+			return false, slicedIdx, err
+		}
+		return err == nil && rmsg.Type == types.RobustCreateSession, slicedIdx, nil
+
+	case types.RobustCreateSession:
+		_, err := nextSlow(types.RobustAny)
+		if err != nil && err != ircserver.CursorEOF {
+			return false, slicedIdx, err
 		}
 
 		// Sessions can be compacted away when they don’t contain any messages.
-		return err == ircserver.CursorEOF, nil
-	}
+		return err == ircserver.CursorEOF, slicedIdx, nil
 
-	// TODO: compact the other RobustIRC message types as well
-	if msg.Type != types.RobustIRCFromClient {
-		return false, nil
-	}
+	case types.RobustIRCFromClient:
+		p := irc.ParseMessage(msg.Data)
 
-	relevant, err := ircServer.StillRelevant(irc.ParseMessage(msg.Data), prev, next)
-	return !relevant, err
+		relevantFast, errFast := ircServer.StillRelevant(p, prevFast, nextFast)
+		return !relevantFast, slicedIdx, errFast
+
+	case types.RobustMessageOfDeath:
+		// Messages of death can always be compacted, they will be skipped anyway.
+		return true, slicedIdx, nil
+
+	case types.RobustConfig:
+		// TODO: implement compaction for RobustConfig
+		return false, slicedIdx, nil
+
+	case types.RobustIRCToClient:
+		fallthrough
+	case types.RobustPing:
+		fallthrough
+	case types.RobustAny:
+		glog.Errorf("Compaction: saw unexpected message type %v (log id %d, message id %v)\n", msg.Type, logIndex, msg.Id)
+		return false, slicedIdx, nil
+
+	default:
+		glog.Errorf("Compaction: saw message of unknown type %d (log id %d, message id %v)\n", msg.Type, logIndex, msg.Id)
+		return false, slicedIdx, nil
+	}
 }
 
 func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
@@ -253,17 +350,72 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 	// making the compaction never converge.
 	compactionStart := time.Now()
 
+	sessions := make(map[types.RobustId]bool)
+
 	// First pass: just parse all the messages
 	for i := s.firstIndex; i <= s.lastIndex; i++ {
 		var nlog raft.Log
 		if err := s.store.GetLog(i, &nlog); err != nil {
+			s.del[i] = true
 			continue
 		}
 
+		// TODO: compact raft messages as well, so that peer changes are not kept forever
 		if nlog.Type != raft.LogCommand {
 			continue
 		}
-		s.parsed[i] = types.NewRobustMessageFromBytes(nlog.Data)
+
+		parsed := types.NewRobustMessageFromBytes(nlog.Data)
+		s.parsed[i] = &parsed
+
+		if parsed.Type == types.RobustCreateSession {
+			s.sliced[parsed.Id.Id] = append(s.sliced[parsed.Id.Id], &parsed)
+		}
+
+		if parsed.Type == types.RobustDeleteSession {
+			s.sliced[parsed.Session.Id] = append(s.sliced[parsed.Session.Id], &parsed)
+		}
+
+		if parsed.Type == types.RobustIRCFromClient {
+			// TODO: skip PING/PRIVMSG messages that are outside of the
+			// compaction window to reduce the working set. should be a noop
+			// since no relevant* function looks at PRIVMSG/PING.
+			sessions[parsed.Session] = true
+			vmsgs, _ := ircServer.Get(types.RobustId{Id: parsed.Id.Id})
+
+			// Every session which is interested in at least one of the output
+			// messages gets a pointer to the input message stored in s.sliced
+			// so that we can easily iterate over all relevant input messages.
+			for session := range sessions {
+				interested := false
+				for _, msg := range vmsgs {
+					if msg.InterestingFor[session.Id] {
+						interested = true
+						break
+					}
+				}
+				// All messages that would be delivered to a session are
+				// interesting for compaction, but also just any message that a
+				// specific session sent.
+				if interested || (len(vmsgs) > 0 && session.Id == parsed.Session.Id) {
+					s.sliced[session.Id] = append(s.sliced[session.Id], &parsed)
+				}
+			}
+
+			// Some messages don’t result in output messages, such as a JOIN
+			// command for a channel the user is already in. We mark these as
+			// interesting at least to the session from which they originated,
+			// so that they can be detected and deleted.
+			// TODO: would it be okay to just mark them for deletion? i.e., do all messages that modify state return a result?
+			if len(vmsgs) == 0 {
+				s.sliced[parsed.Session.Id] = append(s.sliced[parsed.Session.Id], &parsed)
+			}
+		}
+	}
+
+	log.Printf("got %d sessions\n", len(sessions))
+	for session := range sessions {
+		log.Printf("session 0x%x has %d messages\n", session.Id, len(s.sliced[session.Id]))
 	}
 
 	// We repeatedly compact, since the result of one compaction can affect the
@@ -283,20 +435,32 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 				continue
 			}
 
-			var elog raft.Log
-
-			if err := s.store.GetLog(i, &elog); err != nil {
-				s.del[i] = true
+			msg, ok := s.parsed[i]
+			if !ok {
 				continue
 			}
 
-			canCompact, err := s.canCompact(compactionStart, &elog)
+			if compactionStart.Sub(time.Unix(0, msg.Id.Id)) < 7*24*time.Hour {
+				// If we ran outside the window, we don’t even need to look at
+				// any newer messages anymore.
+				break
+			}
+
+			session := msg.Session
+			if msg.Type == types.RobustCreateSession {
+				session = msg.Id
+			}
+
+			canCompact, slicedIdx, err := s.canCompact(session, msg, i)
 			if err != nil {
 				sink.Cancel()
 				return err
 			}
 			if canCompact {
 				s.del[i] = true
+				if slicedIdx != -1 {
+					s.sliced[session.Id][slicedIdx] = nil
+				}
 				changed = true
 			}
 		}
@@ -326,7 +490,12 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 		if !del {
 			continue
 		}
-		nmsg := s.parsed[idx]
+		nmsg, ok := s.parsed[idx]
+		// If the message was not found in parsed, then there was no message
+		// with this index, hence there is nothing to delete.
+		if !ok {
+			continue
+		}
 		ircServer.Delete(nmsg.Id)
 		s.store.DeleteRange(idx, idx)
 	}
@@ -450,7 +619,8 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 		last,
 		fsm.ircstore,
 		make(map[uint64]bool),
-		make(map[uint64]types.RobustMessage),
+		make(map[uint64]*types.RobustMessage),
+		make(map[int64][]*types.RobustMessage),
 	}, err
 }
 
