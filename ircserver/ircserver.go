@@ -76,6 +76,9 @@ func init() {
 // messages _after_ the current message.
 type logCursor func(wantType types.RobustType) (*types.RobustMessage, error)
 
+// logReset resets the database cursor to where it started.
+type logReset func()
+
 // lcChan is a lower-case channel name, e.g. “#chaos-hd”, even when the user
 // sent “JOIN #Chaos-HD”. It is used to enforce using ChanToLower() on keys of
 // various maps.
@@ -654,7 +657,7 @@ func (i *IRCServer) LastPostMessage(sessionid types.RobustId) (uint64, []byte) {
 //
 // 'prev' and 'next' are cursors with which the message-specific handler can
 // look at other messages to figure out whether the message is still relevant.
-func (i *IRCServer) StillRelevant(ircmsg *irc.Message, prev, next logCursor) (bool, error) {
+func (i *IRCServer) StillRelevant(ircmsg *irc.Message, prev, next logCursor, reset logReset) (bool, error) {
 	if ircmsg == nil {
 		return true, nil
 	}
@@ -669,7 +672,7 @@ func (i *IRCServer) StillRelevant(ircmsg *irc.Message, prev, next logCursor) (bo
 		return true, nil
 	}
 
-	return c.StillRelevant(ircmsg, prev, next)
+	return c.StillRelevant(ircmsg, prev, next, reset)
 }
 
 // GetSessions returns a copy of sessions that can be used in the status

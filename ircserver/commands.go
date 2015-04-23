@@ -25,7 +25,7 @@ type ircCommand struct {
 
 	// StillRelevant is used during compaction. If it returns true, the message
 	// is kept, otherwise it will be deleted.
-	StillRelevant func(*irc.Message, logCursor, logCursor) (bool, error)
+	StillRelevant func(*irc.Message, logCursor, logCursor, logReset) (bool, error)
 
 	// MinParams ensures that enough parameters were specified.
 	// irc.ERR_NEEDMOREPARAMS is returned in case less than MinParams
@@ -159,7 +159,7 @@ func init() {
 	commands["PASS"] = &ircCommand{Func: (*IRCServer).cmdPass}
 }
 
-func neverRelevant(m *irc.Message, prev, next logCursor) (bool, error) {
+func neverRelevant(m *irc.Message, prev, next logCursor, reset logReset) (bool, error) {
 	return false, nil
 }
 
@@ -302,7 +302,7 @@ func isLastMessage(prev, next logCursor) (bool, error) {
 		nextrmsg.Type == types.RobustDeleteSession), nil
 }
 
-func relevantNick(msg *irc.Message, prev, next logCursor) (bool, error) {
+func relevantNick(msg *irc.Message, prev, next logCursor, reset logReset) (bool, error) {
 	if len(msg.Params) < 1 {
 		return false, nil
 	}
@@ -315,6 +315,28 @@ func relevantNick(msg *irc.Message, prev, next logCursor) (bool, error) {
 		return false, nil
 	}
 
+	// Forever retain the first NICK message so that the connection is logged in.
+	earliestNick := true
+	for {
+		rmsg, err := prev(types.RobustIRCFromClient)
+		if err != nil {
+			if err == CursorEOF {
+				break
+			}
+			return true, err
+		}
+		nmsg := irc.ParseMessage(rmsg.Data)
+		if strings.ToUpper(nmsg.Command) == irc.NICK {
+			earliestNick = false
+		}
+	}
+
+	if earliestNick {
+		return true, err
+	}
+
+	reset()
+
 	for {
 		rmsg, err := next(types.RobustIRCFromClient)
 		if err != nil {
@@ -324,10 +346,6 @@ func relevantNick(msg *irc.Message, prev, next logCursor) (bool, error) {
 			return true, err
 		}
 		nmsg := irc.ParseMessage(rmsg.Data)
-		// Found a USER message. This NICK command is thus the first one and must not be compacted.
-		if nmsg.Command == irc.USER {
-			return true, nil
-		}
 		// TOPIC relies on the NICK.
 		if nmsg.Command == irc.TOPIC {
 			return true, nil
@@ -421,7 +439,7 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 	return []*irc.Message{}
 }
 
-func relevantUser(msg *irc.Message, prev, next logCursor) (bool, error) {
+func relevantUser(msg *irc.Message, prev, next logCursor, reset logReset) (bool, error) {
 	if len(msg.Params) < 1 {
 		return false, nil
 	}
@@ -482,7 +500,7 @@ func (i *IRCServer) interestJoin(sessionid types.RobustId, msg *irc.Message) map
 	return result
 }
 
-func relevantJoin(msg *irc.Message, prev, next logCursor) (bool, error) {
+func relevantJoin(msg *irc.Message, prev, next logCursor, reset logReset) (bool, error) {
 	if len(msg.Params) < 1 {
 		return false, nil
 	}
@@ -668,7 +686,7 @@ func (i *IRCServer) interestPart(sessionid types.RobustId, msg *irc.Message) map
 	return result
 }
 
-func relevantPart(msg *irc.Message, prev, next logCursor) (bool, error) {
+func relevantPart(msg *irc.Message, prev, next logCursor, reset logReset) (bool, error) {
 	if len(msg.Params) < 1 {
 		return false, nil
 	}
@@ -1166,7 +1184,7 @@ func (i *IRCServer) cmdAway(s *Session, msg *irc.Message) []*irc.Message {
 	}}
 }
 
-func relevantTopic(msg *irc.Message, prev, next logCursor) (bool, error) {
+func relevantTopic(msg *irc.Message, prev, next logCursor, reset logReset) (bool, error) {
 	if len(msg.Params) < 1 {
 		return false, nil
 	}

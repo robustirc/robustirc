@@ -417,7 +417,7 @@ func TestCompactDoubleJoinMultiple(t *testing.T) {
 
 	input = []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
-		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE2"}`,
 		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
 		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd,#foobar"}`,
 		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #chaos-hd"}`,
@@ -426,7 +426,7 @@ func TestCompactDoubleJoinMultiple(t *testing.T) {
 	}
 	want = []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
-		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE2"}`,
 		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
 		`{"Id": {"Id": 7}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
 	}
@@ -436,7 +436,7 @@ func TestCompactDoubleJoinMultiple(t *testing.T) {
 
 	input = []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
-		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE3"}`,
 		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
 		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd,#foobar"}`,
 		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #foobar,#chaos-hd"}`,
@@ -444,7 +444,7 @@ func TestCompactDoubleJoinMultiple(t *testing.T) {
 	}
 	want = []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
-		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE3"}`,
 		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
 		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
 	}
@@ -517,6 +517,52 @@ func TestCompactMessageOfDeath(t *testing.T) {
 		`{"Id": {"Id": 1}, "Type": 5, "Data": "auth"}`,
 	}
 	want := []string{}
+
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
+func TestCompactNickInUse(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 4}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 4}, "Type": 2, "Data": "USER sECuRE sECuRE localhost :Michael Stapelberg"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": "NICK sECuRE_"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": "JOIN #test"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 4}, "Type": 2, "Data": "USER sECuRE sECuRE localhost :Michael Stapelberg"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": "NICK sECuRE_"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": "JOIN #test"}`,
+	}
+
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
+func TestCompactInvalidCommands(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "BLAH foo"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+	}
 
 	output := applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)

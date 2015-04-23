@@ -196,6 +196,11 @@ func (s *robustSnapshot) canCompact(session types.RobustId, msg *types.RobustMes
 	nextIndexSliced := slicedIdx
 	trace := false
 
+	reset := func() {
+		nextIndex = logIndex
+		nextIndexSliced = slicedIdx
+	}
+
 	prevSlow := func(wantType types.RobustType) (*types.RobustMessage, error) {
 		for {
 			nextIndex--
@@ -319,7 +324,7 @@ func (s *robustSnapshot) canCompact(session types.RobustId, msg *types.RobustMes
 	case types.RobustIRCFromClient:
 		p := irc.ParseMessage(msg.Data)
 
-		relevantFast, errFast := ircServer.StillRelevant(p, prevFast, nextFast)
+		relevantFast, errFast := ircServer.StillRelevant(p, prevFast, nextFast, reset)
 		return !relevantFast, slicedIdx, errFast
 
 	case types.RobustMessageOfDeath:
@@ -385,6 +390,26 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 			// since no relevant* function looks at PRIVMSG/PING.
 			sessions[parsed.Session] = true
 			vmsgs, _ := ircServer.Get(types.RobustId{Id: parsed.Id.Id})
+
+			onlyerrors := true
+			for _, msg := range vmsgs {
+				if msg.Type != types.RobustIRCToClient {
+					glog.Errorf("Unexpected output message type %v\n", msg.Type)
+					continue
+				}
+				ircmsg := irc.ParseMessage(msg.Data)
+				if ircmsg == nil {
+					glog.Errorf("Output message not parsable\n")
+					continue
+				}
+				if !errorCodes[ircmsg.Command] {
+					onlyerrors = false
+				}
+			}
+			if len(vmsgs) > 0 && onlyerrors {
+				s.del[i] = true
+				continue
+			}
 
 			// Every session which is interested in at least one of the output
 			// messages gets a pointer to the input message stored in s.sliced
