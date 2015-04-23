@@ -509,3 +509,15 @@ func TestCompactSession(t *testing.T) {
 	output := applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
 }
+
+func TestCompactMessageOfDeath(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 5, "Data": "auth"}`,
+	}
+	want := []string{}
+
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
