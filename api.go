@@ -374,11 +374,6 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	for {
 		select {
 		case msgs := <-msgschan:
-			if _, err := ircServer.GetSession(session); err != nil {
-				// Session was deleted in the meanwhile, abort this request.
-				return
-			}
-
 			for _, msg := range msgs {
 				if msg.Type != types.RobustPing && !msg.InterestingFor[session.Id] {
 					continue
@@ -394,6 +389,14 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 					log.Printf("Error encoding JSON: %v\n", err)
 					return
 				}
+			}
+
+			if _, err := ircServer.GetSession(session); err != nil {
+				// Session was deleted in the meanwhile, abort this request.
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				}
+				return
 			}
 
 			if time.Since(lastFlush) > 100*time.Millisecond {
