@@ -473,7 +473,7 @@ func (i *IRCServer) SendMessages(replies []*irc.Message, session types.RobustId,
 			// services can delete both, individual service sessions (e.g. a
 			// BotServ-created bot) and users (e.g. with NickServ’s RECOVER
 			// command), so just check all sessions.
-			if s.Server {
+			if s.Server || s.Operator {
 				for id, session := range i.sessions {
 					if session.deleted {
 						delete(i.sessions, id)
