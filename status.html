@@ -75,6 +75,7 @@
 							<th>Nick</th>
 							<th>RemoteAddr</th>
 							<th>Started</th>
+							<th>User Agent</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -84,6 +85,7 @@
 							<td>{{ $val.Nick }}</td>
 							<td>{{ $key }}</td>
 							<td>{{ $val.StartedAndRelative }}</td>
+							<td>{{ $val.UserAgent }}</td>
 						</tr>
 					{{ end }}
 					</tbody>

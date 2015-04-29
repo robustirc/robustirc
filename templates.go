@@ -84,6 +84,7 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 							<th>Nick</th>
 							<th>RemoteAddr</th>
 							<th>Started</th>
+							<th>User Agent</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -93,6 +94,7 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 							<td>{{ $val.Nick }}</td>
 							<td>{{ $key }}</td>
 							<td>{{ $val.StartedAndRelative }}</td>
+							<td>{{ $val.UserAgent }}</td>
 						</tr>
 					{{ end }}
 					</tbody>

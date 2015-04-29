@@ -49,9 +49,10 @@ var (
 
 // GetMessageStats encapsulates information about a GetMessages request.
 type GetMessageStats struct {
-	Session types.RobustId
-	Nick    string
-	Started time.Time
+	Session   types.RobustId
+	Nick      string
+	Started   time.Time
+	UserAgent string
 }
 
 // StartedAndRelative converts |stats.Started| into a human-readable formatted
@@ -262,9 +263,10 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	remoteAddr := r.RemoteAddr
 	getMessagesRequestsMu.Lock()
 	GetMessageRequests[remoteAddr] = GetMessageStats{
-		Session: session,
-		Nick:    ircServer.GetNick(session),
-		Started: time.Now(),
+		Session:   session,
+		Nick:      ircServer.GetNick(session),
+		Started:   time.Now(),
+		UserAgent: r.Header.Get("User-Agent"),
 	}
 	getMessagesRequestsMu.Unlock()
 	defer func() {
