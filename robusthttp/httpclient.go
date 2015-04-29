@@ -7,7 +7,9 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"time"
 
+	"github.com/robustirc/bridge/robustsession"
 	"github.com/robustirc/rafthttp"
 )
 
@@ -29,21 +31,25 @@ func (r *robustDoer) Do(req *http.Request) (*http.Response, error) {
 	return resp, err
 }
 
-// Transport returns an *http.Transport respecting the *tlsCAFile flag.
+// Transport returns an *http.Transport respecting the *tlsCAFile flag and
+// using a 10 second read/write timeout.
 func Transport() *http.Transport {
-	if *tlsCAFile == "" {
-		return http.DefaultTransport.(*http.Transport)
-	}
-	roots := x509.NewCertPool()
-	contents, err := ioutil.ReadFile(*tlsCAFile)
-	if err != nil {
-		log.Fatalf("Could not read cert.pem: %v", err)
-	}
-	if !roots.AppendCertsFromPEM(contents) {
-		log.Fatalf("Could not parse %q, try deleting it", *tlsCAFile)
+	var tlsConfig *tls.Config
+	if *tlsCAFile != "" {
+		roots := x509.NewCertPool()
+		contents, err := ioutil.ReadFile(*tlsCAFile)
+		if err != nil {
+			log.Fatalf("Could not read cert.pem: %v", err)
+		}
+		if !roots.AppendCertsFromPEM(contents) {
+			log.Fatalf("Could not parse %q, try deleting it", *tlsCAFile)
+		}
+		tlsConfig = &tls.Config{RootCAs: roots}
 	}
 	return &http.Transport{
-		TLSClientConfig: &tls.Config{RootCAs: roots},
+		TLSClientConfig:     tlsConfig,
+		TLSHandshakeTimeout: 5 * time.Second,
+		Dial:                robustsession.DeadlineConnDialer(2*time.Second, 10*time.Second, 10*time.Second),
 	}
 }
 
