@@ -1522,6 +1522,13 @@ func (i *IRCServer) cmdInvite(s *Session, msg *irc.Message) []*irc.Message {
 			Trailing: "You're not on that channel",
 		}}
 	}
+	if _, ok := c.nicks[NickToLower(s.Nick)]; !ok {
+		return []*irc.Message{{
+			Command:  irc.ERR_NOTONCHANNEL,
+			Params:   []string{s.Nick, msg.Params[1]},
+			Trailing: "You're not on that channel",
+		}}
+	}
 	session, ok := i.nicks[NickToLower(nickname)]
 	if !ok {
 		return []*irc.Message{{

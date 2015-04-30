@@ -1324,6 +1324,10 @@ func TestInvite(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 366 sECuRE #test :End of /NAMES list."),
 		})
 
+	mustMatchMsg(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("INVITE mero #test")),
+		":robustirc.net 442 mero #test :You're not on that channel")
+
 	mustMatchIrcmsgs(t,
 		i.ProcessMessage(ids["secure"], irc.ParseMessage("INVITE mero #test")),
 		[]*irc.Message{
