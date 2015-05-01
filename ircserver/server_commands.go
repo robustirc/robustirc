@@ -128,6 +128,15 @@ func (i *IRCServer) cmdServerKill(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
+	killPrefix := msg.Prefix
+	for id, session := range i.sessions {
+		if id.Id != s.Id.Id || id.Reply == 0 || NickToLower(session.Nick) != NickToLower(msg.Prefix.Name) {
+			continue
+		}
+		killPrefix = &session.ircPrefix
+		break
+	}
+
 	session, ok := i.nicks[NickToLower(msg.Params[0])]
 	if !ok {
 		return []*irc.Message{{
@@ -137,12 +146,23 @@ func (i *IRCServer) cmdServerKill(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
+	killPath := fmt.Sprintf("ircd!%s!%s", killPrefix.Host, killPrefix.Name)
+	killPath = strings.Replace(killPath, "!!", "!", -1)
+
 	i.DeleteSession(session)
-	return []*irc.Message{{
-		Prefix:   &session.ircPrefix,
-		Command:  irc.QUIT,
-		Trailing: "Killed: " + msg.Trailing,
-	}}
+	return []*irc.Message{
+		{
+			Prefix:   killPrefix,
+			Command:  irc.KILL,
+			Params:   []string{session.Nick},
+			Trailing: fmt.Sprintf("%s (%s)", killPath, msg.Trailing),
+		},
+		{
+			Prefix:   &session.ircPrefix,
+			Command:  irc.QUIT,
+			Trailing: "Killed: " + msg.Trailing,
+		},
+	}
 }
 
 func (i *IRCServer) cmdServerQuit(s *Session, msg *irc.Message) []*irc.Message {

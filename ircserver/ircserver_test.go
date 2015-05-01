@@ -436,6 +436,43 @@ func TestInterestedInInvite(t *testing.T) {
 		[]bool{true, true, false})
 }
 
+func TestInterestedInKill(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(ids["xeen"], irc.ParseMessage("JOIN #test"))
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["mero"], irc.ParseMessage("OPER mero foo")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 381 mero :You are now an IRC operator"),
+			irc.ParseMessage(":robustirc.net MODE mero :+o"),
+		})
+
+	msg := irc.ParseMessage("KILL secure :bleh")
+	msgid := types.RobustId{Id: time.Now().UnixNano()}
+	replies := i.ProcessMessage(ids["mero"], msg)
+	i.SendMessages(replies, ids["mero"], msgid.Id)
+	msgs, _ := i.Get(msgid)
+
+	mustMatchIrcmsgs(t,
+		replies,
+		[]*irc.Message{
+			irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae KILL sECuRE :ircd!robust/0x13b5aa0a2bcfb8ae!mero (bleh)"),
+			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad QUIT :Killed by mero: bleh"),
+		})
+
+	mustMatchInterestedMsgs(t, i,
+		msg, []*types.RobustMessage{msgs[0]},
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{true, false, false})
+
+	mustMatchInterestedMsgs(t, i,
+		msg, []*types.RobustMessage{msgs[1]},
+		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]bool{false, false, true})
+}
+
 func TestNickCollision(t *testing.T) {
 	var got []*irc.Message
 
@@ -612,9 +649,12 @@ func TestKill(t *testing.T) {
 		":robustirc.net 401 mero socoro :No such nick/channel")
 
 	replies := i.ProcessMessage(ids["mero"], irc.ParseMessage("KILL sECuRE :die now, will you?"))
-	mustMatchMsg(t,
+	mustMatchIrcmsgs(t,
 		replies,
-		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad QUIT :Killed by mero: die now, will you?")
+		[]*irc.Message{
+			irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae KILL sECuRE :ircd!robust/0x13b5aa0a2bcfb8ae!mero (die now, will you?)"),
+			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad QUIT :Killed by mero: die now, will you?"),
+		})
 	// SendMessages will actually delete the session, as it may still be
 	// required within SendMessages to determine where a message should be sent
 	// to (the QUIT message itself, notably).

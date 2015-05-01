@@ -93,7 +93,11 @@ func init() {
 		StillRelevant: neverRelevant,
 	}
 	commands["OPER"] = &ircCommand{Func: (*IRCServer).cmdOper, MinParams: 2}
-	commands["KILL"] = &ircCommand{Func: (*IRCServer).cmdKill, MinParams: 1}
+	commands["KILL"] = &ircCommand{
+		Func:        (*IRCServer).cmdKill,
+		MinParams:   1,
+		Interesting: (*IRCServer).interestKill,
+	}
 	commands["AWAY"] = &ircCommand{Func: (*IRCServer).cmdAway}
 	commands["TOPIC"] = &ircCommand{
 		Func:          (*IRCServer).cmdTopic,
@@ -1140,6 +1144,24 @@ func (i *IRCServer) cmdOper(s *Session, msg *irc.Message) []*irc.Message {
 	}
 }
 
+func (i *IRCServer) interestKill(sessionid types.RobustId, msg *irc.Message) map[int64]bool {
+	result := make(map[int64]bool)
+
+	if len(msg.Params) == 0 {
+		return result
+	}
+
+	killedNick := NickToLower(msg.Params[0])
+	for id, session := range i.sessions {
+		if session.deleted && NickToLower(session.Nick) == killedNick {
+			result[id.Id] = true
+			break
+		}
+	}
+
+	return result
+}
+
 func (i *IRCServer) cmdKill(s *Session, msg *irc.Message) []*irc.Message {
 	if strings.TrimSpace(msg.Trailing) == "" {
 		return []*irc.Message{{
@@ -1166,13 +1188,25 @@ func (i *IRCServer) cmdKill(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
-	prefix := session.ircPrefix
 	i.DeleteSession(session)
-	return []*irc.Message{{
-		Prefix:   &prefix,
-		Command:  irc.QUIT,
-		Trailing: "Killed by " + s.Nick + ": " + msg.Trailing,
-	}}
+
+	return []*irc.Message{
+		{
+			Prefix:   &s.ircPrefix,
+			Command:  irc.KILL,
+			Params:   []string{session.Nick},
+			Trailing: fmt.Sprintf("ircd!%s!%s (%s)", s.ircPrefix.Host, s.Nick, msg.Trailing),
+		},
+		{
+			Prefix:   &session.ircPrefix,
+			Command:  irc.QUIT,
+			Trailing: "Killed by " + s.Nick + ": " + msg.Trailing,
+		},
+		// TODO: an ERROR message should be sent, but it wouldn’t get routed to
+		// the correct recipient. We’ll need to refactor command handling for
+		// that.
+		// ERROR :Closing Link: blorgh[midna.zekjur.net] ircd.twice-irc.de (Killed (sECuRE (test)))
+	}
 }
 
 func (i *IRCServer) cmdAway(s *Session, msg *irc.Message) []*irc.Message {

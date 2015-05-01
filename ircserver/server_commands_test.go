@@ -70,6 +70,9 @@ func TestServerKickKill(t *testing.T) {
 	i.ProcessMessage(ids["secure"], irc.ParseMessage("JOIN #test"))
 	i.ProcessMessage(ids["mero"], irc.ParseMessage("JOIN #test"))
 
+	i.ProcessMessage(ids["services"], irc.ParseMessage("NICK ChanServ 1 1422134861 services robustirc.net services.robustirc.net 0 :ChanServ"))
+	i.ProcessMessage(ids["services"], irc.ParseMessage("NICK NickServ 1 1422134861 services robustirc.net services.robustirc.net 0 :NickServ"))
+
 	mustMatchMsg(t,
 		i.ProcessMessage(ids["services"], irc.ParseMessage(":ChanServ KICK #test sECuRE :bye")),
 		":ChanServ!services@services KICK #test sECuRE :bye")
@@ -93,16 +96,26 @@ func TestServerKickKill(t *testing.T) {
 		})
 
 	mustMatchMsg(t,
-		i.ProcessMessage(ids["services"], irc.ParseMessage("KILL mero")),
+		i.ProcessMessage(ids["services"], irc.ParseMessage(":NickServ KILL mero")),
 		":robustirc.net 461 * KILL :Not enough parameters")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(ids["services"], irc.ParseMessage("KILL you :nope")),
+		i.ProcessMessage(ids["services"], irc.ParseMessage(":NickServ KILL you :nope")),
 		":robustirc.net 401 * you :No such nick/channel")
 
-	mustMatchMsg(t,
-		i.ProcessMessage(ids["services"], irc.ParseMessage("KILL mero :Too many wrong passwords")),
-		":mero!foo@robust/0x13b5aa0a2bcfb8ae QUIT :Killed: Too many wrong passwords")
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["services"], irc.ParseMessage(":NickServ KILL mero :Too many wrong passwords")),
+		[]*irc.Message{
+			irc.ParseMessage(":NickServ!services@robust/0x13c6cdee3e749faf KILL mero :ircd!robust/0x13c6cdee3e749faf!NickServ (Too many wrong passwords)"),
+			irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae QUIT :Killed: Too many wrong passwords"),
+		})
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["services"], irc.ParseMessage(":services.robustirc.net KILL secure :Too many wrong passwords")),
+		[]*irc.Message{
+			irc.ParseMessage(":services.robustirc.net KILL sECuRE :ircd!services.robustirc.net (Too many wrong passwords)"),
+			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad QUIT :Killed: Too many wrong passwords"),
+		})
 
 	mustMatchMsg(t,
 		i.ProcessMessage(ids["services"], irc.ParseMessage(":ChanServ KICK #test xeen :bye")),
