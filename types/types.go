@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/sorcix/irc"
@@ -89,9 +90,14 @@ func (m *RobustMessage) PrivacyFilter() string {
 	if m.Type != RobustIRCToClient && m.Type != RobustIRCFromClient {
 		return m.Data
 	}
-	if msg := irc.ParseMessage(m.Data); msg.Command == irc.PRIVMSG {
-		msg.Trailing = "<privacy filtered>"
-		return string(msg.Bytes())
+	if msg := irc.ParseMessage(m.Data); msg != nil {
+		command := strings.ToUpper(msg.Command)
+		if command == irc.PRIVMSG ||
+			command == irc.NOTICE ||
+			strings.HasSuffix(command, "serv") {
+			msg.Trailing = "<privacy filtered>"
+			return string(msg.Bytes())
+		}
 	}
 	return m.Data
 }
