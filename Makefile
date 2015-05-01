@@ -8,6 +8,7 @@ VERSION := '$(shell git describe --tags --always) ($(shell git log --pretty=form
 all: container
 
 container:
+	go generate
 	go build -ldflags "-X main.Version ${VERSION}"
 	# This list is from go/src/crypto/x509/root_unix.go.
 	install $(shell ls \
