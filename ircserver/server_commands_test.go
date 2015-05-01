@@ -251,7 +251,7 @@ func TestServerNick(t *testing.T) {
 
 	mustMatchMsg(t,
 		i.ProcessMessage(ids["secure"], irc.ParseMessage("NICK NickServ")),
-		":robustirc.net 433 * NickServ :Nickname is already in use")
+		":robustirc.net 433 sECuRE NickServ :Nickname is already in use")
 }
 
 func TestServerJoinPart(t *testing.T) {

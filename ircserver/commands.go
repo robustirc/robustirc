@@ -400,10 +400,15 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 		}}
 	}
 
+	dest := "*"
+	if s.loggedIn() {
+		dest = s.Nick
+	}
+
 	if !IsValidNickname(msg.Params[0]) {
 		return []*irc.Message{{
 			Command:  irc.ERR_ERRONEUSNICKNAME,
-			Params:   []string{"*", msg.Params[0]},
+			Params:   []string{dest, msg.Params[0]},
 			Trailing: "Erroneous nickname",
 		}}
 	}
@@ -411,7 +416,7 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 	if _, ok := i.nicks[NickToLower(msg.Params[0])]; ok || IsServicesNickname(msg.Params[0]) {
 		return []*irc.Message{{
 			Command:  irc.ERR_NICKNAMEINUSE,
-			Params:   []string{"*", msg.Params[0]},
+			Params:   []string{dest, msg.Params[0]},
 			Trailing: "Nickname is already in use",
 		}}
 	}
