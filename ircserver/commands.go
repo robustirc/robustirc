@@ -420,6 +420,19 @@ func (i *IRCServer) cmdNick(s *Session, msg *irc.Message) []*irc.Message {
 			Trailing: "Nickname is already in use",
 		}}
 	}
+
+	if hold, ok := i.svsholds[NickToLower(msg.Params[0])]; ok {
+		if !s.LastActivity.After(hold.added.Add(hold.duration)) {
+			return []*irc.Message{{
+				Command:  irc.ERR_ERRONEUSNICKNAME,
+				Params:   []string{dest, msg.Params[0]},
+				Trailing: fmt.Sprintf("Erroneous Nickname: %s", hold.reason),
+			}}
+		}
+		// The SVSHOLD expired, so remove it.
+		delete(i.svsholds, NickToLower(msg.Params[0]))
+	}
+
 	loggedIn := s.loggedIn()
 	oldNick := NickToLower(s.Nick)
 	s.Nick = msg.Params[0]

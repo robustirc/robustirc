@@ -48,6 +48,7 @@ func init() {
 	commands["server_TOPIC"] = &ircCommand{Func: (*IRCServer).cmdServerTopic, MinParams: 3}
 	commands["server_SVSNICK"] = &ircCommand{Func: (*IRCServer).cmdServerSvsnick, MinParams: 2}
 	commands["server_SVSMODE"] = &ircCommand{Func: (*IRCServer).cmdServerSvsmode, MinParams: 2}
+	commands["server_SVSHOLD"] = &ircCommand{Func: (*IRCServer).cmdServerSvshold, MinParams: 1}
 	commands["server_KILL"] = &ircCommand{Func: (*IRCServer).cmdServerKill, MinParams: 1}
 	commands["server_KICK"] = &ircCommand{Func: (*IRCServer).cmdServerKick, MinParams: 2}
 	commands["server_INVITE"] = &ircCommand{Func: (*IRCServer).cmdServerInvite, MinParams: 2}
@@ -393,6 +394,29 @@ func (i *IRCServer) cmdServer(s *Session, msg *irc.Message) []*irc.Message {
 		}
 	}
 	return replies
+}
+
+func (i *IRCServer) cmdServerSvshold(s *Session, msg *irc.Message) []*irc.Message {
+	// SVSHOLD <nick> [<expirationtimerelative> :<reason>]
+	nick := NickToLower(msg.Params[0])
+	if len(msg.Params) > 1 {
+		duration, err := time.ParseDuration(msg.Params[1] + "s")
+		if err != nil {
+			return []*irc.Message{{
+				Command:  irc.NOTICE,
+				Params:   []string{s.ircPrefix.Name},
+				Trailing: fmt.Sprintf("Invalid duration: %v", err),
+			}}
+		}
+		i.svsholds[nick] = svshold{
+			added:    s.LastActivity,
+			duration: duration,
+			reason:   msg.Trailing,
+		}
+	} else {
+		delete(i.svsholds, nick)
+	}
+	return []*irc.Message{}
 }
 
 func (i *IRCServer) cmdServerSvsmode(s *Session, msg *irc.Message) []*irc.Message {
