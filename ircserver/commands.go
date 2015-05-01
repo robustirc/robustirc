@@ -799,6 +799,11 @@ func (i *IRCServer) cmdQuit(s *Session, msg *irc.Message) []*irc.Message {
 			Trailing:      msg.Trailing,
 			EmptyTrailing: true,
 		})
+		replies = append(replies, &irc.Message{
+			Prefix:   &irc.Prefix{},
+			Command:  irc.ERROR,
+			Trailing: fmt.Sprintf("Closing Link: %s[%s] (%s)", s.Nick, s.ircPrefix.Host, msg.Trailing),
+		})
 	}
 
 	return replies

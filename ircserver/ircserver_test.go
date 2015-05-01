@@ -998,7 +998,12 @@ func TestQuit(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 315 mero #test :End of /WHO list"),
 		})
 
-	i.ProcessMessage(ids["secure"], irc.ParseMessage("quit :bye bye"))
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(ids["secure"], irc.ParseMessage("quit :bye bye")),
+		[]*irc.Message{
+			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad QUIT :bye bye"),
+			irc.ParseMessage("ERROR :Closing Link: sECuRE[robust/0x13b5aa0a2bcfb8ad] (bye bye)"),
+		})
 
 	mustMatchIrcmsgs(t,
 		i.ProcessMessage(ids["mero"], irc.ParseMessage("WHO #test")),
