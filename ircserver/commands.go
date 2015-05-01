@@ -10,6 +10,7 @@ import (
 
 	"github.com/robustirc/robustirc/types"
 	"github.com/sorcix/irc"
+	"github.com/stapelberg/glog"
 )
 
 var (
@@ -753,7 +754,23 @@ func (i *IRCServer) interestQuit(sessionid types.RobustId, msg *irc.Message) map
 		result[serverid] = true
 	}
 
+	// Fast path: if the sender of the QUIT message is the quitting person,
+	// we’re good. Otherwise we need to iterate through all sessions, since
+	// DeleteSession deletes the entry in i.nicks.
 	s := i.sessions[sessionid]
+	if NickToLower(s.Nick) != NickToLower(msg.Prefix.Name) {
+		s = nil
+		for _, session := range i.sessions {
+			if session.deleted && NickToLower(session.Nick) == NickToLower(msg.Prefix.Name) {
+				s = session
+				break
+			}
+		}
+		if s == nil {
+			glog.Errorf("BUG: %q quits, but session not found\n", msg.Prefix.Name)
+			return result
+		}
+	}
 
 	for channelname := range s.Channels {
 		channel, ok := i.channels[channelname]
@@ -765,21 +782,6 @@ func (i *IRCServer) interestQuit(sessionid types.RobustId, msg *irc.Message) map
 		}
 		for nick := range channel.nicks {
 			result[i.nicks[nick].Id.Id] = true
-		}
-	}
-
-	// Do send QUIT messages back to the sender (who, by now, is not in the
-	// channel anymore).
-	result[sessionid.Id] = true
-	if s.Server || s.Operator {
-		// In order to reliably deliver the QUIT message to the affected
-		// session, we need to iterate over all sessions since DeleteSession
-		// removes the nick from all mappings.
-		for id, session := range i.sessions {
-			if session.deleted && NickToLower(session.Nick) == NickToLower(msg.Prefix.Name) {
-				result[id.Id] = true
-				break
-			}
 		}
 	}
 

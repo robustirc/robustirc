@@ -366,14 +366,14 @@ func TestInterestedIn(t *testing.T) {
 	mustMatchInterested(t, i,
 		ids["secure"], irc.ParseMessage("QUIT :bye"),
 		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
-		[]bool{true, false, false})
+		[]bool{false, false, false})
 
 	i.ProcessMessage(ids["xeen"], irc.ParseMessage("JOIN #test"))
 
 	mustMatchInterested(t, i,
 		ids["mero"], irc.ParseMessage("QUIT :bye"),
 		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
-		[]bool{false, true, true})
+		[]bool{false, false, true})
 }
 
 func TestInterestedInDelayed(t *testing.T) {
