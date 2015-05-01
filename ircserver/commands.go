@@ -68,10 +68,9 @@ func init() {
 		Interesting: (*IRCServer).interestKick,
 	}
 	commands["QUIT"] = &ircCommand{
-		Func:        (*IRCServer).cmdQuit,
-		Interesting: (*IRCServer).interestQuit,
-		// TODO: the bridge always sends DestroySession, but third-party clients may not. so, better keep QUITs?
-		StillRelevant: neverRelevant,
+		Func:          (*IRCServer).cmdQuit,
+		Interesting:   (*IRCServer).interestQuit,
+		StillRelevant: relevantQuit,
 	}
 	commands["PRIVMSG"] = &ircCommand{
 		Func:          (*IRCServer).cmdPrivmsg,
@@ -285,7 +284,20 @@ func (i *IRCServer) login(s *Session, msg *irc.Message) []*irc.Message {
 	return replies
 }
 
-func isLastMessage(prev, next logCursor) (bool, error) {
+func isDeleteSession(msg *types.RobustMessage) bool {
+	if msg.Type == types.RobustDeleteSession {
+		return true
+	}
+	if msg.Type == types.RobustIRCFromClient {
+		parsed := irc.ParseMessage(msg.Data)
+		if parsed != nil && parsed.Command == irc.QUIT {
+			return true
+		}
+	}
+	return false
+}
+
+func isLastMessage(prev, next logCursor, reset logReset) (bool, error) {
 	prevrmsg, err := prev(types.RobustAny)
 	if err != nil {
 		if err == CursorEOF {
@@ -293,7 +305,7 @@ func isLastMessage(prev, next logCursor) (bool, error) {
 		}
 		return false, err
 	}
-	next(types.RobustAny)
+	reset()
 	nextrmsg, err := next(types.RobustAny)
 	if err != nil {
 		if err == CursorEOF {
@@ -301,10 +313,10 @@ func isLastMessage(prev, next logCursor) (bool, error) {
 		}
 		return false, err
 	}
-	prev(types.RobustAny)
+	reset()
 
 	return (prevrmsg.Type == types.RobustCreateSession &&
-		nextrmsg.Type == types.RobustDeleteSession), nil
+		isDeleteSession(nextrmsg)), nil
 }
 
 func relevantNick(msg *irc.Message, prev, next logCursor, reset logReset) (bool, error) {
@@ -312,7 +324,7 @@ func relevantNick(msg *irc.Message, prev, next logCursor, reset logReset) (bool,
 		return false, nil
 	}
 
-	last, err := isLastMessage(prev, next)
+	last, err := isLastMessage(prev, next, reset)
 	if err != nil {
 		return true, err
 	}
@@ -470,7 +482,7 @@ func relevantUser(msg *irc.Message, prev, next logCursor, reset logReset) (bool,
 	// This is the first USER message. If the next message is a QUIT message,
 	// this session cannot have modified any state.
 	rmsg, err := next(types.RobustAny)
-	if err == nil && rmsg.Type == types.RobustDeleteSession {
+	if err == nil && isDeleteSession(rmsg) {
 		return false, nil
 	}
 	prev(types.RobustAny)
@@ -808,6 +820,30 @@ func (i *IRCServer) interestQuit(sessionid types.RobustId, msg *irc.Message) map
 	}
 
 	return result
+}
+
+func relevantQuit(msg *irc.Message, prev, next logCursor, reset logReset) (bool, error) {
+	prevrmsg, err := prev(types.RobustAny)
+	if err != nil {
+		if err == CursorEOF {
+			return true, nil
+		}
+		return true, err
+	}
+	if prevrmsg.Type == types.RobustCreateSession {
+		return false, nil
+	}
+
+	reset()
+
+	// If there is a RobustDeleteSession message, a QUIT message is redundant.
+	if _, err := next(types.RobustDeleteSession); err != nil {
+		if err == CursorEOF {
+			return true, nil
+		}
+		return true, err
+	}
+	return false, nil
 }
 
 func (i *IRCServer) cmdQuit(s *Session, msg *irc.Message) []*irc.Message {
