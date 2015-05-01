@@ -426,12 +426,22 @@ func (i *IRCServer) ProcessMessage(session types.RobustId, message *irc.Message)
 		command != irc.PASS &&
 		command != irc.QUIT &&
 		command != irc.SERVER {
-		return []*irc.Message{{
+		var replies []*irc.Message
+
+		replies = append(replies, &irc.Message{
 			Prefix:   i.ServerPrefix,
 			Command:  irc.ERR_NOTREGISTERED,
 			Params:   []string{command},
 			Trailing: "You have not registered",
-		}}
+		})
+		if s.LastActivity.Sub(time.Unix(0, s.Id.Id)) > 10*time.Minute {
+			i.DeleteSession(s)
+			replies = append(replies, &irc.Message{
+				Command:  irc.ERROR,
+				Trailing: "Closing Link: You have not registered within 10 minutes",
+			})
+		}
+		return replies
 	}
 
 	var serverPrefix string
