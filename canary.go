@@ -73,7 +73,7 @@ func canary() {
 
 	log.Printf("Creating canary report in %q from %s\n", *canaryReport, *join)
 
-	client := robusthttp.Client(*networkPassword)
+	client := robusthttp.Client(*networkPassword, true)
 	url := fmt.Sprintf("https://%s/canarylog", *join)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {

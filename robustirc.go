@@ -718,7 +718,7 @@ func joinMaster(addr string, peerStore *raft.JSONPeers) []net.Addr {
 		buf = bytes.NewBuffer(data)
 	}
 
-	client := robusthttp.Client(*networkPassword)
+	client := robusthttp.Client(*networkPassword, true)
 	req, err := http.NewRequest("POST", fmt.Sprintf("https://%s/join", addr), buf)
 	if err != nil {
 		log.Fatal(err)
@@ -942,7 +942,8 @@ func main() {
 
 	transport := rafthttp.NewHTTPTransport(
 		&dnsAddr{*peerAddr},
-		robusthttp.Client(*networkPassword),
+		// Not deadlined, otherwise snapshot installments fail.
+		robusthttp.Client(*networkPassword, false),
 		nil,
 		"")
 

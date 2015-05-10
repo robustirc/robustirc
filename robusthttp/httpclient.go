@@ -33,7 +33,7 @@ func (r *robustDoer) Do(req *http.Request) (*http.Response, error) {
 
 // Transport returns an *http.Transport respecting the *tlsCAFile flag and
 // using a 10 second read/write timeout.
-func Transport() *http.Transport {
+func Transport(deadlined bool) *http.Transport {
 	var tlsConfig *tls.Config
 	if *tlsCAFile != "" {
 		roots := x509.NewCertPool()
@@ -46,18 +46,21 @@ func Transport() *http.Transport {
 		}
 		tlsConfig = &tls.Config{RootCAs: roots}
 	}
-	return &http.Transport{
+	transport := &http.Transport{
 		TLSClientConfig:     tlsConfig,
 		TLSHandshakeTimeout: 5 * time.Second,
-		Dial:                robustsession.DeadlineConnDialer(2*time.Second, 10*time.Second, 10*time.Second),
 	}
+	if deadlined {
+		transport.Dial = robustsession.DeadlineConnDialer(2*time.Second, 10*time.Second, 10*time.Second)
+	}
+	return transport
 }
 
 // Client returns a net/http.Client which will set the network password
 // in Do(), respects the *tlsCAFile flag and tracks the latency of requests.
-func Client(password string) rafthttp.Doer {
+func Client(password string, deadlined bool) rafthttp.Doer {
 	doer := robustDoer{
-		client:   http.Client{Transport: Transport()},
+		client:   http.Client{Transport: Transport(deadlined)},
 		password: password,
 	}
 	return &doer
