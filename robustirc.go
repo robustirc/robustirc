@@ -962,11 +962,15 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// TODO(secure): update once https://github.com/hashicorp/raft/issues/32 gets closed.
-	// Check whether a snapshot needs to be taken every second. The check is
+	// How often to check whether a snapshot should be taken. The check is
 	// cheap, and the default value far too high for networks with a high
 	// number of messages/s.
-	config.SnapshotInterval = 1 * time.Second
+	// At the same time, it is important that we don’t check too early,
+	// otherwise recovering from the most recent snapshot doesn’t work because
+	// after recovering, a new snapshot (over the 0 committed messages) will be
+	// taken immediately, effectively overwriting the result of the snapshot
+	// recovery.
+	config.SnapshotInterval = 300 * time.Second
 
 	// Batch as many messages as possible into a single appendEntries RPC.
 	// There is no downside to setting this too high.
