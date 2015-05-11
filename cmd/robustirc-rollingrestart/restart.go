@@ -79,7 +79,7 @@ func quit(server string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := robusthttp.Client(*networkPassword).Do(req)
+	resp, err := robusthttp.Client(*networkPassword, true).Do(req)
 	if err != nil {
 		return err
 	}

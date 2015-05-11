@@ -59,7 +59,7 @@ func getConfig(server string) ([]byte, string, error) {
 	if err != nil {
 		return []byte{}, "", err
 	}
-	resp, err := robusthttp.Client(*networkPassword).Do(req)
+	resp, err := robusthttp.Client(*networkPassword, true).Do(req)
 	if err != nil {
 		return []byte{}, "", err
 	}
@@ -84,7 +84,7 @@ func postConfig(server string, revision string, config io.Reader) error {
 		return err
 	}
 	req.Header.Set("X-RobustIRC-Config-Revision", revision)
-	resp, err := robusthttp.Client(*networkPassword).Do(req)
+	resp, err := robusthttp.Client(*networkPassword, true).Do(req)
 	if err != nil {
 		return err
 	}

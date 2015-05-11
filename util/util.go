@@ -35,7 +35,7 @@ func GetServerStatus(server, networkPassword string) (ServerStatus, error) {
 		return status, err
 	}
 	req.Header.Set("Accept", "application/json")
-	resp, err := robusthttp.Client(networkPassword).Do(req)
+	resp, err := robusthttp.Client(networkPassword, true).Do(req)
 	if err != nil {
 		return status, err
 	}
