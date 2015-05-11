@@ -20,26 +20,38 @@ import (
 	"github.com/sorcix/irc"
 )
 
-func privacyFilterMsg(message *irc.Message) *irc.Message {
-	if message.Command == irc.PRIVMSG {
+func privacyFilterIrcmsg(message *irc.Message) *irc.Message {
+	if message == nil {
+		return nil
+	}
+	if message.Command == irc.PRIVMSG || message.Command == irc.NOTICE {
 		message.Trailing = "<privacy filtered>"
 	}
 	return message
 }
 
-func privacyFilterMsgs(messages []*irc.Message) []*irc.Message {
-	output := make([]*irc.Message, len(messages))
+func privacyFilterMsg(message *types.RobustMessage) *types.RobustMessage {
+	return &types.RobustMessage{
+		Id:      message.Id,
+		Session: message.Session,
+		Type:    message.Type,
+		Data:    privacyFilterIrcmsg(irc.ParseMessage(message.Data)).String(),
+	}
+}
+
+func privacyFilterMsgs(messages []*types.RobustMessage) []*types.RobustMessage {
+	output := make([]*types.RobustMessage, len(messages))
 	for idx, message := range messages {
 		output[idx] = privacyFilterMsg(message)
 	}
 	return output
 }
 
-func messagesString(messages []*irc.Message) string {
+func messagesString(messages []*types.RobustMessage) string {
 	output := make([]string, len(messages))
 
 	for idx, msg := range messages {
-		output[idx] = "→ " + msg.String()
+		output[idx] = "→ " + msg.Data
 	}
 
 	return strings.Join(output, "\n")
@@ -133,7 +145,7 @@ func canary() {
 
 		case types.RobustDeleteSession:
 			if _, err := i.GetSession(cm.Input.Session); err == nil {
-				localoutput := i.ProcessMessage(cm.Input.Session, irc.ParseMessage("QUIT :"+cm.Input.Data))
+				localoutput := i.ProcessMessage(cm.Input.Id, cm.Input.Session, irc.ParseMessage("QUIT :"+cm.Input.Data))
 				log.Printf("localoutput = %v\n", localoutput)
 				// TODO(secure): also diff these lines
 				i.DeleteSessionById(cm.Input.Session)
@@ -147,13 +159,12 @@ func canary() {
 			}
 			i.UpdateLastClientMessageID(&cm.Input, []byte{})
 			ircmsg := irc.ParseMessage(cm.Input.Data)
-			localoutput := privacyFilterMsgs(i.ProcessMessage(cm.Input.Session, ircmsg))
-			i.SendMessages(localoutput, cm.Input.Session, cm.Input.Id.Id)
-			remoteoutput := make([]*irc.Message, len(cm.Output))
+			reply := i.ProcessMessage(cm.Input.Id, cm.Input.Session, ircmsg)
+			i.SendMessages(reply, cm.Input.Session, cm.Input.Id.Id)
+			localoutput := privacyFilterMsgs(reply.Messages)
+			remoteoutput := make([]*types.RobustMessage, len(cm.Output))
 			for idx, output := range cm.Output {
-				remoteoutput[idx] = privacyFilterMsg(irc.ParseMessage(output.Data))
-			}
-			if ircmsg.Command == irc.PING {
+				remoteoutput[idx] = privacyFilterMsg(&output)
 			}
 			diffs := diff.DiffMain(messagesString(remoteoutput), messagesString(localoutput), true)
 			// Hide PING/PONG by default as it makes up the majority of the report otherwise.
@@ -166,7 +177,7 @@ func canary() {
 			}
 			fmt.Fprintf(report, `<span class="message">`+"\n")
 			fmt.Fprintf(report, `  <span class="input">← %s</span><br>`+"\n",
-				template.HTMLEscapeString(privacyFilterMsg(irc.ParseMessage(cm.Input.Data)).String()))
+				template.HTMLEscapeString(privacyFilterIrcmsg(irc.ParseMessage(cm.Input.Data)).String()))
 			// TODO(secure): possibly use DiffCleanupSemanticLossless?
 			fmt.Fprintf(report, `  <span class="output">%s</span><br>`+"\n", diff.DiffPrettyHtml(diff.DiffCleanupSemantic(diffs)))
 			fmt.Fprintf(report, "</span>\n")

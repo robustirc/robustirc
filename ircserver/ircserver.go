@@ -411,7 +411,7 @@ func (i *IRCServer) maybeDeleteChannel(c *channel) {
 // ProcessMessage modifies state in response to 'message' and returns zero or
 // more IRC messages in response to 'message'. These messages can then be
 // stored for eventual retrieval by the clients by calling SendMessages.
-func (i *IRCServer) ProcessMessage(session types.RobustId, message *irc.Message) []*irc.Message {
+func (i *IRCServer) ProcessMessage(id types.RobustId, session types.RobustId, message *irc.Message) *Replyctx {
 	i.sessionsMu.Lock()
 	defer i.sessionsMu.Unlock()
 	// alias for convenience
@@ -420,28 +420,28 @@ func (i *IRCServer) ProcessMessage(session types.RobustId, message *irc.Message)
 
 	messagesProcessed.WithLabelValues(command).Inc()
 
+	reply := &Replyctx{msgid: id.Id, session: s}
+
 	if !s.loggedIn() && !s.Server &&
 		command != irc.NICK &&
 		command != irc.USER &&
 		command != irc.PASS &&
 		command != irc.QUIT &&
 		command != irc.SERVER {
-		var replies []*irc.Message
-
-		replies = append(replies, &irc.Message{
+		i.sendUser(s, reply, &irc.Message{
 			Prefix:   i.ServerPrefix,
 			Command:  irc.ERR_NOTREGISTERED,
 			Params:   []string{command},
 			Trailing: "You have not registered",
 		})
 		if s.LastActivity.Sub(time.Unix(0, s.Id.Id)) > 10*time.Minute {
-			i.DeleteSession(s)
-			replies = append(replies, &irc.Message{
+			i.sendUser(s, reply, &irc.Message{
 				Command:  irc.ERROR,
 				Trailing: "Closing Link: You have not registered within 10 minutes",
 			})
+			i.DeleteSession(s)
 		}
-		return replies
+		return reply
 	}
 
 	var serverPrefix string
@@ -450,39 +450,34 @@ func (i *IRCServer) ProcessMessage(session types.RobustId, message *irc.Message)
 	}
 	cmd, ok := commands[serverPrefix+command]
 	if !ok {
-		return []*irc.Message{{
+		i.sendUser(s, reply, &irc.Message{
 			Prefix:   i.ServerPrefix,
 			Command:  irc.ERR_UNKNOWNCOMMAND,
 			Params:   []string{s.Nick, command},
 			Trailing: "Unknown command",
-		}}
+		})
+		return reply
 	}
 
 	if len(message.Params) < cmd.MinParams {
-		return []*irc.Message{{
+		i.sendUser(s, reply, &irc.Message{
 			Prefix:   i.ServerPrefix,
 			Command:  irc.ERR_NEEDMOREPARAMS,
 			Params:   []string{s.Nick, command},
 			Trailing: "Not enough parameters",
-		}}
+		})
+		return reply
 	}
 
-	replies := cmd.Func(i, s, message)
-	for _, reply := range replies {
-		if reply.Prefix == nil {
-			reply.Prefix = i.ServerPrefix
-		} else if reply.Prefix.Name == "" {
-			reply.Prefix = nil
-		}
-	}
-	return replies
+	cmd.Func(i, s, reply, message)
+	return reply
 }
 
 // SendMessages appends the specified batch of messages to the output, marking
 // them as a response to the incoming message with id 'id' and associating them
 // with session 'session'. IRC clients will eventually receive these messages
 // by calling GetNext.
-func (i *IRCServer) SendMessages(replies []*irc.Message, session types.RobustId, id int64) {
+func (i *IRCServer) SendMessages(reply *Replyctx, session types.RobustId, id int64) {
 	i.lastProcessedMu.Lock()
 	i.lastProcessed = types.RobustId{Id: id}
 	i.lastProcessedMu.Unlock()
@@ -507,70 +502,11 @@ func (i *IRCServer) SendMessages(replies []*irc.Message, session types.RobustId,
 		}
 	}()
 
-	if len(replies) == 0 {
+	if len(reply.Messages) == 0 {
 		return
 	}
 
-	robustreplies := make([]*types.RobustMessage, len(replies))
-	for idx, reply := range replies {
-		robustmsg := &types.RobustMessage{
-			// The IDs must be the same across servers.
-			Id: types.RobustId{
-				Id:    id,
-				Reply: int64(idx + 1),
-			},
-			Session: session,
-			Type:    types.RobustIRCToClient,
-			Data:    string(reply.Bytes()),
-		}
-
-		if reply.Prefix == nil {
-			server := false
-			i.sessionsMu.RLock()
-			if s, ok := i.sessions[session]; ok {
-				server = s.Server
-			}
-			i.sessionsMu.RUnlock()
-			if server {
-				robustmsg.InterestingFor = make(map[int64]bool)
-				robustmsg.InterestingFor[session.Id] = true
-				for _, serverid := range i.serverSessions {
-					robustmsg.InterestingFor[serverid] = true
-				}
-				robustreplies[idx] = robustmsg
-				continue
-			}
-		}
-
-		// No strings.ToUpper(ircmsg.Command) because we generate all messages,
-		// thus they are well-formed.
-		cmd, ok := commands[reply.Command]
-		if ok && cmd.Interesting != nil {
-			robustmsg.InterestingFor = cmd.Interesting(i, session, reply)
-			robustreplies[idx] = robustmsg
-			continue
-		}
-
-		// Everything the server sends directly is interesting to the client.
-		if reply.Prefix != nil && *reply.Prefix == *i.ServerPrefix {
-			robustmsg.InterestingFor = make(map[int64]bool)
-			robustmsg.InterestingFor[session.Id] = true
-			robustreplies[idx] = robustmsg
-			continue
-		}
-
-		if reply.Command == irc.ERROR {
-			robustmsg.InterestingFor = make(map[int64]bool)
-			robustmsg.InterestingFor[session.Id] = true
-			robustreplies[idx] = robustmsg
-			continue
-		}
-
-		robustmsg.InterestingFor = make(map[int64]bool)
-		robustreplies[idx] = robustmsg
-	}
-
-	i.output.Add(robustreplies)
+	i.output.Add(reply.Messages)
 }
 
 // GetSession returns a pointer to the session specified by 'id'.
@@ -733,4 +669,99 @@ func (i *IRCServer) Get(input types.RobustId) ([]*types.RobustMessage, bool) {
 // public. All other methods should not be used, which is enforced this way.
 func (i *IRCServer) Delete(input types.RobustId) {
 	i.output.Delete(input)
+}
+
+// Replyctx is a reply context, i.e. information necessary when replying to an
+// IRC message. A reply context object will be passed to all cmd* functions and
+// the send* functions use it to keep track of the replyid for example.
+type Replyctx struct {
+	msgid    int64
+	replyid  int64
+	session  *Session
+	Messages []*types.RobustMessage
+
+	// lastmsg tracks the last sent message, so that send() can return the same
+	// message multiple times when being called in a continuation.
+	lastmsg *irc.Message
+}
+
+// send converts |msg| into a RobustMessage and appends it to |reply|.
+func (i *IRCServer) send(reply *Replyctx, msg *irc.Message) *types.RobustMessage {
+	if reply.lastmsg == msg {
+		return reply.Messages[len(reply.Messages)-1]
+	}
+
+	reply.replyid++
+
+	robustmsg := &types.RobustMessage{
+		// The IDs must be the same across servers.
+		Id: types.RobustId{
+			Id:    reply.msgid,
+			Reply: reply.replyid,
+		},
+		// TODO(secure): verify |Session| is unused and don’t set it.
+		Session:        reply.session.Id,
+		Type:           types.RobustIRCToClient,
+		Data:           string(msg.Bytes()),
+		InterestingFor: make(map[int64]bool),
+	}
+
+	reply.Messages = append(reply.Messages, robustmsg)
+	reply.lastmsg = msg
+
+	return robustmsg
+}
+
+// sendUser sends |msg| to |user|.
+func (i *IRCServer) sendUser(user *Session, reply *Replyctx, msg *irc.Message) *irc.Message {
+	robustmsg := i.send(reply, msg)
+	robustmsg.InterestingFor[user.Id.Id] = true
+	return msg
+}
+
+// sendCommonChannels sends |msg| to all users which are in one of the channels
+// on which |user| is in.
+func (i *IRCServer) sendCommonChannels(user *Session, reply *Replyctx, msg *irc.Message) *irc.Message {
+	robustmsg := i.send(reply, msg)
+	for channelname := range user.Channels {
+		c, ok := i.channels[channelname]
+		if !ok {
+			continue
+		}
+		for nick := range c.nicks {
+			robustmsg.InterestingFor[i.nicks[nick].Id.Id] = true
+		}
+	}
+	return msg
+}
+
+// sendChannel sends |msg| to all users who are in |c|.
+func (i *IRCServer) sendChannel(c *channel, reply *Replyctx, msg *irc.Message) *irc.Message {
+	robustmsg := i.send(reply, msg)
+	for nick := range c.nicks {
+		robustmsg.InterestingFor[i.nicks[nick].Id.Id] = true
+	}
+	return msg
+}
+
+// sendChannelButOne sends |msg| to all users who are in |c|, except for |user|
+func (i *IRCServer) sendChannelButOne(c *channel, user *Session, reply *Replyctx, msg *irc.Message) *irc.Message {
+	robustmsg := i.send(reply, msg)
+	for nick := range c.nicks {
+		session := i.nicks[nick]
+		if session == user {
+			continue
+		}
+		robustmsg.InterestingFor[session.Id.Id] = true
+	}
+	return msg
+}
+
+// sendServices sends |msg| to the IRC services.
+func (i *IRCServer) sendServices(reply *Replyctx, msg *irc.Message) *irc.Message {
+	robustmsg := i.send(reply, msg)
+	for _, serverid := range i.serverSessions {
+		robustmsg.InterestingFor[serverid] = true
+	}
+	return msg
 }
