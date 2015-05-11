@@ -980,7 +980,9 @@ func main() {
 
 	// It could be that the heartbeat goroutine is not scheduled for a while,
 	// so relax the default of 500ms.
-	config.LeaderLeaseTimeout = 1 * time.Second
+	config.LeaderLeaseTimeout = 2 * time.Second
+	config.HeartbeatTimeout = config.LeaderLeaseTimeout
+	config.ElectionTimeout = config.LeaderLeaseTimeout
 
 	// We use prometheus, so hook up the metrics package (used by raft) to
 	// prometheus as well.
