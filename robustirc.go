@@ -416,7 +416,8 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 			// Kind of a hack: we need to keep track of which sessions are
 			// services connections and which are not, so that we can look at
 			// the correct relevant-function (e.g. server_NICK vs. NICK).
-			if strings.HasPrefix(strings.ToUpper(parsed.Data), "SERVER") {
+			ircmsg := irc.ParseMessage(parsed.Data)
+			if ircmsg != nil && strings.ToUpper(ircmsg.Command) == "SERVER" {
 				s.servers[parsed.Session.Id] = true
 			}
 
