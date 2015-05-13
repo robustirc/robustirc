@@ -1,36 +1,44 @@
-// committed messages/s, regardless of the node on which they were committed
+# committed messages/s, regardless of the node on which they were committed
 job:committed:rate5m_sum = sum(rate(raftmetrics_raft_commitTime_count[5m])) by (job)
 
-// TODO(secure): does this time series include s2s connections? maybe introduce a better one
+# TODO(secure): does this time series include s2s connections? maybe introduce a better one
 job:sessions:min = min(irc_sessions) by (job)
 
 ALERT CapacityNotNPlusOne
   IF (count(up{job="robustirc"} == 1) < 3)
   FOR 30m
-  WITH {}
+  WITH {
+    job="robustirc"
+  }
   SUMMARY "Capacity less than n+1"
   DESCRIPTION "Only {{$value}} of 3 nodes are up. Please replace the faulty nodes."
 
-// With just one connection, there will be at least one PING message every 60s.
-// If your network does not have even one permanent connection, you must use a
-// prober such as http://kanla.zekjur.net to make sure there are messages.
+# With just one connection, there will be at least one PING message every 60s.
+# If your network does not have even one permanent connection, you must use a
+# prober such as http://kanla.zekjur.net to make sure there are messages.
 ALERT CommitRateTooLow
   IF ((60 * job:committed:rate5m_sum{job="robustirc"}) < 1)
   FOR 5m
-  WITH {}
+  WITH {
+    job="robustirc"
+  }
   SUMMARY "Network is not committing messages"
   DESCRIPTION "Commit rate is only {{$value}} messages per minute."
 
 ALERT NoLeader
   IF (max(raft_isleader{job="robustirc"}) < 1)
   FOR 5m
-  WITH {}
+  WITH {
+    job="robustirc"
+  }
   SUMMARY "No raft leader elected"
   DESCRIPTION "Without a raft leader, the network cannot make progress."
 
 ALERT LeaderFlapping
   IF ((sum(abs(deriv(raft_isleader[10m]))) by (job)) > 0)
   FOR 10m
-  WITH {}
+  WITH {
+    job="robustirc"
+  }
   SUMMARY "Raft leader flapping"
   DESCRIPTION "The network is switching back and forth between leaders. Check timeouts?"
