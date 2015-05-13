@@ -277,7 +277,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 
 	lastSeen := ircServer.GetStartId(session)
 	lastSeenStr := r.FormValue("lastseen")
-	if lastSeenStr != "0.0" {
+	if lastSeenStr != "0.0" && lastSeenStr != "" {
 		parts := strings.Split(lastSeenStr, ".")
 		if len(parts) != 2 {
 			log.Printf("cannot parse %q\n", lastSeenStr)
