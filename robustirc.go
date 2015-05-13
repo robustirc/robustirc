@@ -706,9 +706,7 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 	return nil
 }
 
-func joinMaster(addr string, peerStore *raft.JSONPeers) []net.Addr {
-	master := &dnsAddr{addr}
-
+func joinMaster(addr string, peerStore *raft.JSONPeers) []string {
 	type joinRequest struct {
 		Addr string
 	}
@@ -743,12 +741,12 @@ func joinMaster(addr string, peerStore *raft.JSONPeers) []net.Addr {
 		return joinMaster(u.Host, peerStore)
 	}
 
-	log.Printf("Adding master %v as peer\n", master)
+	log.Printf("Adding master %q as peer\n", addr)
 	p, err := peerStore.Peers()
 	if err != nil {
 		log.Fatal("Could not read peers:", err)
 	}
-	p = raft.AddUniquePeer(p, master)
+	p = raft.AddUniquePeer(p, addr)
 	peerStore.SetPeers(p)
 	return p
 }
@@ -771,20 +769,6 @@ func executableHash() string {
 	}
 
 	return fmt.Sprintf("%.16x", h.Sum(nil))
-}
-
-// dnsAddr contains a DNS name (e.g. robust1.twice-irc.de) and fulfills the
-// net.Addr interface, so that it can be used with our raft library.
-type dnsAddr struct {
-	name string
-}
-
-func (a *dnsAddr) Network() string {
-	return "dns"
-}
-
-func (a *dnsAddr) String() string {
-	return a.name
 }
 
 // Copied from src/net/http/server.go
@@ -942,7 +926,7 @@ func main() {
 	ircServer = ircserver.NewIRCServer(*network, time.Now())
 
 	transport := rafthttp.NewHTTPTransport(
-		&dnsAddr{*peerAddr},
+		*peerAddr,
 		// Not deadlined, otherwise snapshot installments fail.
 		robusthttp.Client(*networkPassword, false),
 		nil,
@@ -950,7 +934,7 @@ func main() {
 
 	peerStore = raft.NewJSONPeers(*raftDir, transport)
 
-	var p []net.Addr
+	var p []string
 
 	config := raft.DefaultConfig()
 	config.Logger = log.New(glog.LogBridgeFor("INFO"), "", log.Lshortfile)

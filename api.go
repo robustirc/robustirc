@@ -72,18 +72,18 @@ func (nopCloser) Close() error {
 
 func maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body io.ReadCloser) {
 	leader := node.Leader()
-	if leader == nil {
+	if leader == "" {
 		http.Error(w, fmt.Sprintf("No leader known. Please try another server."),
 			http.StatusInternalServerError)
 		return
 	}
 
 	nodeProxiesMu.RLock()
-	p, ok := nodeProxies[leader.String()]
+	p, ok := nodeProxies[leader]
 	nodeProxiesMu.RUnlock()
 
 	if !ok {
-		u, err := url.Parse("https://" + leader.String())
+		u, err := url.Parse("https://" + leader)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("url.Parse(): %v", err), http.StatusInternalServerError)
 			return
@@ -93,14 +93,14 @@ func maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body io.ReadClos
 
 		// Races are okay, i.e. overwriting the proxy a different goroutine set up.
 		nodeProxiesMu.Lock()
-		nodeProxies[leader.String()] = p
+		nodeProxies[leader] = p
 		nodeProxiesMu.Unlock()
 	}
 
 	location := *r.URL
-	location.Host = leader.String()
+	location.Host = leader
 	w.Header().Set("Content-Location", location.String())
-	log.Printf("Proxying request (%q) to leader %q\n", r.URL.Path, leader.String())
+	log.Printf("Proxying request (%q) to leader %q\n", r.URL.Path, leader)
 	r.Body = body
 	p.ServeHTTP(w, r)
 }
@@ -234,7 +234,7 @@ func handleJoin(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Adding peer %q to the network.\n", req.Addr)
 
-	if err := node.AddPeer(&dnsAddr{req.Addr}).Error(); err != nil && err != raft.ErrKnownPeer {
+	if err := node.AddPeer(req.Addr).Error(); err != nil && err != raft.ErrKnownPeer {
 		log.Println("Could not add peer:", err)
 		http.Error(w, "Could not add peer", 500)
 		return
@@ -331,7 +331,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 						log.Fatalf("Could not get peers: %v (Peer file corrupted on disk?)\n", err)
 					}
 					for _, peer := range peers {
-						pingmsg.Servers = append(pingmsg.Servers, peer.String())
+						pingmsg.Servers = append(pingmsg.Servers, peer)
 					}
 					msgschan <- []*types.RobustMessage{pingmsg}
 				case <-pingDone:
@@ -512,9 +512,7 @@ func handleDeleteSession(w http.ResponseWriter, r *http.Request, ps httprouter.P
 }
 
 func handleLeader(w http.ResponseWriter, r *http.Request) {
-	if leader := node.Leader(); leader != nil {
-		w.Write([]byte(leader.String()))
-	}
+	w.Write([]byte(node.Leader()))
 }
 
 func handleQuit(w http.ResponseWriter, r *http.Request) {

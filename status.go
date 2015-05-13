@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -25,18 +24,14 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		type jsonStatus struct {
 			State          string
 			Leader         string
-			Peers          []net.Addr
+			Peers          []string
 			AppliedIndex   uint64
 			CommitIndex    uint64
 			LastContact    time.Time
 			ExecutableHash string
 		}
 		res.Header().Set("Content-Type", "application/json")
-		leaderStr := ""
-		leader := node.Leader()
-		if leader != nil {
-			leaderStr = leader.String()
-		}
+		leaderStr := node.Leader()
 		stats := node.Stats()
 		appliedIndex, err := strconv.ParseUint(stats["applied_index"], 0, 64)
 		if err != nil {
@@ -121,8 +116,8 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 	args := struct {
 		Addr               string
 		State              raft.RaftState
-		Leader             net.Addr
-		Peers              []net.Addr
+		Leader             string
+		Peers              []string
 		First              uint64
 		Last               uint64
 		Entries            []*raft.Log
