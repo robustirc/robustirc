@@ -330,8 +330,12 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 					if err != nil {
 						log.Fatalf("Could not get peers: %v (Peer file corrupted on disk?)\n", err)
 					}
+					leader := node.Leader()
+					pingmsg.Servers = append(pingmsg.Servers, leader)
 					for _, peer := range peers {
-						pingmsg.Servers = append(pingmsg.Servers, peer)
+						if peer != leader {
+							pingmsg.Servers = append(pingmsg.Servers, peer)
+						}
 					}
 					msgschan <- []*types.RobustMessage{pingmsg}
 				case <-pingDone:
