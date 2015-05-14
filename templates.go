@@ -91,7 +91,7 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 					{{ range $key, $val := .GetMessageRequests }}
 						<tr>
 							<td><code>{{ $val.Session.Id | printf "0x%x" }}</code></td>
-							<td>{{ $val.Nick }}</td>
+							<td>{{ $val.NickWithFallback }}</td>
 							<td>{{ $key }}</td>
 							<td>{{ $val.StartedAndRelative }}</td>
 							<td>{{ $val.UserAgent }}</td>

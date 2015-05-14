@@ -55,6 +55,16 @@ type GetMessageStats struct {
 	UserAgent string
 }
 
+func (stats GetMessageStats) NickWithFallback() string {
+	if stats.Nick != "" {
+		return stats.Nick
+	}
+	if session, err := ircServer.GetSession(stats.Session); err == nil {
+		return session.Nick
+	}
+	return ""
+}
+
 // StartedAndRelative converts |stats.Started| into a human-readable formatted
 // time, followed by a relative time specification.
 func (stats GetMessageStats) StartedAndRelative() string {
