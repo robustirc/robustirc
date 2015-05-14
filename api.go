@@ -345,6 +345,21 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 			}
 		}()
 
+		// With the following output messages stored for a session:
+		// Id                  Reply
+		// 1431542836610113945.1
+		// 1431542836610113945.2     |lastSeen|
+		// 1431542836610113945.3
+		// 1431542836691955391.1
+		// …when resuming, GetNext(1431542836610113945.2) will return
+		// 1431542836691955391.*, skipping the remaining messages with
+		// Id=1431542836610113945.
+		// Hence, we need to Get(1431542836610113945.2) to send
+		// 1431542836610113945.3 and following to the client.
+		if msgs, ok := ircServer.Get(lastSeen); ok && int(lastSeen.Reply) < len(msgs) {
+			msgschan <- msgs[lastSeen.Reply:]
+		}
+
 		for {
 			select {
 			case <-done:
