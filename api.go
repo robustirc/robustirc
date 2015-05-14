@@ -263,6 +263,26 @@ func handleSnapshot(res http.ResponseWriter, req *http.Request) {
 	log.Println("snapshotted")
 }
 
+func pingMessage() *types.RobustMessage {
+	pingmsg := &types.RobustMessage{
+		Type: types.RobustPing,
+	}
+
+	peers, err := peerStore.Peers()
+	if err != nil {
+		log.Fatalf("Could not get peers: %v (Peer file corrupted on disk?)\n", err)
+	}
+	leader := node.Leader()
+	pingmsg.Servers = append(pingmsg.Servers, leader)
+	for _, peer := range peers {
+		if peer != leader {
+			pingmsg.Servers = append(pingmsg.Servers, peer)
+		}
+	}
+
+	return pingmsg
+}
+
 func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Avoid sessionOrProxy() because GetMessages can be answered on any raft
 	// node, it’s a read-only request.
@@ -338,22 +358,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 			for {
 				select {
 				case <-pingTicker.C:
-					pingmsg := &types.RobustMessage{
-						Type: types.RobustPing,
-					}
-
-					peers, err := peerStore.Peers()
-					if err != nil {
-						log.Fatalf("Could not get peers: %v (Peer file corrupted on disk?)\n", err)
-					}
-					leader := node.Leader()
-					pingmsg.Servers = append(pingmsg.Servers, leader)
-					for _, peer := range peers {
-						if peer != leader {
-							pingmsg.Servers = append(pingmsg.Servers, peer)
-						}
-					}
-					msgschan <- []*types.RobustMessage{pingmsg}
+					msgschan <- []*types.RobustMessage{pingMessage()}
 				case <-pingDone:
 					pingTicker.Stop()
 					return
