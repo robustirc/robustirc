@@ -1,6 +1,7 @@
 package localnet
 
 import (
+	"bytes"
 	crypto_rand "crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
@@ -21,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/util"
 )
 
@@ -126,8 +128,39 @@ func (l *localnet) Servers() []string {
 	return addrs
 }
 
-// TODO(secure): add a function to change the configuration so that we can set
-// PostMessageCooloff = 0 for benchmarks.
+func (l *localnet) SetConfig(config string) error {
+	server := l.Servers()[0]
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s/config", server), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := robusthttp.Client(l.NetworkPassword, true).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Expected HTTP OK, got %v", resp.Status)
+	}
+
+	req, err = http.NewRequest("POST", fmt.Sprintf("https://%s/config", server), bytes.NewBuffer([]byte(config)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-RobustIRC-Config-Revision", resp.Header.Get("X-RobustIRC-Config-Revision"))
+	resp, err = robusthttp.Client(l.NetworkPassword, true).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Expected HTTP OK, got %v", resp.Status)
+	}
+
+	return nil
+}
 
 func (l *localnet) StartIRCServer(singlenode bool) (*exec.Cmd, string, string) {
 	args := []string{

@@ -33,6 +33,21 @@ var (
 		"Port to (try to) use for the first RobustIRC server. If in use, another will be tried.")
 )
 
+const config = `
+SessionExpiration = "10m0s"
+
+# Disable throttling for benchmarks
+PostMessageCooloff = "0"
+
+[IRC]
+  [[IRC.Operators]]
+    Name = "foo"
+    Password = "bar"
+
+  [[IRC.Services]]
+    Password = "mypass"
+`
+
 func main() {
 	flag.Parse()
 
@@ -74,5 +89,9 @@ func main() {
 		} else {
 			time.Sleep(1 * time.Second)
 		}
+	}
+
+	if err := l.SetConfig(config); err != nil {
+		log.Printf("Could not change config: %v\n", err)
 	}
 }
