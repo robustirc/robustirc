@@ -440,6 +440,22 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 				return
 			}
 
+			// The 10 seconds threshold is arbitrary. The only criterion is
+			// that it must be higher than raft’s HeartbeatTimeout of 2s. The
+			// higher it is chosen, the longer users have to wait until they
+			// can connect to a different node. Note that in the worst case,
+			// |pingInterval| = 20s needs to pass before this threshold is
+			// evaluated.
+			if node.State() != raft.Leader && time.Since(node.LastContact()) > 10*time.Second {
+				// This node is neither the leader nor was it recently in
+				// contact with the master, indicating that it is partitioned
+				// from the rest of the network. We abort this GetMessages
+				// request so that clients can connect to a different server
+				// and receive new messages.
+				log.Printf("Aborting GetMessages request due to LastContact (%v) too long ago\n", node.LastContact())
+				return
+			}
+
 			if time.Since(lastFlush) > 100*time.Millisecond {
 				if f, ok := w.(http.Flusher); ok {
 					f.Flush()
