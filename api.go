@@ -167,13 +167,21 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 
 	var req postMessageRequest
 
-	// We limit the amount of bytes read to 1024 to prevent reading overly long
+	// We limit the amount of bytes read to 2048 to prevent reading overly long
 	// requests in the first place. The IRC line length limit is 512 bytes, so
-	// with 1024 bytes we have plenty of headroom to encode 512 bytes in JSON.
+	// with 2048 bytes we have plenty of headroom to encode 512 bytes in JSON:
+	// The highest unicode code point is 0x10FFFF¹, which is expressed with
+	// 4 bytes when using UTF-8², but gets blown up to 12 bytes when escaped in
+	// JSON³. Hence, the JSON representation of a 512 byte IRC message has an
+	// upper bound of 3x512 = 1536 bytes. We use 2048 bytes to have enough
+	// space for encoding the struct field names etc.
+	// ① http://unicode.org/glossary/#code_point
+	// ② http://tools.ietf.org/html/rfc3629#section-3
+	// ③ https://tools.ietf.org/html/rfc7159#section-7
 	//
 	// We save a copy of the request in case we need to proxy it to the leader.
 	var body bytes.Buffer
-	rd := io.TeeReader(http.MaxBytesReader(w, r.Body, 1024), &body)
+	rd := io.TeeReader(http.MaxBytesReader(w, r.Body, 2048), &body)
 	if err := json.NewDecoder(rd).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
