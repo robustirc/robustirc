@@ -111,7 +111,7 @@ func (os *OutputStream) Delete(inputID types.RobustId) {
 // was deleted in the meanwhile. In case there is no next message yet,
 // GetNext blocks until it appears.
 // GetNext(types.RobustId{Id: 0}) returns the first message.
-func (os *OutputStream) GetNext(lastseen types.RobustId) []*types.RobustMessage {
+func (os *OutputStream) GetNext(lastseen types.RobustId, cancelled *bool) []*types.RobustMessage {
 	// GetNext handles 4 different cases:
 	//
 	// ┌──────────────────┬───────────┬───────────────────────────────────────┐
@@ -173,8 +173,20 @@ func (os *OutputStream) GetNext(lastseen types.RobustId) []*types.RobustMessage 
 			os.messagesMu.Unlock()
 			return next.Messages
 		}
+		if cancelled != nil && *cancelled {
+			os.messagesMu.Unlock()
+			return []*types.RobustMessage{}
+		}
 		os.newMessage.Wait()
 	}
+}
+
+// InterruptGetNext interrupts any running GetNext() calls so that they return
+// if |cancelled| is specified and true in the GetNext() call.
+func (os *OutputStream) InterruptGetNext() {
+	os.messagesMu.Lock()
+	defer os.messagesMu.Unlock()
+	os.newMessage.Broadcast()
 }
 
 // Get returns the next IRC output message for 'input', if present.

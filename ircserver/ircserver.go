@@ -652,21 +652,31 @@ func (i *IRCServer) NumSessions() int {
 }
 
 // GetNext wraps outputstream.GetNext to avoid making the outputstream instance
-// public. All other methods should not be used, which is enforced this way.
-func (i *IRCServer) GetNext(lastseen types.RobustId) []*types.RobustMessage {
-	return i.output.GetNext(lastseen)
+// public. Some methods of outputstream must not be used, which is enforced
+// this way.
+func (i *IRCServer) GetNext(lastseen types.RobustId, cancelled *bool) []*types.RobustMessage {
+	return i.output.GetNext(lastseen, cancelled)
 }
 
 // Get wraps outputstream.Get to avoid making the outputstream instance
-// public. All other methods should not be used, which is enforced this way.
+// public. Some methods of outputstream must not be used, which is enforced
+// this way.
 func (i *IRCServer) Get(input types.RobustId) ([]*types.RobustMessage, bool) {
 	return i.output.Get(input)
 }
 
 // Delete wraps outputstream.Delete to avoid making the outputstream instance
-// public. All other methods should not be used, which is enforced this way.
+// public. Some methods of outputstream must not be used, which is enforced
+// this way.
 func (i *IRCServer) Delete(input types.RobustId) {
 	i.output.Delete(input)
+}
+
+// InterruptGetNext wraps outputstream.InterruptGetNext to avoid making the
+// outputstream instance public. Some methods of outputstream must not be used,
+// which is enforced this way.
+func (i *IRCServer) InterruptGetNext() {
+	i.output.InterruptGetNext()
 }
 
 // Replyctx is a reply context, i.e. information necessary when replying to an

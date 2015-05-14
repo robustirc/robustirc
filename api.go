@@ -349,7 +349,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	var lastFlush time.Time
 	willFlush := false
 	msgschan := make(chan []*types.RobustMessage)
-	done := make(chan bool, 1)
+	cancelled := false
 	go func() {
 		var msgs []*types.RobustMessage
 		pingDone := make(chan bool)
@@ -382,14 +382,15 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		}
 
 		for {
-			select {
-			case <-done:
+			if cancelled {
 				pingDone <- true
 				close(msgschan)
 				return
-			default:
 			}
-			msgs = ircServer.GetNext(lastSeen)
+			msgs = ircServer.GetNext(lastSeen, &cancelled)
+			if len(msgs) == 0 {
+				continue
+			}
 			// This check prevents replaying old messages in the scenario where
 			// the client has seen newer messages than the server, for example
 			// because the server is currently recovering from a snapshot after
@@ -409,7 +410,8 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		}
 	}()
 	defer func() {
-		done <- true
+		cancelled = true
+		ircServer.InterruptGetNext()
 		for _ = range msgschan {
 		}
 	}()
@@ -435,9 +437,6 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 
 			if _, err := ircServer.GetSession(session); err != nil {
 				// Session was deleted in the meanwhile, abort this request.
-				if f, ok := w.(http.Flusher); ok {
-					f.Flush()
-				}
 				return
 			}
 

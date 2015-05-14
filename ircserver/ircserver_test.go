@@ -245,7 +245,7 @@ func TestPlumbing(t *testing.T) {
 	nextid := types.RobustId{Id: time.Now().UnixNano()}
 	replies = i.ProcessMessage(nextid, ids["secure"], irc.ParseMessage("JOIN #foobar"))
 	i.SendMessages(replies, ids["secure"], nextid.Id)
-	got = i.GetNext(msgid)
+	got = i.GetNext(msgid, nil)
 	if !ok {
 		t.Fatalf("_, ok := Get(%d); got false, want true", msgid.Id)
 	}
