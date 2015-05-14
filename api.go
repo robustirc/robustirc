@@ -180,9 +180,7 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	}
 
 	// If we have already seen this message, we just reply with a canned response.
-	if id, reply := ircServer.LastPostMessage(session); id == req.ClientMessageId && reply != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(reply)
+	if ircServer.LastPostMessage(session) == req.ClientMessageId {
 		return
 	}
 

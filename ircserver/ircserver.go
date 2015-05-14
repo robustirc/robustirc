@@ -126,8 +126,7 @@ type Session struct {
 	startId types.RobustId
 
 	// The last ClientMessageId we got.
-	lastClientMessageId  uint64
-	lastPostMessageReply []byte
+	lastClientMessageId uint64
 
 	ircPrefix irc.Prefix
 	// deleted gets set by DeleteSession and used by SendMessages. Refer to the
@@ -266,7 +265,7 @@ func (i *IRCServer) NewRobustMessage(t types.RobustType, session types.RobustId,
 
 // UpdateLastMessage stores the clientmessageid of the last message in the
 // corresponding session, so that duplicate messages are not persisted twice.
-func (i *IRCServer) UpdateLastClientMessageID(msg *types.RobustMessage, serialized []byte) error {
+func (i *IRCServer) UpdateLastClientMessageID(msg *types.RobustMessage) error {
 	i.sessionsMu.Lock()
 	defer i.sessionsMu.Unlock()
 	session, err := i.GetSession(msg.Session)
@@ -275,7 +274,6 @@ func (i *IRCServer) UpdateLastClientMessageID(msg *types.RobustMessage, serializ
 	}
 	session.LastActivity = time.Unix(0, msg.Id.Id)
 	session.lastClientMessageId = msg.ClientMessageId
-	session.lastPostMessageReply = serialized
 	return nil
 }
 
@@ -590,14 +588,14 @@ func (i *IRCServer) ThrottleUntil(sessionid types.RobustId, cooloff time.Duratio
 
 // LastPostMessage returns |sessionid|’s last processed client message id and
 // the corresponding reply (for duplicate detection).
-func (i *IRCServer) LastPostMessage(sessionid types.RobustId) (uint64, []byte) {
+func (i *IRCServer) LastPostMessage(sessionid types.RobustId) uint64 {
 	i.sessionsMu.RLock()
 	defer i.sessionsMu.RUnlock()
 
 	if s, ok := i.sessions[sessionid]; ok {
-		return s.lastClientMessageId, s.lastPostMessageReply
+		return s.lastClientMessageId
 	}
-	return 0, []byte{}
+	return 0
 }
 
 // StillRelevant returns true if and only if ircmsg is still relevant, i.e.

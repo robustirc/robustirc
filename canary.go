@@ -157,7 +157,7 @@ func canary() {
 			if _, err := i.GetSession(cm.Input.Session); err != nil {
 				continue
 			}
-			i.UpdateLastClientMessageID(&cm.Input, []byte{})
+			i.UpdateLastClientMessageID(&cm.Input)
 			ircmsg := irc.ParseMessage(cm.Input.Data)
 			reply := i.ProcessMessage(cm.Input.Id, cm.Input.Session, ircmsg)
 			i.SendMessages(reply, cm.Input.Session, cm.Input.Id.Id)
