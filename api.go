@@ -273,7 +273,9 @@ func pingMessage() *types.RobustMessage {
 		log.Fatalf("Could not get peers: %v (Peer file corrupted on disk?)\n", err)
 	}
 	leader := node.Leader()
-	pingmsg.Servers = append(pingmsg.Servers, leader)
+	if leader != "" {
+		pingmsg.Servers = append(pingmsg.Servers, leader)
+	}
 	for _, peer := range peers {
 		if peer != leader {
 			pingmsg.Servers = append(pingmsg.Servers, peer)
