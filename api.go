@@ -45,6 +45,10 @@ var (
 	// for each node (since the current leader might change abruptly).
 	nodeProxies   = make(map[string]*httputil.ReverseProxy)
 	nodeProxiesMu sync.RWMutex
+
+	// lastContact stores either node.LastContact() for non-leaders or
+	// time.Now() for leaders.
+	lastContact = time.Now()
 )
 
 // GetMessageStats encapsulates information about a GetMessages request.
@@ -263,6 +267,16 @@ func handleSnapshot(res http.ResponseWriter, req *http.Request) {
 	log.Println("snapshotted")
 }
 
+func updateLastContact() {
+	// node.LastContact() is only updated when we receive heartbeats from the
+	// leader, i.e. only when we are a follower.
+	if node.State() == raft.Follower && !node.LastContact().IsZero() {
+		lastContact = node.LastContact()
+	} else if node.State() == raft.Leader {
+		lastContact = time.Now()
+	}
+}
+
 func pingMessage() *types.RobustMessage {
 	pingmsg := &types.RobustMessage{
 		Type: types.RobustPing,
@@ -442,13 +456,15 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 				return
 			}
 
+			updateLastContact()
+
 			// The 10 seconds threshold is arbitrary. The only criterion is
 			// that it must be higher than raft’s HeartbeatTimeout of 2s. The
 			// higher it is chosen, the longer users have to wait until they
 			// can connect to a different node. Note that in the worst case,
 			// |pingInterval| = 20s needs to pass before this threshold is
 			// evaluated.
-			if node.State() != raft.Leader && time.Since(node.LastContact()) > 10*time.Second {
+			if node.State() != raft.Leader && time.Since(lastContact) > 10*time.Second {
 				// This node is neither the leader nor was it recently in
 				// contact with the master, indicating that it is partitioned
 				// from the rest of the network. We abort this GetMessages
