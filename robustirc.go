@@ -131,12 +131,21 @@ var (
 		},
 		[]string{"type"},
 	)
+
+	secondsInState = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "seconds_in_state",
+			Help: "How many seconds the node was in each raft state",
+		},
+		[]string{"state"},
+	)
 )
 
 func init() {
 	prometheus.MustRegister(isLeaderGauge)
 	prometheus.MustRegister(sessionsGauge)
 	prometheus.MustRegister(appliedMessages)
+	prometheus.MustRegister(secondsInState)
 }
 
 type robustSnapshot struct {
@@ -994,6 +1003,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	go func() {
+		for {
+			secondsInState.WithLabelValues(node.State().String()).Inc()
+			time.Sleep(1 * time.Second)
+		}
+	}()
 
 	privaterouter := httprouter.New()
 	privaterouter.Handler("GET", "/", exitOnRecoverHandleFunc(handleStatus))
