@@ -4,6 +4,12 @@ job:committed:rate5m_sum = sum(rate(raftmetrics_raft_commitTime_count[5m])) by (
 # TODO(secure): does this time series include s2s connections? maybe introduce a better one
 job:sessions:min = min(irc_sessions) by (job)
 
+# job:leader_flaps indicates whether there were any leader changes in the last
+# 10m, but only if the entire network has been running for at least 5m (so that
+# it does not fire during updates).
+job:leader_flaps_stable:sum_deriv10m = (sum(abs(deriv(raft_isleader{job="robustirc"}[10m]))) by (job)) * (count_scalar((time() - process_start_time_seconds{job="robustirc"}) > (5*60)) >= 3)
+job:leader_flaps:sum_deriv10m = sum(abs(deriv(raft_isleader{job="robustirc"}[10m]))) by (job)
+
 ALERT CapacityNotNPlusOne
   IF (count(up{job="robustirc"} == 1) < 3)
   FOR 30m
@@ -35,7 +41,7 @@ ALERT NoLeader
   DESCRIPTION "Without a raft leader, the network cannot make progress."
 
 ALERT LeaderFlapping
-  IF ((sum(abs(deriv(raft_isleader[10m]))) by (job)) > 0)
+  IF (job:leader_flaps_stable:sum_deriv10m > 0)
   FOR 10m
   WITH {
     job="robustirc"
