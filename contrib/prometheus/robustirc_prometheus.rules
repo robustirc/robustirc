@@ -4,11 +4,33 @@ job:committed:rate5m_sum = sum(rate(raftmetrics_raft_commitTime_count[5m])) by (
 # TODO(secure): does this time series include s2s connections? maybe introduce a better one
 job:sessions:min = min(irc_sessions) by (job)
 
-# job:leader_flaps indicates whether there were any leader changes in the last
+# Instead of having multiple building blocks, we need to cram all of these into
+# a single rule because prometheus executes rules in random order, see also
+# https://groups.google.com/d/msg/prometheus-developers/wfGhGkDcZ3Q/yoguDheN-uAJ
+# and https://github.com/prometheus/prometheus/issues/17
+#instance:seconds_in_state:rate = rate(seconds_in_state[1m])
+#job_instance:available_secs:sum_rate = sum(instance:seconds_in_state:rate{state=~"Leader|Follower"}) by (job, instance)
+#job_instance:total_secs:sum_rate = sum(instance:seconds_in_state:rate) by (job, instance)
+#job_instance:availability:sum_rate = job_instance:available_secs:sum_rate / job:total_secs:sum_rate
+
+job_instance:availability:sum_rate = sum(rate(seconds_in_state{state=~"Leader|Follower"}[1m])) by (job, instance) / sum(rate(seconds_in_state[1m])) by (job, instance)
+job:availability:topk_sum_rate = sum(topk(2, job_instance:availability:sum_rate)) by (job)
+
+# job:leader_flaps indicates whether there were any leader changes in tha last
 # 10m, but only if the entire network has been running for at least 5m (so that
 # it does not fire during updates).
 job:leader_flaps_stable:sum_deriv10m = (sum(abs(deriv(raft_isleader{job="robustirc"}[10m]))) by (job)) * (count_scalar((time() - process_start_time_seconds{job="robustirc"}) > (5*60)) >= 3)
 job:leader_flaps:sum_deriv10m = sum(abs(deriv(raft_isleader{job="robustirc"}[10m]))) by (job)
+
+
+ALERT NetworkUnavailable
+  IF (job:availability:topk_sum_rate < 2)
+  FOR 1m
+  WITH {
+    job="robustirc"
+  }
+  SUMMARY "Not even 2 nodes are Leader/Follower"
+  DESCRIPTION "Only {{$value}} nodes are in Leader or Follower raft state. The network needs at least 2."
 
 ALERT CapacityNotNPlusOne
   IF (count(up{job="robustirc"} == 1) < 3)
