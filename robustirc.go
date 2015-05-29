@@ -32,6 +32,7 @@ import (
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/robusthttp"
+	"github.com/robustirc/robustirc/timesafeguard"
 	"github.com/robustirc/robustirc/types"
 
 	auth "github.com/abbot/go-http-auth"
@@ -943,6 +944,22 @@ func main() {
 
 	peerStore = raft.NewJSONPeers(*raftDir, transport)
 
+	if *join == "" && !*singleNode {
+		peers, err := peerStore.Peers()
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		if len(peers) == 0 {
+			if !*timesafeguard.DisableTimesafeguard {
+				log.Fatalf("No peers known and -join not specified. Joining the network is not safe because timesafeguard cannot be called.\n")
+			}
+		} else {
+			if err := timesafeguard.SynchronizedWithNetwork(*peerAddr, peers, *networkPassword); err != nil {
+				log.Fatal(err.Error())
+			}
+		}
+	}
+
 	var p []string
 
 	config := raft.DefaultConfig()
@@ -973,9 +990,9 @@ func main() {
 
 	// It could be that the heartbeat goroutine is not scheduled for a while,
 	// so relax the default of 500ms.
-	config.LeaderLeaseTimeout = 2 * time.Second
-	config.HeartbeatTimeout = config.LeaderLeaseTimeout
-	config.ElectionTimeout = config.LeaderLeaseTimeout
+	config.LeaderLeaseTimeout = timesafeguard.ElectionTimeout
+	config.HeartbeatTimeout = timesafeguard.ElectionTimeout
+	config.ElectionTimeout = timesafeguard.ElectionTimeout
 
 	// We use prometheus, so hook up the metrics package (used by raft) to
 	// prometheus as well.
@@ -1074,6 +1091,10 @@ func main() {
 		fmt.Sprintf("https://robustirc:%s@%s/", *networkPassword, *peerAddr))
 
 	if *join != "" {
+		if err := timesafeguard.SynchronizedWithMasterAndNetwork(*peerAddr, *join, *networkPassword); err != nil {
+			log.Fatal(err.Error())
+		}
+
 		p = joinMaster(*join, peerStore)
 		// TODO(secure): properly handle joins on the server-side where the joining node is already in the network.
 	}

@@ -23,6 +23,7 @@ type ServerStatus struct {
 	CommitIndex    uint64
 	LastContact    time.Time
 	ExecutableHash string
+	CurrentTime    time.Time
 }
 
 func GetServerStatus(server, networkPassword string) (ServerStatus, error) {

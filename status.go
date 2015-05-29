@@ -29,6 +29,7 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 			CommitIndex    uint64
 			LastContact    time.Time
 			ExecutableHash string
+			CurrentTime    time.Time
 		}
 		res.Header().Set("Content-Type", "application/json")
 		leaderStr := node.Leader()
@@ -51,6 +52,7 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 			Peers:          p,
 			LastContact:    node.LastContact(),
 			ExecutableHash: executablehash,
+			CurrentTime:    time.Now(),
 		}); err != nil {
 			log.Printf("%v\n", err)
 			http.Error(res, err.Error(), http.StatusInternalServerError)
