@@ -6,13 +6,12 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
-	"strings"
 
 	"github.com/robustirc/robustirc/robusthttp"
+	"github.com/robustirc/robustirc/util"
 )
 
 var (
@@ -24,31 +23,6 @@ var (
 		"",
 		"A secure password to protect the communication between raft nodes. Use pwgen(1) or similar.")
 )
-
-// TODO(secure): refactor this into util/
-func resolveNetwork() []string {
-	var servers []string
-
-	parts := strings.Split(*network, ",")
-	if len(parts) > 1 {
-		log.Printf("Interpreting %q as list of servers instead of network name\n", *network)
-		return parts
-	}
-
-	_, addrs, err := net.LookupSRV("robustirc", "tcp", *network)
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, addr := range addrs {
-		target := addr.Target
-		if target[len(target)-1] == '.' {
-			target = target[:len(target)-1]
-		}
-		servers = append(servers, fmt.Sprintf("%s:%d", target, addr.Port))
-	}
-
-	return servers
-}
 
 // getConfig obtains the RobustIRC network configuration from |server| and
 // returns the TOML configuration as a string and its revision identifier
@@ -102,7 +76,7 @@ func postConfig(server string, revision string, config io.Reader) error {
 func main() {
 	flag.Parse()
 
-	servers := resolveNetwork()
+	servers := util.ResolveNetwork(*network)
 	config, revision, err := getConfig(servers[0])
 	if err != nil {
 		log.Fatal(err)

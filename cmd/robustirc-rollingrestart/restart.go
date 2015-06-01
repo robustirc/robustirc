@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -50,30 +49,6 @@ func fileHash(path string) string {
 	return fmt.Sprintf("%.16x", h.Sum(nil))
 }
 
-func resolveNetwork() []string {
-	var servers []string
-
-	parts := strings.Split(*network, ",")
-	if len(parts) > 1 {
-		log.Printf("Interpreting %q as list of servers instead of network name\n", *network)
-		return parts
-	}
-
-	_, addrs, err := net.LookupSRV("robustirc", "tcp", *network)
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, addr := range addrs {
-		target := addr.Target
-		if target[len(target)-1] == '.' {
-			target = target[:len(target)-1]
-		}
-		servers = append(servers, fmt.Sprintf("%s:%d", target, addr.Port))
-	}
-
-	return servers
-}
-
 func quit(server string) error {
 	req, err := http.NewRequest("POST", fmt.Sprintf("https://%s/quit", server), nil)
 	if err != nil {
@@ -109,7 +84,7 @@ func main() {
 	binaryHash := fileHash(*binaryPath)
 	glog.Infof("binaryHash = %s", binaryHash)
 
-	servers := resolveNetwork()
+	servers := util.ResolveNetwork(*network)
 	log.Printf("Checking network health\n")
 	if statuses, err := util.EnsureNetworkHealthy(servers, *networkPassword); err != nil {
 		log.Fatalf("Aborting upgrade for safety: %v", err)
