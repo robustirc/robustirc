@@ -256,7 +256,34 @@ func handleJoin(w http.ResponseWriter, r *http.Request) {
 
 	if err := node.AddPeer(req.Addr).Error(); err != nil && err != raft.ErrKnownPeer {
 		log.Println("Could not add peer:", err)
-		http.Error(w, "Could not add peer", 500)
+		http.Error(w, "Could not add peer", http.StatusInternalServerError)
+		return
+	}
+}
+
+func handlePart(w http.ResponseWriter, r *http.Request) {
+	log.Println("Part request from", r.RemoteAddr)
+	if node.State() != raft.Leader {
+		maybeProxyToLeader(w, r, r.Body)
+		return
+	}
+
+	type partRequest struct {
+		Addr string
+	}
+	var req partRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Println("Could not decode request:", err)
+		http.Error(w, fmt.Sprintf("Could not decode your request"), 400)
+		return
+	}
+
+	log.Printf("Removing peer %q from the network.\n", req.Addr)
+
+	if err := node.RemovePeer(req.Addr).Error(); err != nil && err != raft.ErrKnownPeer {
+		log.Println("Could not remove peer:", err)
+		http.Error(w, "Could not remove peer", http.StatusInternalServerError)
 		return
 	}
 }

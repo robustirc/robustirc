@@ -1038,6 +1038,7 @@ func main() {
 	privaterouter.Handler("GET", "/irclog", exitOnRecoverHandleFunc(handleIrclog))
 	privaterouter.Handler("POST", "/raft/*rest", exitOnRecoverHandler(transport))
 	privaterouter.Handler("POST", "/join", exitOnRecoverHandleFunc(handleJoin))
+	privaterouter.Handler("POST", "/part", exitOnRecoverHandleFunc(handlePart))
 	privaterouter.Handler("GET", "/snapshot", exitOnRecoverHandleFunc(handleSnapshot))
 	privaterouter.Handler("GET", "/leader", exitOnRecoverHandleFunc(handleLeader))
 	privaterouter.Handler("GET", "/canarylog", exitOnRecoverHandleFunc(handleCanaryLog))
