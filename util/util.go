@@ -53,14 +53,8 @@ func GetServerStatus(server, networkPassword string) (ServerStatus, error) {
 	return status, err
 }
 
-// EnsureNetworkHealthy returns nil when all of the following is true:
-//  • all nodes are reachable
-//  • all nodes return the same leader
-//  • all nodes are either follower or leader (i.e. not candidate/initializing)
-//  • all follower nodes were recently contacted by the leader
-func EnsureNetworkHealthy(servers []string, networkPassword string) (map[string]ServerStatus, error) {
-	var leader string
-	statusChan := make(chan ServerStatus, len(servers))
+func CollectStatuses(servers []string, networkPassword string) (map[string]ServerStatus, error) {
+	statuses := make(map[string]ServerStatus, len(servers))
 	errChan := make(chan error, len(servers))
 	var wg sync.WaitGroup
 	for _, server := range servers {
@@ -73,22 +67,36 @@ func EnsureNetworkHealthy(servers []string, networkPassword string) (map[string]
 				return
 			}
 			status.Server = server
-			statusChan <- status
+			statuses[server] = status
 		}(server)
 	}
 	wg.Wait()
-	close(errChan)
-	close(statusChan)
 
-	statuses := make(map[string]ServerStatus, len(servers))
+	select {
+	case err := <-errChan:
+		close(errChan)
+		for _ = range errChan {
+		}
+		return statuses, err
+	default:
+		return statuses, nil
+	}
+}
 
-	for err := range errChan {
+// EnsureNetworkHealthy returns nil when all of the following is true:
+//  • all nodes are reachable
+//  • all nodes return the same leader
+//  • all nodes are either follower or leader (i.e. not candidate/initializing)
+//  • all follower nodes were recently contacted by the leader
+func EnsureNetworkHealthy(servers []string, networkPassword string) (map[string]ServerStatus, error) {
+	var leader string
+
+	statuses, err := CollectStatuses(servers, networkPassword)
+	if err != nil {
 		return statuses, err
 	}
 
-	for status := range statusChan {
-		statuses[status.Server] = status
-
+	for _, status := range statuses {
 		// No error checking since this was _parsed_ from JSON, so it must be valid.
 		pretty, _ := json.MarshalIndent(status, "", "  ")
 		glog.Infof("%s\n", pretty)
