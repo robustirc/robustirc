@@ -1007,11 +1007,12 @@ func main() {
 	}
 	metrics.NewGlobal(metrics.DefaultConfig("raftmetrics"), sink)
 
-	logStore, err := raft_store.NewLevelDBStore(filepath.Join(*raftDir, "raftlog"))
+	bootstrapping := *singleNode || *join != ""
+	logStore, err := raft_store.NewLevelDBStore(filepath.Join(*raftDir, "raftlog"), bootstrapping)
 	if err != nil {
 		log.Fatal(err)
 	}
-	ircStore, err = raft_store.NewLevelDBStore(filepath.Join(*raftDir, "irclog"))
+	ircStore, err = raft_store.NewLevelDBStore(filepath.Join(*raftDir, "irclog"), bootstrapping)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -10,11 +10,13 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/hashicorp/raft"
 	"github.com/syndtr/goleveldb/leveldb"
 	leveldb_errors "github.com/syndtr/goleveldb/leveldb/errors"
+	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
 // LevelDBStore implements the raft.LogStore and raft.StableStore interfaces on
@@ -26,9 +28,12 @@ type LevelDBStore struct {
 
 // NewLevelDBStore opens a leveldb at the given directory to be used as a log-
 // and stable storage for raft.
-func NewLevelDBStore(dir string) (*LevelDBStore, error) {
-	db, err := leveldb.OpenFile(dir, nil)
+func NewLevelDBStore(dir string, errorIfExist bool) (*LevelDBStore, error) {
+	db, err := leveldb.OpenFile(dir, &opt.Options{ErrorIfExist: errorIfExist})
 	if err != nil {
+		if errorIfExist && err == os.ErrExist {
+			return nil, fmt.Errorf("You specified -singlenode or -join, but %q already contains data, indicating this node is already part of a RobustIRC network. THIS IS UNSAFE! It will lead to split-brain scenarios and data-loss. Please see http://robustirc.net/docs/adminguide.html#_healing_partitions if you are trying to heal a network partition.", dir)
+		}
 		if _, ok := err.(*leveldb_errors.ErrCorrupted); !ok {
 			return nil, fmt.Errorf("could not open: %v", err)
 		}
