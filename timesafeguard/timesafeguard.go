@@ -112,6 +112,7 @@ func collectTime(servers []string, networkPassword string) ([]timeResult, error)
 	wg.Wait()
 	select {
 	case err := <-errChan:
+		close(errChan)
 		for _ = range errChan {
 		}
 		return results, err
