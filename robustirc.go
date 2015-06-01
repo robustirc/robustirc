@@ -954,6 +954,11 @@ func main() {
 				log.Fatalf("No peers known and -join not specified. Joining the network is not safe because timesafeguard cannot be called.\n")
 			}
 		} else {
+			if len(peers) == 1 && peers[0] == *peerAddr {
+				// To prevent crashlooping too frequently in case the init system directly restarts our process.
+				time.Sleep(10 * time.Second)
+				log.Fatalf("Only known peer is myself (%q), implying this node was removed from the network. Please kill the process and remove the data.\n", *peerAddr)
+			}
 			if err := timesafeguard.SynchronizedWithNetwork(*peerAddr, peers, *networkPassword); err != nil {
 				log.Fatal(err.Error())
 			}
