@@ -1110,8 +1110,13 @@ func main() {
 	}
 
 	expireSessionsTimer := time.After(expireSessionsInterval)
+	secondTicker := time.Tick(1 * time.Second)
 	for {
 		select {
+		case <-secondTicker:
+			if node.State() == raft.Shutdown {
+				log.Fatal("Node removed from the network (in raft state shutdown), terminating.")
+			}
 		case <-expireSessionsTimer:
 			expireSessionsTimer = time.After(expireSessionsInterval)
 
