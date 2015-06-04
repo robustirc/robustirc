@@ -16,36 +16,10 @@ import (
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/util"
 	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/sorcix/irc"
 )
-
-func privacyFilterIrcmsg(message *irc.Message) *irc.Message {
-	if message == nil {
-		return nil
-	}
-	if message.Command == irc.PRIVMSG || message.Command == irc.NOTICE {
-		message.Trailing = "<privacy filtered>"
-	}
-	return message
-}
-
-func privacyFilterMsg(message *types.RobustMessage) *types.RobustMessage {
-	return &types.RobustMessage{
-		Id:      message.Id,
-		Session: message.Session,
-		Type:    message.Type,
-		Data:    privacyFilterIrcmsg(irc.ParseMessage(message.Data)).String(),
-	}
-}
-
-func privacyFilterMsgs(messages []*types.RobustMessage) []*types.RobustMessage {
-	output := make([]*types.RobustMessage, len(messages))
-	for idx, message := range messages {
-		output[idx] = privacyFilterMsg(message)
-	}
-	return output
-}
 
 func messagesString(messages []*types.RobustMessage) string {
 	output := make([]string, len(messages))
@@ -161,10 +135,10 @@ func canary() {
 			ircmsg := irc.ParseMessage(cm.Input.Data)
 			reply := i.ProcessMessage(cm.Input.Id, cm.Input.Session, ircmsg)
 			i.SendMessages(reply, cm.Input.Session, cm.Input.Id.Id)
-			localoutput := privacyFilterMsgs(reply.Messages)
+			localoutput := util.PrivacyFilterMsgs(reply.Messages)
 			remoteoutput := make([]*types.RobustMessage, len(cm.Output))
 			for idx, output := range cm.Output {
-				remoteoutput[idx] = privacyFilterMsg(&output)
+				remoteoutput[idx] = util.PrivacyFilterMsg(&output)
 			}
 			diffs := diff.DiffMain(messagesString(remoteoutput), messagesString(localoutput), true)
 			// Hide PING/PONG by default as it makes up the majority of the report otherwise.
@@ -177,7 +151,7 @@ func canary() {
 			}
 			fmt.Fprintf(report, `<span class="message">`+"\n")
 			fmt.Fprintf(report, `  <span class="input">← %s</span><br>`+"\n",
-				template.HTMLEscapeString(privacyFilterIrcmsg(irc.ParseMessage(cm.Input.Data)).String()))
+				template.HTMLEscapeString(util.PrivacyFilterIrcmsg(irc.ParseMessage(cm.Input.Data)).String()))
 			// TODO(secure): possibly use DiffCleanupSemanticLossless?
 			fmt.Fprintf(report, `  <span class="output">%s</span><br>`+"\n", diff.DiffPrettyHtml(diff.DiffCleanupSemantic(diffs)))
 			fmt.Fprintf(report, "</span>\n")

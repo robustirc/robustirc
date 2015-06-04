@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/robustirc/robustirc/robusthttp"
+	"github.com/robustirc/robustirc/types"
+	"github.com/sorcix/irc"
 	"github.com/stapelberg/glog"
 )
 
@@ -149,4 +151,35 @@ func ResolveNetwork(network string) []string {
 	}
 
 	return servers
+}
+
+func PrivacyFilterIrcmsg(message *irc.Message) *irc.Message {
+	if message == nil {
+		return nil
+	}
+	if message.Command == irc.PRIVMSG || message.Command == irc.NOTICE {
+		message.Trailing = "<privacy filtered>"
+	}
+	if message.Command == irc.PASS {
+		message.Params = []string{"<privacy filtered>"}
+		message.Trailing = ""
+	}
+	return message
+}
+
+func PrivacyFilterMsg(message *types.RobustMessage) *types.RobustMessage {
+	return &types.RobustMessage{
+		Id:      message.Id,
+		Session: message.Session,
+		Type:    message.Type,
+		Data:    PrivacyFilterIrcmsg(irc.ParseMessage(message.Data)).String(),
+	}
+}
+
+func PrivacyFilterMsgs(messages []*types.RobustMessage) []*types.RobustMessage {
+	output := make([]*types.RobustMessage, len(messages))
+	for idx, message := range messages {
+		output[idx] = PrivacyFilterMsg(message)
+	}
+	return output
 }
