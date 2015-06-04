@@ -634,3 +634,57 @@ func TestCompactNickServices(t *testing.T) {
 	output := applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
 }
+
+func TestCompactAway(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "AWAY :foo"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "AWAY :foo"}`,
+	}
+
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+
+	input = []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE2"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "AWAY :foo"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "AWAY :"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "AWAY :bar"}`,
+	}
+	want = []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE2"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "AWAY :bar"}`,
+	}
+
+	output = applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+
+	input = []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE3"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "AWAY :foo"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "AWAY :"}`,
+	}
+	want = []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE3"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+	}
+
+	output = applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}

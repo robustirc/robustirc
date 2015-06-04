@@ -84,7 +84,10 @@ func init() {
 		Func:      (*IRCServer).cmdKill,
 		MinParams: 1,
 	}
-	commands["AWAY"] = &ircCommand{Func: (*IRCServer).cmdAway}
+	commands["AWAY"] = &ircCommand{
+		Func:          (*IRCServer).cmdAway,
+		StillRelevant: relevantAway,
+	}
 	commands["TOPIC"] = &ircCommand{
 		Func:          (*IRCServer).cmdTopic,
 		MinParams:     1,
@@ -1103,6 +1106,25 @@ func (i *IRCServer) cmdKill(s *Session, reply *Replyctx, msg *irc.Message) {
 		Command:  irc.ERROR,
 		Trailing: fmt.Sprintf("Closing Link: %s[%s] (Killed (%s (%s)))", session.Nick, session.ircPrefix.Host, s.Nick, msg.Trailing),
 	})
+}
+
+func relevantAway(msg *irc.Message, prev, next logCursor, reset logReset) (bool, error) {
+	for {
+		rmsg, err := next(types.RobustIRCFromClient)
+		if err != nil {
+			if err == CursorEOF {
+				break
+			}
+			return true, err
+		}
+		nmsg := irc.ParseMessage(rmsg.Data)
+		// There is a newer AWAY command, discard the old one.
+		if nmsg.Command == irc.AWAY {
+			return false, nil
+		}
+	}
+
+	return strings.TrimSpace(msg.Trailing) != "", nil
 }
 
 func (i *IRCServer) cmdAway(s *Session, reply *Replyctx, msg *irc.Message) {
