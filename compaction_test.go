@@ -63,11 +63,11 @@ func TestCompaction(t *testing.T) {
 	}
 	defer os.RemoveAll(tempdir)
 
-	logstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "raftlog"))
+	logstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "raftlog"), false)
 	if err != nil {
 		t.Fatalf("Unexpected error in NewLevelDBStore: %v", err)
 	}
-	ircstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "irclog"))
+	ircstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "irclog"), false)
 	if err != nil {
 		t.Fatalf("Unexpected error in NewLevelDBStore: %v", err)
 	}
@@ -180,11 +180,11 @@ func applyAndCompact(t *testing.T, input []string) []string {
 	}
 	defer os.RemoveAll(tempdir)
 
-	logstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "raftlog"))
+	logstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "raftlog"), false)
 	if err != nil {
 		t.Fatalf("Unexpected error in NewLevelDBStore: %v", err)
 	}
-	ircstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "irclog"))
+	ircstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "irclog"), false)
 	if err != nil {
 		t.Fatalf("Unexpected error in NewLevelDBStore: %v", err)
 	}
