@@ -144,7 +144,6 @@ func dumpSnapshot(path string) error {
 
 		dumpLog(0, &rlog)
 	}
-	return nil
 }
 
 func main() {
@@ -160,6 +159,6 @@ func main() {
 	}
 	snapshotErr := dumpSnapshot(*path)
 	if snapshotErr != nil {
-		log.Fatalf("Path %q contains neither a LevelDB database (OpenFile: %v) nor a raft snapshot (%v)\n", leveldbErr, snapshotErr)
+		log.Fatalf("Path %q contains neither a LevelDB database (OpenFile: %v) nor a raft snapshot (%v)\n", *path, leveldbErr, snapshotErr)
 	}
 }
