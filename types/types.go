@@ -105,7 +105,7 @@ func (m *RobustMessage) PrivacyFilter() string {
 func NewRobustMessageFromBytes(b []byte) RobustMessage {
 	var msg RobustMessage
 	if err := json.Unmarshal(b, &msg); err != nil {
-		log.Fatalf("Could not json.Unmarshal() a (supposed) RobustMessage (%v): %v\n", b, err)
+		log.Panicf("Could not json.Unmarshal() a (supposed) RobustMessage (%v): %v\n", b, err)
 	}
 	return msg
 }
