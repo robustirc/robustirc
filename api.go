@@ -666,8 +666,23 @@ func handleCanaryLog(w http.ResponseWriter, r *http.Request) {
 
 		msg := types.NewRobustMessageFromBytes(elog.Data)
 		output, _ := ircServer.Get(msg.Id)
+		canaryoutput := make([]*types.RobustMessage, len(output))
+		for idx, msg := range output {
+			ifc := make(map[string]bool)
+			for k, v := range msg.InterestingFor {
+				ifc[strconv.FormatInt(k, 10)] = v
+			}
+			canaryoutput[idx] = &types.RobustMessage{
+				Id:                   msg.Id,
+				Session:              msg.Session,
+				Type:                 msg.Type,
+				Data:                 msg.Data,
+				InterestingForCanary: ifc,
+				ClientMessageId:      msg.ClientMessageId,
+			}
+		}
 
-		if err := encoder.Encode(canaryMessage{Index: i, Input: &msg, Output: output}); err != nil {
+		if err := encoder.Encode(canaryMessage{Index: i, Input: &msg, Output: canaryoutput}); err != nil {
 			log.Printf("Aborting handleCanaryLog: %v\n", err)
 			return
 		}
