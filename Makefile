@@ -21,3 +21,6 @@ container:
 /etc/certs/ca-certificates.crt \
 2>&- | head -1) ca-certificates.crt
 	docker build --rm -t=robustirc/robustirc .
+
+container-refuse:
+	(cd cmd/robustirc-refuse && go build && docker build --rm -t=robustirc/refuse .)

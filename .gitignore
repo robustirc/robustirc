@@ -3,5 +3,6 @@ cmd/robustirc-rollingrestart/robustirc-rollingrestart
 cmd/robustirc-localnet/robustirc-localnet
 cmd/robustirc-editconfig/robustirc-editconfig
 cmd/robustirc-dump/robustirc-dump
+cmd/robustirc-refuse/robustirc-refuse
 ca-certificates.crt
 tags
