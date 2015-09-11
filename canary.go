@@ -2,24 +2,36 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
-	"text/template"
-	"time"
 
-	"github.com/robustirc/robustirc/config"
-	"github.com/robustirc/robustirc/ircserver"
-	"github.com/robustirc/robustirc/robusthttp"
+	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/types"
 	"github.com/robustirc/robustirc/util"
-	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/sorcix/irc"
 )
+
+type uint64Slice []uint64
+
+func (p uint64Slice) Len() int           { return len(p) }
+func (p uint64Slice) Less(i, j int) bool { return p[i] < p[j] }
+func (p uint64Slice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+
+type canaryMessageOutput struct {
+	Text           string
+	InterestingFor map[string]bool
+}
+
+type canaryMessageState struct {
+	Id        uint64
+	Session   int64
+	Input     string
+	Output    []canaryMessageOutput
+	Compacted bool
+}
 
 func messagesString(messages []*types.RobustMessage) string {
 	output := make([]string, len(messages))
@@ -31,148 +43,80 @@ func messagesString(messages []*types.RobustMessage) string {
 	return strings.Join(output, "\n")
 }
 
-func diffIsEqual(diffs []diffmatchpatch.Diff) bool {
-	for _, diff := range diffs {
-		if diff.Type != diffmatchpatch.DiffEqual {
-			return false
+func canary(fsm raft.FSM, statePath string) {
+	// Create a snapshot (only creates metadata) and persist it (does the
+	// actual compaction). Afterwards we have access to |rs.parsed| (all
+	// raft log entries, but parsed) and |rs.del| (all messages which were
+	// just compacted).
+	log.Printf("Compacting before dumping state\n")
+
+	snapshot, err := fsm.Snapshot()
+	if err != nil {
+		log.Fatalf("fsm.Snapshot(): %v\n", err)
+	}
+
+	rs, ok := snapshot.(*robustSnapshot)
+	if !ok {
+		log.Fatalf("snapshot is not a robustSnapshot")
+	}
+
+	sink, err := raft.NewDiscardSnapshotStore().Create(rs.lastIndex, 1, []byte{})
+	if err != nil {
+		log.Fatalf("DiscardSnapshotStore.Create(): %v\n", err)
+	}
+
+	if err := snapshot.Persist(sink); err != nil {
+		log.Fatalf("snapshot.Persist(): %v\n", err)
+	}
+
+	// Dump the in-memory state into a file, to be read by robustirc-canary.
+	f, err := os.Create(statePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+
+	log.Printf("Dumping state for robustirc-canary into %q\n", statePath)
+
+	enc := json.NewEncoder(f)
+
+	// Sort the keys to iterate through |rs.parsed| in deterministic order.
+	keys := make([]uint64, 0, len(rs.parsed))
+	for idx := range rs.parsed {
+		keys = append(keys, idx)
+	}
+	sort.Sort(uint64Slice(keys))
+
+	for _, idx := range keys {
+		nmsg := rs.parsed[idx]
+		// TODO: come up with pseudo-values for createsession/deletesession
+		if nmsg.Type != types.RobustIRCFromClient {
+			continue
 		}
-	}
-	return true
-}
-
-func canary() {
-	header, err := os.Open("canary-header.html")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer header.Close()
-
-	report, err := os.Create(*canaryReport)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer report.Close()
-
-	if _, err := io.Copy(report, header); err != nil {
-		log.Fatal(err)
-	}
-
-	log.Printf("Creating canary report in %q from %s\n", *canaryReport, *join)
-
-	client := robusthttp.Client(*networkPassword, true)
-	url := fmt.Sprintf("https://%s/canarylog", *join)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		log.Fatalf("GET %s: %v", url, resp.Status)
-	}
-
-	messagesTotal, err := strconv.ParseInt(resp.Header.Get("X-RobustIRC-Canary-Messages"), 0, 64)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	serverCreation, err := strconv.ParseInt(resp.Header.Get("X-RobustIRC-Canary-ServerCreation"), 0, 64)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// canary.canaryMessage differs from handleCanaryLog.canaryMessage in that
-	// this version does not use pointers, which makes the diff code below
-	// easier since ircserver.ProcessMessage does not use pointers either.
-	type canaryMessage struct {
-		Index  uint64
-		Input  types.RobustMessage
-		Output []types.RobustMessage
-	}
-
-	decoder := json.NewDecoder(resp.Body)
-	diff := diffmatchpatch.New()
-	i := ircserver.NewIRCServer(*network, time.Unix(0, serverCreation))
-	diffsFound := false
-
-	for {
-		var cm canaryMessage
-		if err := decoder.Decode(&cm); err != nil {
-			if err == io.EOF {
-				break
+		ircmsg := irc.ParseMessage(nmsg.Data)
+		if ircmsg.Command == irc.PING || ircmsg.Command == irc.PONG {
+			continue
+		}
+		vmsgs, _ := ircServer.Get(nmsg.Id)
+		cm := canaryMessageState{
+			Id:        idx,
+			Session:   nmsg.Session.Id,
+			Input:     util.PrivacyFilterIrcmsg(ircmsg).String(),
+			Output:    make([]canaryMessageOutput, len(vmsgs)),
+			Compacted: rs.del[idx],
+		}
+		for idx, vmsg := range vmsgs {
+			ifc := make(map[string]bool)
+			for k, v := range vmsg.InterestingFor {
+				ifc["0x"+strconv.FormatInt(k, 16)] = v
 			}
+			cm.Output[idx] = canaryMessageOutput{
+				Text:           util.PrivacyFilterIrcmsg(irc.ParseMessage(vmsg.Data)).String(),
+				InterestingFor: ifc,
+			}
+		}
+		if err := enc.Encode(&cm); err != nil {
 			log.Fatal(err)
 		}
-
-		if cm.Index%1000 == 0 {
-			log.Printf("%.0f%% diffed (%d of %d messages)\n", (float64(cm.Index)/float64(messagesTotal))*100.0, cm.Index, messagesTotal)
-		}
-
-		// This logic is somewhat similar to fsm.Apply(), but not similar
-		// enough to warrant refactoring.
-		switch cm.Input.Type {
-		case types.RobustCreateSession:
-			i.CreateSession(cm.Input.Id, cm.Input.Data)
-
-		case types.RobustDeleteSession:
-			if _, err := i.GetSession(cm.Input.Session); err == nil {
-				localoutput := i.ProcessMessage(cm.Input.Id, cm.Input.Session, irc.ParseMessage("QUIT :"+cm.Input.Data))
-				log.Printf("localoutput = %v\n", localoutput)
-				// TODO(secure): also diff these lines
-				i.DeleteSessionById(cm.Input.Session)
-				i.SendMessages(localoutput, cm.Input.Session, cm.Input.Id.Id)
-			}
-
-		case types.RobustIRCFromClient:
-			// We should always have a session, but handle corruption gracefully.
-			if _, err := i.GetSession(cm.Input.Session); err != nil {
-				continue
-			}
-			i.UpdateLastClientMessageID(&cm.Input)
-			ircmsg := irc.ParseMessage(cm.Input.Data)
-			reply := i.ProcessMessage(cm.Input.Id, cm.Input.Session, ircmsg)
-			i.SendMessages(reply, cm.Input.Session, cm.Input.Id.Id)
-			localoutput := util.PrivacyFilterMsgs(reply.Messages)
-			remoteoutput := make([]*types.RobustMessage, len(cm.Output))
-			for idx, output := range cm.Output {
-				remoteoutput[idx] = util.PrivacyFilterMsg(&output)
-			}
-			diffs := diff.DiffMain(messagesString(remoteoutput), messagesString(localoutput), true)
-			// Hide PING/PONG by default as it makes up the majority of the report otherwise.
-			if diffIsEqual(diffs) {
-				if ircmsg.Command == irc.PING || ircmsg.Command == irc.PONG {
-					continue
-				}
-			} else {
-				diffsFound = true
-			}
-			fmt.Fprintf(report, `<span class="message">`+"\n")
-			fmt.Fprintf(report, `  <span class="input">← %s</span><br>`+"\n",
-				template.HTMLEscapeString(util.PrivacyFilterIrcmsg(irc.ParseMessage(cm.Input.Data)).String()))
-			// TODO(secure): possibly use DiffCleanupSemanticLossless?
-			fmt.Fprintf(report, `  <span class="output">%s</span><br>`+"\n", diff.DiffPrettyHtml(diff.DiffCleanupSemantic(diffs)))
-			fmt.Fprintf(report, "</span>\n")
-
-		case types.RobustConfig:
-			newCfg, err := config.FromString(string(cm.Input.Data))
-			if err != nil {
-				log.Printf("Skipping unexpectedly invalid configuration (%v)\n", err)
-			} else {
-				i.Config = newCfg.IRC
-			}
-		}
-	}
-
-	if diffsFound {
-		log.Printf("Diffs found.\n")
-	} else {
-		log.Printf("No diffs found.\n")
-	}
-	log.Printf("Open file://%s in your browser for details.\n", *canaryReport)
-	if diffsFound {
-		os.Exit(1)
 	}
 }

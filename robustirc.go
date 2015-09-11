@@ -68,9 +68,9 @@ var (
 	join = flag.String("join",
 		"",
 		"host:port of an existing raft node in the network that should be joined. Will also be loaded from -raftdir.")
-	canaryReport = flag.String("canary_report",
+	dumpCanaryState = flag.String("dump_canary_state",
 		"",
-		"If specified, all messages on the node specified by -join will be processed locally and a report about the differences is stored in the path given by -canary_report")
+		"If specified, initializes the raft node (from a snapshot), then dumps all message state to the specified file. To be used via robustirc-canary.")
 
 	network = flag.String("network_name",
 		"",
@@ -861,7 +861,7 @@ func main() {
 		printDefault(flag.Lookup("singlenode"))
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "The following flags are optional:\n")
-		printDefault(flag.Lookup("canary_report"))
+		printDefault(flag.Lookup("dump_canary_state"))
 		printDefault(flag.Lookup("listen"))
 		printDefault(flag.Lookup("raftdir"))
 		printDefault(flag.Lookup("tls_ca_file"))
@@ -890,11 +890,6 @@ func main() {
 
 	if *version {
 		log.Printf("RobustIRC %s\n", Version)
-		return
-	}
-
-	if *canaryReport != "" {
-		canary()
 		return
 	}
 
@@ -1027,6 +1022,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	if *dumpCanaryState != "" {
+		canary(fsm, *dumpCanaryState)
+		return
+	}
+
 	go func() {
 		for {
 			secondsInState.WithLabelValues(node.State().String()).Inc()
@@ -1042,7 +1042,6 @@ func main() {
 	privaterouter.Handler("POST", "/part", exitOnRecoverHandleFunc(handlePart))
 	privaterouter.Handler("GET", "/snapshot", exitOnRecoverHandleFunc(handleSnapshot))
 	privaterouter.Handler("GET", "/leader", exitOnRecoverHandleFunc(handleLeader))
-	privaterouter.Handler("GET", "/canarylog", exitOnRecoverHandleFunc(handleCanaryLog))
 	privaterouter.Handler("POST", "/quit", exitOnRecoverHandleFunc(handleQuit))
 	privaterouter.Handler("GET", "/config", exitOnRecoverHandleFunc(handleGetConfig))
 	privaterouter.Handler("POST", "/config", exitOnRecoverHandleFunc(handlePostConfig))

@@ -1,50 +1,141 @@
 <!DOCTYPE html>
 <head>
 <style type="text/css">
-.message {
+table {
   font-family: monospace;
 }
 
-.message-highlighted {
-  background-color: #eee;
+td {
+  vertical-align: top;
+}
+
+tr:nth-child(even) {
+  background: #ccc;
+}
+
+tr:nth-child(odd) {
+  background: #fff;
+}
+
+td.oldmsg, td.newmsg {
+  width: 50%;
+}
+
+.compacted {
+  background-color: #f00;
+}
+
+tr.interestingfordiff, tr.messagediff, tr.compactiondiff {
+  /* We need the !important to override <tr style="display: none">, which we
+     use to accelerate loading the page. */
+  display: table-row !important;
+}
+
+tr.interestingfordiff td.newmsg {
+  border-right: 4px solid #ff66ff;
+}
+
+tr.messagediff td.newmsg {
+  border-right: 4px solid #ff3333;
+}
+
+span.input::before {
+  content: "← ";
+}
+
+span.output::before {
+  content: "→ ";
+}
+
+.interestingfor:empty:after {
+  /* non-breaking space */
+  content: "\00a0";
+}
+
+.ifb {
+  color: green;
+}
+
+.ifbdiff {
+  color: red;
+}
+
+ins {
+  background-color: #00ff00;
+}
+
+del {
+  background-color: #ff0000;
 }
 </style>
 <script src="https://code.jquery.com/jquery-2.1.3.min.js"></script>
 </head>
 <body>
 
-<div id="nav" style="position:fixed; top: 0; height: 2em; background-color: #000; color: #fff; width:100%;">
-<span id="nav-count">?</span> messages differ, currently at <span id="nav-current">?</span>.
-<a id="nav-prev" href="#">prev</a>,
-<a id="nav-next" href="#">next</a>
-</div>
-
 <script type="text/javascript">
-var currentDiff = 0;
+function resolveSessionid(el) {
+  var serverNickRe = new RegExp('^@ NICK ([^ ]+)');
+  var current = $(el).parents('tr');
+  var session = $(el).text();
+  console.log('resolving session', session);
+  var tr = $('tr[data-session="' + session + '"], tr[data-session="' + $(current).attr('data-session') + '"]');
+  var idx = $(tr).index(current);
+  var nick;
+  console.log('idx', idx, 'tr', tr);
+  for (i = idx; i >= 0; i--) {
+      var row = $(tr[i]);
+      if (row.attr('data-session') !== session) {
+          continue;
+      }
+      row.find('span.output').each(function(idx, el) {
+          var output = $(el).text();
+          // XXX: also consider @ :nick!user@robust/<session> NICK :<newnick> message (forced rename)
+          if (output.indexOf('@ NICK') === 0) {
+              var matches = serverNickRe.exec(output);
+              if (matches.length === 2) {
+                  nick = matches[1];
+                  return false;
+              }
+          }
+      });
+      if (nick !== undefined) {
+          break;
+      }
+      var input = row.find('td.oldmsg span.input').text();
+      if (input.toLowerCase().indexOf('nick ') === 0) {
+          nick = input.substring('nick '.length);
+          break;
+      }
+  }
+  // XXX: For correctness, we should NOT replace all sessions. After all,
+  // people can change their nickname mid-session. We might be able to use
+  // a triple (session, nick, resolved_at_line) to speed up searches, yet
+  // do a new search for every span.sessionid
+  $('.rawsessionid:contains("' + session + '")').text(nick + '/' + session).removeClass('rawsessionid');
+}
 
 $(document).ready(function() {
-  var diffs = $('.output:has(ins), .output:has(del)');
+  $('.ifb').click(function(ev) {
+      var msgid = $(this).parent().attr('id');
+      $('.interestingfor[data-for="' + msgid + '"]')
+        .show()
+        .children('.rawsessionid')
+        .each(function(idx, el) {
+          // resolveSessionid() replaces all .rawsessionid elements for the
+          // resolved session, so double-check this session needs resolving and
+          // save an unnecessary call/resolve if not.
+          if (el.classList.contains('rawsessionid')) {
+            resolveSessionid(el);
+          }
+      });
+  });
 
-  $('#nav-count').text(diffs.size());
-  $('#nav-current').text(currentDiff);
+  $('.sessionid').click(function(ev) {
+      resolveSessionid(this);
+  });
 
-  var nextprev = function(ev, offset) {
-    if (currentDiff + offset >= diffs.size() || currentDiff + offset < 0) {
-      ev.preventDefault();
-      return;
-    }
-    $(diffs[currentDiff]).removeClass('message-highlighted');
-    currentDiff += offset;
-    $(diffs[currentDiff]).addClass('message-highlighted');
-    $('body,html').animate({scrollTop: $(diffs[currentDiff]).offset().top}, 'fast');
-    $('#nav-current').text(currentDiff);
-    ev.preventDefault();
-  };
-
-  $('#nav-next').click(function(ev) { nextprev(ev, 1); });
-  $('#nav-prev').click(function(ev) { nextprev(ev, -1); });
+  // TODO: add “display +1 +5 +50 +Session +All” markers above and below each diff to make the invisible-by-default non-diffs visible.
+  // the +Session should make visible everything that is sent to the session, describe that in the hover text
 });
 </script>
-
-<div style="position: static; margin-top: 2em;">
-
+<!-- vim:ts=4:et -->
