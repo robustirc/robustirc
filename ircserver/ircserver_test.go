@@ -256,7 +256,7 @@ func TestPlumbing(t *testing.T) {
 		t.Fatalf("message 0: got %v, want %v", got[0].Data, replies.Messages[0].Data)
 	}
 
-	if got[0].InterestingFor[ids["mero"].Id] {
+	if (*got[0].InterestingFor)[ids["mero"].Id] {
 		t.Fatalf("sMero interestedIn JOIN to #foobar, expected false")
 	}
 
@@ -266,7 +266,7 @@ func TestPlumbing(t *testing.T) {
 	replies = i.ProcessMessage(msgid, ids["secure"], irc.ParseMessage("JOIN #baz"))
 	i.SendMessages(replies, ids["secure"], msgid.Id)
 	got, _ = i.Get(msgid)
-	if !got[0].InterestingFor[ids["mero"].Id] {
+	if !(*got[0].InterestingFor)[ids["mero"].Id] {
 		t.Fatalf("sMero not interestedIn JOIN to #baz, expected true")
 	}
 }
@@ -281,7 +281,7 @@ func mustMatchInterestedMsgs(t *testing.T, i *IRCServer, msg *irc.Message, msgs 
 	for idx, sessionid := range sessions {
 		// TODO(secure): We might need to refactor this to do a finer-grained
 		// comparison instead of just the first message.
-		got[idx] = msgs[0].InterestingFor[sessionid.Id]
+		got[idx] = (*msgs[0].InterestingFor)[sessionid.Id]
 		if got[idx] != want[idx] {
 			failed = true
 		}

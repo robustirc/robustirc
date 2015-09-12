@@ -223,6 +223,10 @@ type IRCServer struct {
 
 	// Config contains the IRC-related part of the RobustIRC configuration.
 	Config config.IRC
+
+	// ifcache is a cache for InterestingFor fields of messages in |output|.
+	// See interestingforcache.go for details.
+	ifcache map[uint64]*map[int64]bool
 }
 
 // NewIRCServer returns a new IRC server.
@@ -237,6 +241,7 @@ func NewIRCServer(networkname string, serverCreation time.Time) *IRCServer {
 		output:          outputstream.NewOutputStream(),
 		ServerPrefix:    &irc.Prefix{Name: networkname},
 		ServerCreation:  serverCreation,
+		ifcache:         make(map[uint64]*map[int64]bool),
 	}
 }
 
@@ -504,6 +509,8 @@ func (i *IRCServer) SendMessages(reply *Replyctx, session types.RobustId, id int
 		return
 	}
 
+	i.reuseInterestingFor(reply)
+
 	i.output.Add(reply.Messages)
 }
 
@@ -701,6 +708,7 @@ func (i *IRCServer) send(reply *Replyctx, msg *irc.Message) *types.RobustMessage
 
 	reply.replyid++
 
+	interestingfor := make(map[int64]bool)
 	robustmsg := &types.RobustMessage{
 		// The IDs must be the same across servers.
 		Id: types.RobustId{
@@ -711,7 +719,7 @@ func (i *IRCServer) send(reply *Replyctx, msg *irc.Message) *types.RobustMessage
 		Session:        reply.session.Id,
 		Type:           types.RobustIRCToClient,
 		Data:           string(msg.Bytes()),
-		InterestingFor: make(map[int64]bool),
+		InterestingFor: &interestingfor,
 	}
 
 	reply.Messages = append(reply.Messages, robustmsg)
@@ -723,7 +731,7 @@ func (i *IRCServer) send(reply *Replyctx, msg *irc.Message) *types.RobustMessage
 // sendUser sends |msg| to |user|.
 func (i *IRCServer) sendUser(user *Session, reply *Replyctx, msg *irc.Message) *irc.Message {
 	robustmsg := i.send(reply, msg)
-	robustmsg.InterestingFor[user.Id.Id] = true
+	(*robustmsg.InterestingFor)[user.Id.Id] = true
 	return msg
 }
 
@@ -737,7 +745,7 @@ func (i *IRCServer) sendCommonChannels(user *Session, reply *Replyctx, msg *irc.
 			continue
 		}
 		for nick := range c.nicks {
-			robustmsg.InterestingFor[i.nicks[nick].Id.Id] = true
+			(*robustmsg.InterestingFor)[i.nicks[nick].Id.Id] = true
 		}
 	}
 	return msg
@@ -747,7 +755,7 @@ func (i *IRCServer) sendCommonChannels(user *Session, reply *Replyctx, msg *irc.
 func (i *IRCServer) sendChannel(c *channel, reply *Replyctx, msg *irc.Message) *irc.Message {
 	robustmsg := i.send(reply, msg)
 	for nick := range c.nicks {
-		robustmsg.InterestingFor[i.nicks[nick].Id.Id] = true
+		(*robustmsg.InterestingFor)[i.nicks[nick].Id.Id] = true
 	}
 	return msg
 }
@@ -760,7 +768,7 @@ func (i *IRCServer) sendChannelButOne(c *channel, user *Session, reply *Replyctx
 		if session == user {
 			continue
 		}
-		robustmsg.InterestingFor[session.Id.Id] = true
+		(*robustmsg.InterestingFor)[session.Id.Id] = true
 	}
 	return msg
 }
@@ -769,7 +777,7 @@ func (i *IRCServer) sendChannelButOne(c *channel, user *Session, reply *Replyctx
 func (i *IRCServer) sendServices(reply *Replyctx, msg *irc.Message) *irc.Message {
 	robustmsg := i.send(reply, msg)
 	for _, serverid := range i.serverSessions {
-		robustmsg.InterestingFor[serverid] = true
+		(*robustmsg.InterestingFor)[serverid] = true
 	}
 	return msg
 }

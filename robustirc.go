@@ -449,7 +449,7 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 			for session := range sessions {
 				interested := false
 				for _, msg := range vmsgs {
-					if msg.InterestingFor[session.Id] {
+					if (*msg.InterestingFor)[session.Id] {
 						interested = true
 						break
 					}
@@ -559,6 +559,8 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 		ircServer.Delete(nmsg.Id)
 		s.store.DeleteRange(idx, idx)
 	}
+
+	ircServer.CleanupInterestingForCache()
 
 	return nil
 }

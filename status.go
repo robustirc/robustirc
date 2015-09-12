@@ -180,7 +180,7 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 		output, ok := ircServer.Get(msg.Id)
 		if ok {
 			for _, msg := range output {
-				if !msg.InterestingFor[session.Id] {
+				if !(*msg.InterestingFor)[session.Id] {
 					continue
 				}
 				messages = append(messages, msg)
