@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 	"time"
 
@@ -71,6 +72,12 @@ var (
 	dumpCanaryState = flag.String("dump_canary_state",
 		"",
 		"If specified, initializes the raft node (from a snapshot), then dumps all message state to the specified file. To be used via robustirc-canary.")
+	dumpHeapProfile = flag.String("dump_heap_profile",
+		"",
+		"If specified, a heap profile will be dumped to the specified file. Only relevant when -dump_canary_state is set.")
+	canaryCompactionStart = flag.Int64("canary_compaction_start",
+		0,
+		"If > 0, a nanosecond precision UNIX timestamp of when the compaction was started (for deterministic results across runs).")
 
 	network = flag.String("network_name",
 		"",
@@ -369,6 +376,11 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 	// messages would pour into the window on every compaction round, possibly
 	// making the compaction never converge.
 	compactionStart := time.Now()
+	log.Printf("compactionStart %s\n", compactionStart.String())
+	if *canaryCompactionStart > 0 {
+		compactionStart = time.Unix(0, *canaryCompactionStart)
+		log.Printf("compactionStart %s (overridden with -canary_compaction_start)\n", compactionStart.String())
+	}
 
 	sessions := make(map[types.RobustId]bool)
 
@@ -862,6 +874,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "The following flags are optional:\n")
 		printDefault(flag.Lookup("dump_canary_state"))
+		printDefault(flag.Lookup("dump_heap_profile"))
+		printDefault(flag.Lookup("canary_compaction_start"))
 		printDefault(flag.Lookup("listen"))
 		printDefault(flag.Lookup("raftdir"))
 		printDefault(flag.Lookup("tls_ca_file"))
@@ -1024,6 +1038,14 @@ func main() {
 
 	if *dumpCanaryState != "" {
 		canary(fsm, *dumpCanaryState)
+		if *dumpHeapProfile != "" {
+			f, err := os.Create(*dumpHeapProfile)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer f.Close()
+			pprof.WriteHeapProfile(f)
+		}
 		return
 	}
 

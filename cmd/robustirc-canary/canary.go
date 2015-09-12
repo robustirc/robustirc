@@ -8,11 +8,14 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
@@ -68,7 +71,7 @@ func sha256of(path string) (string, error) {
 	return fmt.Sprintf("%.16x", h.Sum(nil)), nil
 }
 
-func openOrDump(executable, statePath string) (*os.File, error) {
+func openOrDump(executable, statePath, heapPath string, compactionStart time.Time) (*os.File, error) {
 	state, err := os.Open(statePath)
 	if !os.IsNotExist(err) {
 		return state, err
@@ -91,10 +94,25 @@ func openOrDump(executable, statePath string) (*os.File, error) {
 		"-network_name=canary.net",
 		"-network_password=canary",
 		fmt.Sprintf("-raftdir=%s", flag.Arg(0)),
-		fmt.Sprintf("-dump_canary_state=%s", statePath))
+		fmt.Sprintf("-dump_canary_state=%s", statePath),
+		fmt.Sprintf("-dump_heap_profile=%s", heapPath),
+		fmt.Sprintf("-canary_compaction_start=%d", compactionStart.UnixNano()))
 	log.Printf("Dumping canary state: %v\n", cmd.Args)
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("Could not dump canary state: %v", err)
+	}
+
+	heapPathSvg := heapPath[:len(heapPath)-len(filepath.Ext(heapPath))] + ".svg"
+	cmd = exec.Command(
+		"go",
+		"tool",
+		"pprof",
+		"-svg",
+		"-output="+heapPathSvg,
+		executable,
+		heapPath)
+	if err := cmd.Run(); err != nil {
+		log.Printf("Could not convert heap profile to SVG: %v\n", err)
 	}
 
 	return os.Open(statePath)
@@ -259,12 +277,14 @@ func main() {
 		log.Fatalf("Could not hash %q: %v\n", *oldExecutable, err)
 	}
 	oldCanaryStatePath := filepath.Join(flag.Arg(0), "canary_"+oldExecutableHash+".json")
+	oldHeapProfilePath := filepath.Join(flag.Arg(0), "heap_"+oldExecutableHash+".pprof")
 
 	newExecutableHash, err := sha256of(*newExecutable)
 	if err != nil {
 		log.Fatalf("Could not hash %q: %v\n", *newExecutable, err)
 	}
 	newCanaryStatePath := filepath.Join(flag.Arg(0), "canary_"+newExecutableHash+".json")
+	newHeapProfilePath := filepath.Join(flag.Arg(0), "heap_"+newExecutableHash+".pprof")
 
 	log.Printf("sha256 of old executable %q is %s\n", *oldExecutable, oldExecutableHash)
 	log.Printf("sha256 of new executable %q is %s\n", *newExecutable, newExecutableHash)
@@ -279,13 +299,35 @@ func main() {
 	// peers.json, but we can just hardlink the snapshots directory, because
 	// that’s read-only.
 
-	oldCanaryState, err := openOrDump(*oldExecutable, oldCanaryStatePath)
+	// Use the same timestamp across canary invocations.
+	var compactionStart time.Time
+	timestampPath := filepath.Join(flag.Arg(0), "compaction.timestamp")
+	timestampBytes, err := ioutil.ReadFile(timestampPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			compactionStart = time.Now()
+			timestampStr := fmt.Sprintf("%d", compactionStart.UnixNano())
+			if err := ioutil.WriteFile(timestampPath, []byte(timestampStr), 0644); err != nil {
+				log.Fatal(err)
+			}
+		} else {
+			log.Fatal(err)
+		}
+	} else {
+		timestamp, err := strconv.ParseInt(string(timestampBytes), 0, 64)
+		if err != nil {
+			log.Fatal(err)
+		}
+		compactionStart = time.Unix(0, timestamp)
+	}
+
+	oldCanaryState, err := openOrDump(*oldExecutable, oldCanaryStatePath, oldHeapProfilePath, compactionStart)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer oldCanaryState.Close()
 
-	newCanaryState, err := openOrDump(*newExecutable, newCanaryStatePath)
+	newCanaryState, err := openOrDump(*newExecutable, newCanaryStatePath, newHeapProfilePath, compactionStart)
 	if err != nil {
 		log.Fatal(err)
 	}
