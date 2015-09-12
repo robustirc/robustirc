@@ -395,7 +395,6 @@ func TestCompactDoubleJoin(t *testing.T) {
 
 func TestCompactDoubleJoinMultiple(t *testing.T) {
 	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
-
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
@@ -412,10 +411,10 @@ func TestCompactDoubleJoinMultiple(t *testing.T) {
 		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #chaos-hd"}`,
 		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
 	}
-
 	output := applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
 
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 	input = []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE2"}`,
@@ -431,10 +430,10 @@ func TestCompactDoubleJoinMultiple(t *testing.T) {
 		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
 		`{"Id": {"Id": 7}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
 	}
-
 	output = applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
 
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 	input = []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE3"}`,
@@ -449,7 +448,6 @@ func TestCompactDoubleJoinMultiple(t *testing.T) {
 		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
 		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
 	}
-
 	output = applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
 }
@@ -637,7 +635,6 @@ func TestCompactNickServices(t *testing.T) {
 
 func TestCompactAway(t *testing.T) {
 	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
-
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
@@ -650,10 +647,10 @@ func TestCompactAway(t *testing.T) {
 		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
 		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "AWAY :foo"}`,
 	}
-
 	output := applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
 
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 	input = []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE2"}`,
@@ -668,10 +665,10 @@ func TestCompactAway(t *testing.T) {
 		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
 		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "AWAY :bar"}`,
 	}
-
 	output = applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
 
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 	input = []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE3"}`,
@@ -684,7 +681,6 @@ func TestCompactAway(t *testing.T) {
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE3"}`,
 		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
 	}
-
 	output = applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
 }
