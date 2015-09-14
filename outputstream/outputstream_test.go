@@ -9,12 +9,12 @@ import (
 )
 
 func addEmptyMsg(os *OutputStream, id, reply int64) {
-	os.Add([]*types.RobustMessage{
+	os.Add([]Message{
 		{Id: types.RobustId{Id: id, Reply: reply}}})
 }
 
 func testBlocking(t *testing.T, os *OutputStream, lastseen types.RobustId, want types.RobustId) {
-	next := make(chan []*types.RobustMessage)
+	next := make(chan []Message)
 
 	go func() {
 		next <- os.GetNext(lastseen, nil)
@@ -29,7 +29,7 @@ func testBlocking(t *testing.T, os *OutputStream, lastseen types.RobustId, want 
 	default:
 	}
 
-	os.Add([]*types.RobustMessage{{Id: want}})
+	os.Add([]Message{{Id: want}})
 
 	select {
 	case msgs := <-next:
@@ -43,13 +43,19 @@ func testBlocking(t *testing.T, os *OutputStream, lastseen types.RobustId, want 
 }
 
 func TestAppendNext(t *testing.T) {
-	os := NewOutputStream()
+	os, err := NewOutputStream("")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	testBlocking(t, os, types.RobustId{}, types.RobustId{Id: 1, Reply: 1})
 }
 
 func TestCatchUp(t *testing.T) {
-	os := NewOutputStream()
+	os, err := NewOutputStream("")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if got, want := os.LastSeen(), (types.RobustId{Id: 0, Reply: 0}); got != want {
 		t.Fatalf("got %v, want %v", got, want)
@@ -77,7 +83,10 @@ func TestCatchUp(t *testing.T) {
 }
 
 func TestDeleteMiddle(t *testing.T) {
-	os := NewOutputStream()
+	os, err := NewOutputStream("")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	addEmptyMsg(os, 1, 1)
 	addEmptyMsg(os, 2, 1)
@@ -138,7 +147,10 @@ func TestDeleteMiddle(t *testing.T) {
 }
 
 func TestInterrupt(t *testing.T) {
-	os := NewOutputStream()
+	os, err := NewOutputStream("")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	go func() {
 		for range time.NewTicker(1 * time.Millisecond).C {

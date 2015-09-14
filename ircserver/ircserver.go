@@ -223,14 +223,14 @@ type IRCServer struct {
 
 	// Config contains the IRC-related part of the RobustIRC configuration.
 	Config config.IRC
-
-	// ifcache is a cache for InterestingFor fields of messages in |output|.
-	// See interestingforcache.go for details.
-	ifcache map[uint64]*map[int64]bool
 }
 
 // NewIRCServer returns a new IRC server.
-func NewIRCServer(networkname string, serverCreation time.Time) *IRCServer {
+func NewIRCServer(raftdir, networkname string, serverCreation time.Time) *IRCServer {
+	os, err := outputstream.NewOutputStream(raftdir)
+	if err != nil {
+		log.Panicf("Could not create new outputstream: %v\n", err)
+	}
 	return &IRCServer{
 		channels:        make(map[lcChan]*channel),
 		svsholds:        make(map[lcNick]svshold),
@@ -238,10 +238,9 @@ func NewIRCServer(networkname string, serverCreation time.Time) *IRCServer {
 		sessions:        make(map[types.RobustId]*Session),
 		sessionsMu:      &sync.RWMutex{},
 		lastProcessedMu: &sync.RWMutex{},
-		output:          outputstream.NewOutputStream(),
+		output:          os,
 		ServerPrefix:    &irc.Prefix{Name: networkname},
 		ServerCreation:  serverCreation,
-		ifcache:         make(map[uint64]*map[int64]bool),
 	}
 }
 
@@ -509,9 +508,17 @@ func (i *IRCServer) SendMessages(reply *Replyctx, session types.RobustId, id int
 		return
 	}
 
-	i.reuseInterestingFor(reply)
-
-	i.output.Add(reply.Messages)
+	converted := make([]outputstream.Message, 0, len(reply.Messages))
+	for _, msg := range reply.Messages {
+		converted = append(converted, outputstream.Message{
+			Id:             msg.Id,
+			Data:           msg.Data,
+			InterestingFor: msg.InterestingFor,
+		})
+	}
+	if err := i.output.Add(converted); err != nil {
+		log.Panicf("Could not add messages to outputstream: %v\n", err)
+	}
 }
 
 // GetSession returns a pointer to the session specified by 'id'.
@@ -658,25 +665,37 @@ func (i *IRCServer) NumSessions() int {
 	return len(i.sessions)
 }
 
-// GetNext wraps outputstream.GetNext to avoid making the outputstream instance
-// public. Some methods of outputstream must not be used, which is enforced
-// this way.
-func (i *IRCServer) GetNext(lastseen types.RobustId, cancelled *bool) []*types.RobustMessage {
-	return i.output.GetNext(lastseen, cancelled)
+func (i *IRCServer) outputToRobustMessages(msgs []outputstream.Message) []*types.RobustMessage {
+	result := make([]*types.RobustMessage, 0, len(msgs))
+	for _, msg := range msgs {
+		result = append(result, &types.RobustMessage{
+			Id:             msg.Id,
+			Type:           types.RobustIRCToClient,
+			Data:           msg.Data,
+			InterestingFor: msg.InterestingFor,
+		})
+	}
+	return result
 }
 
-// Get wraps outputstream.Get to avoid making the outputstream instance
-// public. Some methods of outputstream must not be used, which is enforced
-// this way.
+// GetNext wraps outputstream.GetNext and converts the messages into
+// RobustMessages.
+func (i *IRCServer) GetNext(lastseen types.RobustId, cancelled *bool) []*types.RobustMessage {
+	return i.outputToRobustMessages(i.output.GetNext(lastseen, cancelled))
+}
+
+// Get wraps outputstream.GetNext and converts the messages into
+// RobustMessages.
 func (i *IRCServer) Get(input types.RobustId) ([]*types.RobustMessage, bool) {
-	return i.output.Get(input)
+	msgs, ok := i.output.Get(input)
+	return i.outputToRobustMessages(msgs), ok
 }
 
 // Delete wraps outputstream.Delete to avoid making the outputstream instance
 // public. Some methods of outputstream must not be used, which is enforced
 // this way.
-func (i *IRCServer) Delete(input types.RobustId) {
-	i.output.Delete(input)
+func (i *IRCServer) Delete(input types.RobustId) error {
+	return i.output.Delete(input)
 }
 
 // InterruptGetNext wraps outputstream.InterruptGetNext to avoid making the
@@ -708,18 +727,14 @@ func (i *IRCServer) send(reply *Replyctx, msg *irc.Message) *types.RobustMessage
 
 	reply.replyid++
 
-	interestingfor := make(map[int64]bool)
 	robustmsg := &types.RobustMessage{
 		// The IDs must be the same across servers.
 		Id: types.RobustId{
 			Id:    reply.msgid,
 			Reply: reply.replyid,
 		},
-		// TODO(secure): verify |Session| is unused and don’t set it.
-		Session:        reply.session.Id,
-		Type:           types.RobustIRCToClient,
 		Data:           string(msg.Bytes()),
-		InterestingFor: &interestingfor,
+		InterestingFor: make(map[int64]bool),
 	}
 
 	reply.Messages = append(reply.Messages, robustmsg)
@@ -731,7 +746,7 @@ func (i *IRCServer) send(reply *Replyctx, msg *irc.Message) *types.RobustMessage
 // sendUser sends |msg| to |user|.
 func (i *IRCServer) sendUser(user *Session, reply *Replyctx, msg *irc.Message) *irc.Message {
 	robustmsg := i.send(reply, msg)
-	(*robustmsg.InterestingFor)[user.Id.Id] = true
+	robustmsg.InterestingFor[user.Id.Id] = true
 	return msg
 }
 
@@ -745,7 +760,7 @@ func (i *IRCServer) sendCommonChannels(user *Session, reply *Replyctx, msg *irc.
 			continue
 		}
 		for nick := range c.nicks {
-			(*robustmsg.InterestingFor)[i.nicks[nick].Id.Id] = true
+			robustmsg.InterestingFor[i.nicks[nick].Id.Id] = true
 		}
 	}
 	return msg
@@ -755,7 +770,7 @@ func (i *IRCServer) sendCommonChannels(user *Session, reply *Replyctx, msg *irc.
 func (i *IRCServer) sendChannel(c *channel, reply *Replyctx, msg *irc.Message) *irc.Message {
 	robustmsg := i.send(reply, msg)
 	for nick := range c.nicks {
-		(*robustmsg.InterestingFor)[i.nicks[nick].Id.Id] = true
+		robustmsg.InterestingFor[i.nicks[nick].Id.Id] = true
 	}
 	return msg
 }
@@ -768,7 +783,7 @@ func (i *IRCServer) sendChannelButOne(c *channel, user *Session, reply *Replyctx
 		if session == user {
 			continue
 		}
-		(*robustmsg.InterestingFor)[session.Id.Id] = true
+		robustmsg.InterestingFor[session.Id.Id] = true
 	}
 	return msg
 }
@@ -777,7 +792,7 @@ func (i *IRCServer) sendChannelButOne(c *channel, user *Session, reply *Replyctx
 func (i *IRCServer) sendServices(reply *Replyctx, msg *irc.Message) *irc.Message {
 	robustmsg := i.send(reply, msg)
 	for _, serverid := range i.serverSessions {
-		(*robustmsg.InterestingFor)[serverid] = true
+		robustmsg.InterestingFor[serverid] = true
 	}
 	return msg
 }

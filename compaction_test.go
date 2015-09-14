@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"io"
 	"io/ioutil"
 	"os"
@@ -55,13 +56,15 @@ func verifyEndState(t *testing.T) {
 // makes sure the state matches expectations. The other test functions directly
 // test what should be compacted.
 func TestCompaction(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
 	tempdir, err := ioutil.TempDir("", "robust-test-")
 	if err != nil {
 		t.Fatalf("ioutil.TempDir: %v", err)
 	}
 	defer os.RemoveAll(tempdir)
+
+	flag.Set("raftdir", tempdir)
 
 	logstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "raftlog"), false)
 	if err != nil {
@@ -252,7 +255,7 @@ func mustMatchStrings(t *testing.T, input []string, got []string, want []string)
 }
 
 func TestCompactNickNone(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -272,7 +275,7 @@ func TestCompactNickNone(t *testing.T) {
 }
 
 func TestCompactNickOne(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -299,7 +302,7 @@ func TestCompactNickOne(t *testing.T) {
 }
 
 func TestJoinPart(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -320,7 +323,7 @@ func TestJoinPart(t *testing.T) {
 }
 
 func TestCompactTopic(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -344,7 +347,7 @@ func TestCompactTopic(t *testing.T) {
 }
 
 func TestJoinTopic(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -371,7 +374,7 @@ func TestJoinTopic(t *testing.T) {
 }
 
 func TestCompactDoubleJoin(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -394,7 +397,7 @@ func TestCompactDoubleJoin(t *testing.T) {
 }
 
 func TestCompactDoubleJoinMultiple(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
@@ -414,7 +417,7 @@ func TestCompactDoubleJoinMultiple(t *testing.T) {
 	output := applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
 
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 	input = []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE2"}`,
@@ -433,7 +436,7 @@ func TestCompactDoubleJoinMultiple(t *testing.T) {
 	output = applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
 
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 	input = []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE3"}`,
@@ -453,7 +456,7 @@ func TestCompactDoubleJoinMultiple(t *testing.T) {
 }
 
 func TestCompactUser(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -472,7 +475,7 @@ func TestCompactUser(t *testing.T) {
 }
 
 func TestCompactInvalid(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -495,7 +498,7 @@ func TestCompactInvalid(t *testing.T) {
 }
 
 func TestCompactSessionDelete(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -510,7 +513,7 @@ func TestCompactSessionDelete(t *testing.T) {
 }
 
 func TestCompactSessionQuit(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -525,7 +528,7 @@ func TestCompactSessionQuit(t *testing.T) {
 }
 
 func TestCompactSessionQuitAndDelete(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -541,7 +544,7 @@ func TestCompactSessionQuitAndDelete(t *testing.T) {
 }
 
 func TestCompactMessageOfDeath(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 5, "Data": "auth"}`,
@@ -553,7 +556,7 @@ func TestCompactMessageOfDeath(t *testing.T) {
 }
 
 func TestCompactNickInUse(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -580,7 +583,7 @@ func TestCompactNickInUse(t *testing.T) {
 }
 
 func TestCompactInvalidCommands(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -599,7 +602,7 @@ func TestCompactInvalidCommands(t *testing.T) {
 }
 
 func TestCompactNickServices(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 	ircServer.Config.Services = append(ircServer.Config.Services, config.Service{
 		Password: "mypass",
 	})
@@ -634,7 +637,7 @@ func TestCompactNickServices(t *testing.T) {
 }
 
 func TestCompactAway(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 	input := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
@@ -650,7 +653,7 @@ func TestCompactAway(t *testing.T) {
 	output := applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
 
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 	input = []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE2"}`,
@@ -668,7 +671,7 @@ func TestCompactAway(t *testing.T) {
 	output = applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
 
-	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 	input = []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE3"}`,

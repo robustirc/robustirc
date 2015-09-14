@@ -32,6 +32,7 @@ import (
 	"github.com/robustirc/rafthttp"
 	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/outputstream"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/timesafeguard"
@@ -418,10 +419,6 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 
 			onlyerrors := true
 			for _, msg := range vmsgs {
-				if msg.Type != types.RobustIRCToClient {
-					glog.Errorf("Unexpected output message type %v\n", msg.Type)
-					continue
-				}
 				ircmsg := irc.ParseMessage(msg.Data)
 				if ircmsg == nil {
 					glog.Errorf("Output message not parsable\n")
@@ -450,7 +447,7 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 			for session := range sessions {
 				interested := false
 				for _, msg := range vmsgs {
-					if (*msg.InterestingFor)[session.Id] {
+					if msg.InterestingFor[session.Id] {
 						interested = true
 						break
 					}
@@ -557,11 +554,13 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 		if !ok {
 			continue
 		}
-		ircServer.Delete(nmsg.Id)
+		// TODO: Since outputstream uses a LevelDB database, we could be more
+		// efficient and use batch deletions.
+		if err := ircServer.Delete(nmsg.Id); err != nil {
+			log.Panicf("Could not delete outputstream message: %v\n", err)
+		}
 		s.store.DeleteRange(idx, idx)
 	}
-
-	ircServer.CleanupInterestingForCache()
 
 	return nil
 }
@@ -708,7 +707,7 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 		return err
 	}
 
-	ircServer = ircserver.NewIRCServer(*network, time.Now())
+	ircServer = ircserver.NewIRCServer(*raftDir, *network, time.Now())
 
 	decoder := json.NewDecoder(snap)
 	for {
@@ -920,6 +919,10 @@ func main() {
 		log.Printf("Deleted %q because %q existed\n", *raftDir, filepath.Join(*raftDir, "deletestate"))
 	}
 
+	if err := outputstream.DeleteOldDatabases(*raftDir); err != nil {
+		log.Fatalf("Could not delete old outputstream databases: %v\n", err)
+	}
+
 	log.Printf("Initializing RobustIRC…\n")
 
 	if os.Getenv("GOMAXPROCS") == "" {
@@ -945,7 +948,7 @@ func main() {
 		*peerAddr = *listen
 	}
 
-	ircServer = ircserver.NewIRCServer(*network, time.Now())
+	ircServer = ircserver.NewIRCServer(*raftDir, *network, time.Now())
 
 	transport := rafthttp.NewHTTPTransport(
 		*peerAddr,

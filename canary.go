@@ -107,7 +107,7 @@ func canary(fsm raft.FSM, statePath string) {
 		}
 		for idx, vmsg := range vmsgs {
 			ifc := make(map[string]bool)
-			for k, v := range *vmsg.InterestingFor {
+			for k, v := range vmsg.InterestingFor {
 				ifc["0x"+strconv.FormatInt(k, 16)] = v
 			}
 			cm.Output[idx] = canaryMessageOutput{

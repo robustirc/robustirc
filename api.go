@@ -462,7 +462,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		select {
 		case msgs := <-msgschan:
 			for _, msg := range msgs {
-				if msg.Type != types.RobustPing && !(*msg.InterestingFor)[session.Id] {
+				if msg.Type != types.RobustPing && !msg.InterestingFor[session.Id] {
 					continue
 				}
 
