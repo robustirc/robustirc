@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"strings"
 	"time"
@@ -1041,6 +1042,7 @@ func main() {
 	if *dumpCanaryState != "" {
 		canary(fsm, *dumpCanaryState)
 		if *dumpHeapProfile != "" {
+			debug.FreeOSMemory()
 			f, err := os.Create(*dumpHeapProfile)
 			if err != nil {
 				log.Fatal(err)
