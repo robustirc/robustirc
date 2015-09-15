@@ -386,7 +386,6 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	}
 
 	enc := json.NewEncoder(w)
-	var msgcopy types.RobustMessage
 	flushTimer := time.NewTimer(1 * time.Second)
 	flushTimer.Stop()
 	var lastFlush time.Time
@@ -466,13 +465,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 					continue
 				}
 
-				// Remove the ClientMessageId before sending, just in case it contains
-				// sensitive information (e.g. the random values leaking state of the
-				// PRNG).
-				msgcopy = *msg
-				msgcopy.ClientMessageId = 0
-
-				if err := enc.Encode(&msgcopy); err != nil {
+				if err := enc.Encode(msg); err != nil {
 					log.Printf("Error encoding JSON: %v\n", err)
 					return
 				}
