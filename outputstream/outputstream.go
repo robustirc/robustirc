@@ -107,8 +107,9 @@ func (os *OutputStream) Reset() error {
 	// startup. This implies we don’t need to fsync(), and leveldb should error
 	// out when there already is a database in our newly created tempdir.
 	db, err := leveldb.OpenFile(dirname, &opt.Options{
-		ErrorIfExist: true,
-		NoSync:       true,
+		ErrorIfExist:       true,
+		NoSync:             true,
+		BlockCacheCapacity: 2 * 1024 * 1024,
 	})
 	if err != nil {
 		return err
