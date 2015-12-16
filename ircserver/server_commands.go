@@ -641,6 +641,18 @@ func (i *IRCServer) cmdServerJoin(s *Session, reply *Replyctx, msg *irc.Message)
 			})
 			continue
 		}
+
+		nick := NickToLower(msg.Prefix.Name)
+		if _, ok := i.nicks[nick]; !ok {
+			i.sendServices(reply, &irc.Message{
+				Prefix:   i.ServerPrefix,
+				Command:  irc.ERR_NOSUCHNICK,
+				Params:   []string{msg.Prefix.Name, channelname},
+				Trailing: "No such nick/channel",
+			})
+			continue
+		}
+
 		// TODO(secure): reduce code duplication with cmdJoin()
 		c, ok := i.channels[ChanToLower(channelname)]
 		if !ok {
@@ -650,11 +662,11 @@ func (i *IRCServer) cmdServerJoin(s *Session, reply *Replyctx, msg *irc.Message)
 			}
 			i.channels[ChanToLower(channelname)] = c
 		}
-		c.nicks[NickToLower(msg.Prefix.Name)] = &[maxChanMemberStatus]bool{}
+		c.nicks[nick] = &[maxChanMemberStatus]bool{}
 		// If the channel did not exist before, the first joining user becomes a
 		// channel operator.
 		if !ok {
-			c.nicks[NickToLower(msg.Prefix.Name)][chanop] = true
+			c.nicks[nick][chanop] = true
 		}
 		s.Channels[ChanToLower(channelname)] = true
 
