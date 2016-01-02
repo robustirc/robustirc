@@ -692,20 +692,23 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 	log.Printf("Restoring snapshot\n")
 	defer snap.Close()
 
-	// Clear state by resetting the ircserver package’s state and deleting the
-	// entire ircstore. Snapshots contain the entire (possibly compacted)
-	// ircstore, so this is safe.
-	min, err := fsm.ircstore.FirstIndex()
+	if err := ircStore.Close(); err != nil {
+		log.Fatal(err)
+	}
+	// Deleting irclog and creating a new database is significantly faster than
+	// using DeleteRange() on the entire keyspace. Re-creating the database
+	// saves us 4 minutes of CPU time (out of 5 minutes total!) and >1G of
+	// memory usage.
+	irclogPath := filepath.Join(*raftDir, "irclog")
+	if err := os.RemoveAll(irclogPath); err != nil {
+		log.Fatal(err)
+	}
+	var err error
+	ircStore, err = raft_store.NewLevelDBStore(irclogPath, true)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
-	max, err := fsm.ircstore.LastIndex()
-	if err != nil {
-		return err
-	}
-	if err := fsm.ircstore.DeleteRange(min, max); err != nil {
-		return err
-	}
+	fsm.ircstore = ircStore
 
 	ircServer = ircserver.NewIRCServer(*raftDir, *network, time.Now())
 
