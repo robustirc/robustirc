@@ -416,13 +416,24 @@ func (i *IRCServer) maybeDeleteChannel(c *channel) {
 func (i *IRCServer) ProcessMessage(id types.RobustId, session types.RobustId, message *irc.Message) *Replyctx {
 	i.sessionsMu.Lock()
 	defer i.sessionsMu.Unlock()
+
 	// alias for convenience
 	s := i.sessions[session]
+	reply := &Replyctx{msgid: id.Id, session: s}
+
+	if message == nil {
+		i.sendUser(s, reply, &irc.Message{
+			Prefix:   i.ServerPrefix,
+			Command:  irc.ERR_UNKNOWNCOMMAND,
+			Params:   []string{s.Nick},
+			Trailing: "Unknown command",
+		})
+		return reply
+	}
+
 	command := strings.ToUpper(message.Command)
 
 	messagesProcessed.WithLabelValues(command).Inc()
-
-	reply := &Replyctx{msgid: id.Id, session: s}
 
 	if !s.loggedIn() && !s.Server &&
 		command != irc.NICK &&
