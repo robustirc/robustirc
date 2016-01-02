@@ -904,8 +904,8 @@ func main() {
 	glog.MaxSize = 64 * 1024 * 1024
 	glog.CopyStandardLogTo("INFO")
 
+	log.Printf("RobustIRC %s\n", Version)
 	if *version {
-		log.Printf("RobustIRC %s\n", Version)
 		return
 	}
 
