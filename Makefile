@@ -1,7 +1,7 @@
 # Building with “go build” will work just fine.
 # This file just exists to build Docker containers.
 
-VERSION := '$(shell git describe --tags --always) ($(shell git log --pretty=format:%cd --date=short -n1))'
+VERSION := $(shell git describe --tags --always) ($(shell git log --pretty=format:%cd --date=short -n1))
 
 .PHONY: container
 
@@ -9,7 +9,7 @@ all: container
 
 container:
 	go generate
-	go build -ldflags "-X main.Version ${VERSION}"
+	go build -ldflags "-X 'main.Version=${VERSION}'"
 	# This list is from go/src/crypto/x509/root_unix.go.
 	install $(shell ls \
 /etc/ssl/certs/ca-certificates.crt \
