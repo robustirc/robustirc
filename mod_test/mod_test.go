@@ -131,7 +131,7 @@ func TestMessageOfDeath(t *testing.T) {
 			select {
 			case foundjoin <- true:
 			default:
-				t.Errorf("Found JOIN too early (channel write blocks)")
+				t.Errorf("Found JOIN too early or too late (channel write did not block)")
 			}
 		}
 	}()
@@ -167,7 +167,7 @@ func TestMessageOfDeath(t *testing.T) {
 	select {
 	case <-foundjoin:
 		t.Logf("JOIN reply received, network progressing")
-	case <-time.After(5 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Errorf("Timeout waiting for JOIN message")
 	}
 }
