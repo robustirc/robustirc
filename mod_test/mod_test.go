@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	prometheus_text "github.com/prometheus/client_golang/text"
+	"github.com/prometheus/common/expfmt"
 	"github.com/robustirc/bridge/robustsession"
 	"github.com/robustirc/robustirc/localnet"
 	"github.com/robustirc/robustirc/types"
@@ -50,7 +50,7 @@ func TestMessageOfDeath(t *testing.T) {
 
 			go func() {
 				// Poll messages of death counter.
-				parser := &prometheus_text.Parser{}
+				parser := &expfmt.TextParser{}
 				for {
 					time.Sleep(50 * time.Millisecond)
 					req, err := http.NewRequest("GET", addr+"metrics", nil)
