@@ -145,8 +145,8 @@ func TestCompaction(t *testing.T) {
 		t.Fatalf("fsm.Restore(): %v", err)
 	}
 
-	first, _ := ircstore.FirstIndex()
-	last, _ := ircstore.LastIndex()
+	first, _ := fsm.ircstore.FirstIndex()
+	last, _ := fsm.ircstore.LastIndex()
 
 	if last-first >= uint64(len(logs)) {
 		t.Fatalf("Compaction did not decrease log size. got: %d, want: < %d", last-first, len(logs))

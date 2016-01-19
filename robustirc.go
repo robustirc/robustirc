@@ -692,7 +692,7 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 	log.Printf("Restoring snapshot\n")
 	defer snap.Close()
 
-	if err := ircStore.Close(); err != nil {
+	if err := fsm.ircstore.Close(); err != nil {
 		log.Fatal(err)
 	}
 	// Deleting irclog and creating a new database is significantly faster than
