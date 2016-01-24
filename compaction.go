@@ -83,6 +83,10 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 		db.Close()
 		os.Remove(tempfile)
 	}()
+	if _, err := db.Exec("pragma synchronous = off"); err != nil {
+		sink.Cancel()
+		return err
+	}
 	// TODO: add an index over paramsJoin.msgid and paramsPart.msgid (cannot be primary key because it is not unique)
 	const nonIrcCommandStmt = `
 CREATE TABLE createSession (msgid integer not null unique primary key, session integer not null);
