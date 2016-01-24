@@ -17,6 +17,11 @@ EXPOSE 8443
 
 VOLUME ["/var/lib/robustirc"]
 
+# sqlite3 uses TMPDIR to store temporary files in, but when this container is
+# run read-only without /tmp as a volume, that would fail. Hence, use
+# /var/lib/robustirc, which must be writeable.
+ENV TMPDIR=/var/lib/robustirc
+
 # The following flags have to be specified when starting this container:
 # -peer_addr
 # -network_name
