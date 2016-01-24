@@ -70,15 +70,6 @@ func init() {
 	prometheus.MustRegister(messagesProcessed)
 }
 
-// logCursor is like a database cursor: it returns the next message.
-// ircCommand’s StillRelevant callback will get a cursor for all messages
-// _before_ the current message and a separate cursor returning all
-// messages _after_ the current message.
-type logCursor func(wantType types.RobustType) (*types.RobustMessage, error)
-
-// logReset resets the database cursor to where it started.
-type logReset func()
-
 // lcChan is a lower-case channel name, e.g. “#chaos-hd”, even when the user
 // sent “JOIN #Chaos-HD”. It is used to enforce using ChanToLower() on keys of
 // various maps.
@@ -461,7 +452,7 @@ func (i *IRCServer) ProcessMessage(id types.RobustId, session types.RobustId, me
 	if s.Server {
 		serverPrefix = "server_"
 	}
-	cmd, ok := commands[serverPrefix+command]
+	cmd, ok := Commands[serverPrefix+command]
 	if !ok {
 		i.sendUser(s, reply, &irc.Message{
 			Prefix:   i.ServerPrefix,
@@ -621,42 +612,6 @@ func (i *IRCServer) LastPostMessage(sessionid types.RobustId) uint64 {
 		return s.lastClientMessageId
 	}
 	return 0
-}
-
-// StillRelevant returns true if and only if ircmsg is still relevant, i.e.
-// needs to be kept in the IRC server input in order to arrive at exactly the
-// same state when replaying the input. State refers to ircserver state except
-// for outputstream.
-//
-// As an example, PRIVMSGs are never relevant, as they never modify ircserver
-// state. Also, if there are two NICK messages in the same session directly one
-// after the other, the first NICK message is obsoleted by the following NICK
-// message, i.e. not relevant anymore. Once there are other messages in between
-// the two NICK messages, though, it is not that simple anymore. Refer to
-// relevantNick() for how it works.
-//
-// 'prev' and 'next' are cursors with which the message-specific handler can
-// look at other messages to figure out whether the message is still relevant.
-func (i *IRCServer) StillRelevant(server bool, ircmsg *irc.Message, prev, next logCursor, reset logReset) (bool, error) {
-	if ircmsg == nil {
-		return true, nil
-	}
-
-	var serverPrefix string
-	if server {
-		serverPrefix = "server_"
-	}
-	c, ok := commands[serverPrefix+strings.ToUpper(ircmsg.Command)]
-	if !ok {
-		return true, nil
-	}
-
-	// If unable to figure out whether the message is still relevant, keep it.
-	if c.StillRelevant == nil {
-		return true, nil
-	}
-
-	return c.StillRelevant(ircmsg, prev, next, reset)
 }
 
 // GetSessions returns a copy of sessions that can be used in the status

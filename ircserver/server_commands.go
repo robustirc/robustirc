@@ -22,36 +22,36 @@ func init() {
 	// NB: This command doesn’t have the server_ prefix because it is sent in
 	// order to make a session _become_ a server. Having the function in this
 	// file makes more sense than in commands.go.
-	commands["SERVER"] = &ircCommand{Func: (*IRCServer).cmdServer, MinParams: 2}
+	Commands["SERVER"] = &ircCommand{Func: (*IRCServer).cmdServer, MinParams: 2}
 
 	// These just use exactly the same code as clients. We can directly assign
-	// the contents of commands[x] because commands.go is sorted lexically
+	// the contents of Commands[x] because commands.go is sorted lexically
 	// before server_commands.go. For details, see
 	// http://golang.org/ref/spec#Package_initialization.
-	commands["server_PING"] = commands["PING"]
+	Commands["server_PING"] = Commands["PING"]
 
-	commands["server_QUIT"] = &ircCommand{Func: (*IRCServer).cmdServerQuit}
-	commands["server_NICK"] = &ircCommand{Func: (*IRCServer).cmdServerNick}
-	commands["server_MODE"] = &ircCommand{Func: (*IRCServer).cmdServerMode}
-	commands["server_JOIN"] = &ircCommand{Func: (*IRCServer).cmdServerJoin}
-	commands["server_PART"] = &ircCommand{Func: (*IRCServer).cmdServerPart}
-	commands["server_PRIVMSG"] = &ircCommand{
-		Func:          (*IRCServer).cmdServerPrivmsg,
-		StillRelevant: neverRelevant,
+	Commands["server_QUIT"] = &ircCommand{Func: (*IRCServer).cmdServerQuit}
+	Commands["server_NICK"] = &ircCommand{Func: (*IRCServer).cmdServerNick}
+	Commands["server_MODE"] = &ircCommand{Func: (*IRCServer).cmdServerMode}
+	Commands["server_JOIN"] = &ircCommand{Func: (*IRCServer).cmdServerJoin}
+	Commands["server_PART"] = &ircCommand{Func: (*IRCServer).cmdServerPart}
+	Commands["server_PRIVMSG"] = &ircCommand{
+		Func: (*IRCServer).cmdServerPrivmsg,
+		ImmediatelyCompactable: true,
 	}
-	commands["server_NOTICE"] = &ircCommand{
-		Func:          (*IRCServer).cmdServerPrivmsg,
-		StillRelevant: neverRelevant,
+	Commands["server_NOTICE"] = &ircCommand{
+		Func: (*IRCServer).cmdServerPrivmsg,
+		ImmediatelyCompactable: true,
 	}
-	commands["server_TOPIC"] = &ircCommand{Func: (*IRCServer).cmdServerTopic, MinParams: 3}
-	commands["server_SVSNICK"] = &ircCommand{Func: (*IRCServer).cmdServerSvsnick, MinParams: 2}
-	commands["server_SVSMODE"] = &ircCommand{Func: (*IRCServer).cmdServerSvsmode, MinParams: 2}
-	commands["server_SVSHOLD"] = &ircCommand{Func: (*IRCServer).cmdServerSvshold, MinParams: 1}
-	commands["server_SVSJOIN"] = &ircCommand{Func: (*IRCServer).cmdServerSvsjoin, MinParams: 2}
-	commands["server_SVSPART"] = &ircCommand{Func: (*IRCServer).cmdServerSvspart, MinParams: 2}
-	commands["server_KILL"] = &ircCommand{Func: (*IRCServer).cmdServerKill, MinParams: 1}
-	commands["server_KICK"] = &ircCommand{Func: (*IRCServer).cmdServerKick, MinParams: 2}
-	commands["server_INVITE"] = &ircCommand{Func: (*IRCServer).cmdServerInvite, MinParams: 2}
+	Commands["server_TOPIC"] = &ircCommand{Func: (*IRCServer).cmdServerTopic, MinParams: 3}
+	Commands["server_SVSNICK"] = &ircCommand{Func: (*IRCServer).cmdServerSvsnick, MinParams: 2}
+	Commands["server_SVSMODE"] = &ircCommand{Func: (*IRCServer).cmdServerSvsmode, MinParams: 2}
+	Commands["server_SVSHOLD"] = &ircCommand{Func: (*IRCServer).cmdServerSvshold, MinParams: 1}
+	Commands["server_SVSJOIN"] = &ircCommand{Func: (*IRCServer).cmdServerSvsjoin, MinParams: 2}
+	Commands["server_SVSPART"] = &ircCommand{Func: (*IRCServer).cmdServerSvspart, MinParams: 2}
+	Commands["server_KILL"] = &ircCommand{Func: (*IRCServer).cmdServerKill, MinParams: 1}
+	Commands["server_KICK"] = &ircCommand{Func: (*IRCServer).cmdServerKick, MinParams: 2}
+	Commands["server_INVITE"] = &ircCommand{Func: (*IRCServer).cmdServerInvite, MinParams: 2}
 }
 
 func servicesPrefix(prefix *irc.Prefix) *irc.Prefix {

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -686,4 +687,14 @@ func TestCompactAway(t *testing.T) {
 	}
 	output = applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
+}
+
+func TestMain(m *testing.M) {
+	flag.Parse()
+	tempdir, err := ioutil.TempDir("", "robustirc-test-raftdir-")
+	if err != nil {
+		log.Fatal(err)
+	}
+	raftDir = &tempdir
+	os.Exit(m.Run())
 }

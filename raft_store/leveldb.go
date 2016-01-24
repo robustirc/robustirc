@@ -16,7 +16,9 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/syndtr/goleveldb/leveldb"
 	leveldb_errors "github.com/syndtr/goleveldb/leveldb/errors"
+	"github.com/syndtr/goleveldb/leveldb/iterator"
 	"github.com/syndtr/goleveldb/leveldb/opt"
+	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 // LevelDBStore implements the raft.LogStore and raft.StableStore interfaces on
@@ -90,6 +92,25 @@ func (s *LevelDBStore) LastIndex() (uint64, error) {
 		}
 	}
 	return binary.BigEndian.Uint64(i.Key()), nil
+}
+
+// GetBulkIterator returns an iterator which can be used to read the database
+// entries in [start, limit). It performs much better than looping over GetLog.
+func (s *LevelDBStore) GetBulkIterator(start, limit uint64) iterator.Iterator {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	startKey := make([]byte, binary.Size(start))
+	limitKey := make([]byte, binary.Size(limit))
+	binary.BigEndian.PutUint64(startKey, start)
+	binary.BigEndian.PutUint64(limitKey, limit)
+	return s.db.NewIterator(&util.Range{
+		Start: startKey,
+		Limit: limitKey,
+	}, &opt.ReadOptions{
+		// This function is for reading through (almost) the entire database in
+		// bulk, so caching the blocks does not make sense.
+		DontFillCache: true,
+	})
 }
 
 // GetLog implements raft.LogStore.

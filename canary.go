@@ -1,24 +1,20 @@
 package main
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"log"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/types"
 	"github.com/robustirc/robustirc/util"
 	"github.com/sorcix/irc"
+	"github.com/stapelberg/glog"
 )
-
-type uint64Slice []uint64
-
-func (p uint64Slice) Len() int           { return len(p) }
-func (p uint64Slice) Less(i, j int) bool { return p[i] < p[j] }
-func (p uint64Slice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 type canaryMessageOutput struct {
 	Text           string
@@ -60,6 +56,8 @@ func canary(fsm raft.FSM, statePath string) {
 		log.Fatalf("snapshot is not a robustSnapshot")
 	}
 
+	rs.skipDeletionForCanary = true
+
 	sink, err := raft.NewDiscardSnapshotStore().Create(rs.lastIndex, 1, []byte{})
 	if err != nil {
 		log.Fatalf("DiscardSnapshotStore.Create(): %v\n", err)
@@ -80,15 +78,34 @@ func canary(fsm raft.FSM, statePath string) {
 
 	enc := json.NewEncoder(f)
 
-	// Sort the keys to iterate through |rs.parsed| in deterministic order.
-	keys := make([]uint64, 0, len(rs.parsed))
-	for idx := range rs.parsed {
-		keys = append(keys, idx)
-	}
-	sort.Sort(uint64Slice(keys))
+	iterator := rs.store.GetBulkIterator(rs.firstIndex, rs.lastIndex+1)
+	defer iterator.Release()
+	available := iterator.First()
+	for available {
+		var nlog raft.Log
+		if err := iterator.Error(); err != nil {
+			glog.Errorf("Error while iterating through the log: %v", err)
+			available = iterator.Next()
+			continue
+		}
+		idx := binary.BigEndian.Uint64(iterator.Key())
+		value := iterator.Value()
+		if err := json.Unmarshal(value, &nlog); err != nil {
+			glog.Errorf("Skipping log entry %d because of a JSON unmarshaling error: %v", idx, err)
+			continue
+		}
+		available = iterator.Next()
 
-	for _, idx := range keys {
-		nmsg := rs.parsed[idx]
+		// TODO: compact raft messages as well, so that peer changes are not kept forever
+		if nlog.Type != raft.LogCommand {
+			continue
+		}
+
+		nmsg := types.NewRobustMessageFromBytes(nlog.Data)
+		if time.Unix(0, nmsg.Id.Id).After(rs.compactionEnd) {
+			break
+		}
+
 		// TODO: come up with pseudo-values for createsession/deletesession
 		if nmsg.Type != types.RobustIRCFromClient {
 			continue
@@ -98,12 +115,13 @@ func canary(fsm raft.FSM, statePath string) {
 			continue
 		}
 		vmsgs, _ := ircServer.Get(nmsg.Id)
+		_, compacted := rs.del[idx]
 		cm := canaryMessageState{
 			Id:        idx,
 			Session:   nmsg.Session.Id,
 			Input:     util.PrivacyFilterIrcmsg(ircmsg).String(),
 			Output:    make([]canaryMessageOutput, len(vmsgs)),
-			Compacted: rs.del[idx],
+			Compacted: compacted,
 		}
 		for idx, vmsg := range vmsgs {
 			ifc := make(map[string]bool)
