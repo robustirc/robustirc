@@ -28,7 +28,7 @@ var (
 
 func handleConnection(conn net.Conn) {
 	time.Sleep(*tarpit)
-	fmt.Fprintf(conn, "ERROR %s", *message)
+	fmt.Fprintf(conn, "ERROR :%s", *message)
 	conn.Close()
 }
 
