@@ -424,8 +424,10 @@ func (i *IRCServer) cmdNick(s *Session, reply *Replyctx, msg *irc.Message) {
 	}
 
 	dest := "*"
+	onlyCapsChanged := false // Whether the nick change only changes capitalization.
 	if s.loggedIn() {
 		dest = s.Nick
+		onlyCapsChanged = NickToLower(msg.Params[0]) == NickToLower(dest)
 	}
 
 	if !IsValidNickname(msg.Params[0]) {
@@ -438,7 +440,7 @@ func (i *IRCServer) cmdNick(s *Session, reply *Replyctx, msg *irc.Message) {
 		return
 	}
 
-	if _, ok := i.nicks[NickToLower(msg.Params[0])]; ok || IsServicesNickname(msg.Params[0]) {
+	if _, ok := i.nicks[NickToLower(msg.Params[0])]; (ok && !onlyCapsChanged) || IsServicesNickname(msg.Params[0]) {
 		i.sendUser(s, reply, &irc.Message{
 			Prefix:   i.ServerPrefix,
 			Command:  irc.ERR_NICKNAMEINUSE,
@@ -466,7 +468,7 @@ func (i *IRCServer) cmdNick(s *Session, reply *Replyctx, msg *irc.Message) {
 	oldNick := NickToLower(s.Nick)
 	s.Nick = msg.Params[0]
 	i.nicks[NickToLower(s.Nick)] = s
-	if oldNick != "" {
+	if oldNick != "" && !onlyCapsChanged {
 		delete(i.nicks, oldNick)
 		for _, c := range i.channels {
 			// Check ok to ensure we never assign the default value (<nil>).
