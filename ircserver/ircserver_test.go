@@ -135,7 +135,7 @@ func TestSessionInitialization(t *testing.T) {
 	}
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, idSecond, irc.ParseMessage("NICK secure")),
+		i.ProcessMessage(types.RobustId{}, idSecond, irc.ParseMessage("NICK :secure")),
 		":robustirc.net 433 * secure :Nickname is already in use")
 	if sSecond.Nick != "" {
 		t.Fatalf("session.Nick: got %q, want %q", s.Nick, "")

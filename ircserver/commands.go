@@ -413,7 +413,14 @@ DELETE FROM paramsNick WHERE msgid IN (SELECT msgid FROM deleteIds)
 func (i *IRCServer) cmdNick(s *Session, reply *Replyctx, msg *irc.Message) {
 	oldPrefix := s.ircPrefix
 
-	if len(msg.Params) < 1 {
+	var nick string
+	if len(msg.Params) >= 1 {
+		nick = msg.Params[0]
+	} else {
+		nick = strings.TrimSpace(msg.Trailing)
+	}
+
+	if nick == "" {
 		i.sendUser(s, reply, &irc.Message{
 			Prefix:   i.ServerPrefix,
 			Command:  irc.ERR_NONICKNAMEGIVEN,
@@ -426,46 +433,46 @@ func (i *IRCServer) cmdNick(s *Session, reply *Replyctx, msg *irc.Message) {
 	onlyCapsChanged := false // Whether the nick change only changes capitalization.
 	if s.loggedIn() {
 		dest = s.Nick
-		onlyCapsChanged = NickToLower(msg.Params[0]) == NickToLower(dest)
+		onlyCapsChanged = NickToLower(nick) == NickToLower(dest)
 	}
 
-	if !IsValidNickname(msg.Params[0]) {
+	if !IsValidNickname(nick) {
 		i.sendUser(s, reply, &irc.Message{
 			Prefix:   i.ServerPrefix,
 			Command:  irc.ERR_ERRONEUSNICKNAME,
-			Params:   []string{dest, msg.Params[0]},
+			Params:   []string{dest, nick},
 			Trailing: "Erroneous nickname",
 		})
 		return
 	}
 
-	if _, ok := i.nicks[NickToLower(msg.Params[0])]; (ok && !onlyCapsChanged) || IsServicesNickname(msg.Params[0]) {
+	if _, ok := i.nicks[NickToLower(nick)]; (ok && !onlyCapsChanged) || IsServicesNickname(nick) {
 		i.sendUser(s, reply, &irc.Message{
 			Prefix:   i.ServerPrefix,
 			Command:  irc.ERR_NICKNAMEINUSE,
-			Params:   []string{dest, msg.Params[0]},
+			Params:   []string{dest, nick},
 			Trailing: "Nickname is already in use",
 		})
 		return
 	}
 
-	if hold, ok := i.svsholds[NickToLower(msg.Params[0])]; ok {
+	if hold, ok := i.svsholds[NickToLower(nick)]; ok {
 		if !s.LastActivity.After(hold.added.Add(hold.duration)) {
 			i.sendUser(s, reply, &irc.Message{
 				Prefix:   i.ServerPrefix,
 				Command:  irc.ERR_ERRONEUSNICKNAME,
-				Params:   []string{dest, msg.Params[0]},
+				Params:   []string{dest, nick},
 				Trailing: fmt.Sprintf("Erroneous Nickname: %s", hold.reason),
 			})
 			return
 		}
 		// The SVSHOLD expired, so remove it.
-		delete(i.svsholds, NickToLower(msg.Params[0]))
+		delete(i.svsholds, NickToLower(nick))
 	}
 
 	loggedIn := s.loggedIn()
 	oldNick := NickToLower(s.Nick)
-	s.Nick = msg.Params[0]
+	s.Nick = nick
 	i.nicks[NickToLower(s.Nick)] = s
 	if oldNick != "" && !onlyCapsChanged {
 		delete(i.nicks, oldNick)
@@ -484,7 +491,7 @@ func (i *IRCServer) cmdNick(s *Session, reply *Replyctx, msg *irc.Message) {
 				i.sendUser(s, reply, &irc.Message{
 					Prefix:   &oldPrefix,
 					Command:  irc.NICK,
-					Trailing: msg.Params[0],
+					Trailing: nick,
 				})))
 		return
 	}
