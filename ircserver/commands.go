@@ -212,7 +212,6 @@ func (i *IRCServer) cmdPing(s *Session, reply *Replyctx, msg *irc.Message) {
 // login is called by either cmdNick or cmdUser, depending on which message the
 // client sends last.
 func (i *IRCServer) login(s *Session, reply *Replyctx, msg *irc.Message) {
-	// TODO(secure): send 002, 003, 004, 251, 252, 254, 255, 265, 266
 	i.sendUser(s, reply, &irc.Message{
 		Prefix:   i.ServerPrefix,
 		Command:  irc.RPL_WELCOME,
