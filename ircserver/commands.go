@@ -235,11 +235,10 @@ func (i *IRCServer) login(s *Session, reply *Replyctx, msg *irc.Message) {
 	})
 
 	i.sendUser(s, reply, &irc.Message{
-		Prefix:  i.ServerPrefix,
-		Command: irc.RPL_MYINFO,
-		Params:  []string{s.Nick},
-		// TODO(secure): actually support these modes.
-		Trailing: i.ServerPrefix.Name + " v1 i nst",
+		Prefix:   i.ServerPrefix,
+		Command:  irc.RPL_MYINFO,
+		Params:   []string{s.Nick},
+		Trailing: i.ServerPrefix.Name + " v1 i nsti",
 	})
 
 	// send ISUPPORT as per:
