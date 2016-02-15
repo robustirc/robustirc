@@ -1035,6 +1035,15 @@ func (i *IRCServer) cmdPrivmsg(s *Session, reply *Replyctx, msg *irc.Message) {
 			})
 			return
 		}
+		if _, ok := c.nicks[NickToLower(s.Nick)]; !ok && c.modes['n'] {
+			i.sendUser(s, reply, &irc.Message{
+				Prefix:   i.ServerPrefix,
+				Command:  irc.ERR_CANNOTSENDTOCHAN,
+				Params:   []string{s.Nick, c.name},
+				Trailing: "Cannot send to channel",
+			})
+			return
+		}
 		i.sendChannelButOne(c, s, reply, &irc.Message{
 			Prefix:        &s.ircPrefix,
 			Command:       msg.Command,
@@ -1114,7 +1123,7 @@ func (i *IRCServer) cmdMode(s *Session, reply *Replyctx, msg *irc.Message) {
 				switch char {
 				case '+', '-':
 					newvalue = (char == '+')
-				case 't', 's', 'i':
+				case 't', 's', 'i', 'n':
 					c.modes[char] = newvalue
 				case 'o':
 					if len(msg.Params) > modearg {

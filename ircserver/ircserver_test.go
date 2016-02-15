@@ -621,6 +621,16 @@ func TestInvalidPrivmsg(t *testing.T) {
 	mustMatchMsg(t,
 		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("PRIVMSG sorcix :foo")),
 		":robustirc.net 401 sECuRE sorcix :No such nick/channel")
+
+	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #NoExternalMessages"))
+	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("MODE #NoExternalMessages +n"))
+
+	mustMatchMsg(t,
+		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("PRIVMSG #NoExternalMessages :foo")),
+		":mero!foo@robust/0x13b5aa0a2bcfb8ae PRIVMSG #NoExternalMessages :foo")
+	mustMatchMsg(t,
+		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("PRIVMSG #NoExternalMessages :foo")),
+		":robustirc.net 404 sECuRE #NoExternalMessages :Cannot send to channel")
 }
 
 func TestKill(t *testing.T) {
