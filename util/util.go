@@ -57,6 +57,7 @@ func GetServerStatus(server, networkPassword string) (ServerStatus, error) {
 
 func CollectStatuses(servers []string, networkPassword string) (map[string]ServerStatus, error) {
 	statuses := make(map[string]ServerStatus, len(servers))
+	var statusesMu sync.Mutex
 	errChan := make(chan error, len(servers))
 	var wg sync.WaitGroup
 	for _, server := range servers {
@@ -69,7 +70,9 @@ func CollectStatuses(servers []string, networkPassword string) (map[string]Serve
 				return
 			}
 			status.Server = server
+			statusesMu.Lock()
 			statuses[server] = status
+			statusesMu.Unlock()
 		}(server)
 	}
 	wg.Wait()
