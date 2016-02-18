@@ -17,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/BurntSushi/toml"
 	"github.com/julienschmidt/httprouter"
 	"github.com/robustirc/robustirc/config"
@@ -391,7 +393,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	var lastFlush time.Time
 	willFlush := false
 	msgschan := make(chan []*types.RobustMessage)
-	cancelled := false
+	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		var msgs []*types.RobustMessage
 		pingDone := make(chan bool)
@@ -424,12 +426,12 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		}
 
 		for {
-			if cancelled {
+			if ctx.Err() != nil {
 				pingDone <- true
 				close(msgschan)
 				return
 			}
-			msgs = ircServer.GetNext(lastSeen, &cancelled)
+			msgs = ircServer.GetNext(ctx, lastSeen)
 			if len(msgs) == 0 {
 				continue
 			}
@@ -452,7 +454,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		}
 	}()
 	defer func() {
-		cancelled = true
+		cancel()
 		ircServer.InterruptGetNext()
 		for _ = range msgschan {
 		}

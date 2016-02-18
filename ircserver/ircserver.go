@@ -17,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/outputstream"
@@ -646,8 +648,8 @@ func (i *IRCServer) outputToRobustMessages(msgs []outputstream.Message) []*types
 
 // GetNext wraps outputstream.GetNext and converts the messages into
 // RobustMessages.
-func (i *IRCServer) GetNext(lastseen types.RobustId, cancelled *bool) []*types.RobustMessage {
-	return i.outputToRobustMessages(i.output.GetNext(lastseen, cancelled))
+func (i *IRCServer) GetNext(ctx context.Context, lastseen types.RobustId) []*types.RobustMessage {
+	return i.outputToRobustMessages(i.output.GetNext(ctx, lastseen))
 }
 
 // Get wraps outputstream.GetNext and converts the messages into

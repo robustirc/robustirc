@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/types"
 
@@ -245,7 +247,7 @@ func TestPlumbing(t *testing.T) {
 	nextid := types.RobustId{Id: time.Now().UnixNano()}
 	replies = i.ProcessMessage(nextid, ids["secure"], irc.ParseMessage("JOIN #foobar"))
 	i.SendMessages(replies, ids["secure"], nextid.Id)
-	got = i.GetNext(msgid, nil)
+	got = i.GetNext(context.TODO(), msgid)
 	if !ok {
 		t.Fatalf("_, ok := Get(%d); got false, want true", msgid.Id)
 	}

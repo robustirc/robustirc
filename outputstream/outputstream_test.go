@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/robustirc/robustirc/types"
 )
 
@@ -17,7 +19,7 @@ func testBlocking(t *testing.T, os *OutputStream, lastseen types.RobustId, want 
 	next := make(chan []Message)
 
 	go func() {
-		next <- os.GetNext(lastseen, nil)
+		next <- os.GetNext(context.TODO(), lastseen)
 	}()
 
 	// Make the other goroutine run.
@@ -68,15 +70,15 @@ func TestCatchUp(t *testing.T) {
 	addEmptyMsg(os, 2, 1)
 	addEmptyMsg(os, 3, 1)
 
-	msgs := os.GetNext(types.RobustId{}, nil)
+	msgs := os.GetNext(context.TODO(), types.RobustId{})
 	if want := (types.RobustId{Id: 1, Reply: 1}); msgs[0].Id != want {
 		t.Fatalf("got %v, want %v", msgs[0].Id, want)
 	}
-	msgs = os.GetNext(msgs[0].Id, nil)
+	msgs = os.GetNext(context.TODO(), msgs[0].Id)
 	if want := (types.RobustId{Id: 2, Reply: 1}); msgs[0].Id != want {
 		t.Fatalf("got %v, want %v", msgs[0].Id, want)
 	}
-	msgs = os.GetNext(msgs[0].Id, nil)
+	msgs = os.GetNext(context.TODO(), msgs[0].Id)
 	if want := (types.RobustId{Id: 3, Reply: 1}); msgs[0].Id != want {
 		t.Fatalf("got %v, want %v", msgs[0].Id, want)
 	}
@@ -114,12 +116,12 @@ func TestDeleteMiddle(t *testing.T) {
 	}
 
 	// Now get the same messages using GetNext
-	msgs = os.GetNext(types.RobustId{Id: 2, Reply: 1}, nil)
+	msgs = os.GetNext(context.TODO(), types.RobustId{Id: 2, Reply: 1})
 	if want := (types.RobustId{Id: 3, Reply: 1}); msgs[0].Id != want {
 		t.Fatalf("got %v, want %v", msgs[0].Id, want)
 	}
 
-	msgs = os.GetNext(types.RobustId{Id: 1, Reply: 1}, nil)
+	msgs = os.GetNext(context.TODO(), types.RobustId{Id: 1, Reply: 1})
 	if want := (types.RobustId{Id: 3, Reply: 1}); msgs[0].Id != want {
 		t.Fatalf("got %v, want %v", msgs[0].Id, want)
 	}
@@ -160,24 +162,24 @@ func TestInterrupt(t *testing.T) {
 
 	addEmptyMsg(os, 1, 1)
 
-	msgs := os.GetNext(types.RobustId{}, nil)
+	msgs := os.GetNext(context.TODO(), types.RobustId{})
 	if want := (types.RobustId{Id: 1, Reply: 1}); msgs[0].Id != want {
 		t.Fatalf("got %v, want %v", msgs[0].Id, want)
 	}
 
-	cancelled1 := false
-	cancelled2 := false
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	ctx2, _ := context.WithCancel(context.Background())
 
 	unblocked1 := make(chan bool)
 	unblocked2 := make(chan bool)
 
 	go func() {
-		msgs = os.GetNext(msgs[0].Id, &cancelled1)
+		msgs = os.GetNext(ctx1, msgs[0].Id)
 		unblocked1 <- true
 	}()
 
 	go func() {
-		msgs = os.GetNext(msgs[0].Id, &cancelled2)
+		msgs = os.GetNext(ctx2, msgs[0].Id)
 		unblocked2 <- true
 	}()
 
@@ -187,7 +189,7 @@ func TestInterrupt(t *testing.T) {
 		t.Fatalf("GetNext() returned before cancelled is true")
 	default:
 	}
-	cancelled1 = true
+	cancel1()
 	select {
 	case <-unblocked1:
 	case <-time.After(1 * time.Second):

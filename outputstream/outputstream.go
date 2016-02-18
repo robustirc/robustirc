@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 
+	"golang.org/x/net/context"
+
 	"github.com/robustirc/robustirc/types"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
@@ -211,7 +213,7 @@ func (os *OutputStream) Delete(inputID types.RobustId) error {
 // was deleted in the meanwhile. In case there is no next message yet,
 // GetNext blocks until it appears.
 // GetNext(types.RobustId{Id: 0}) returns the first message.
-func (os *OutputStream) GetNext(lastseen types.RobustId, cancelled *bool) []Message {
+func (os *OutputStream) GetNext(ctx context.Context, lastseen types.RobustId) []Message {
 	// GetNext handles 4 different cases:
 	//
 	// ┌──────────────────┬───────────┬───────────────────────────────────────┐
@@ -275,9 +277,11 @@ func (os *OutputStream) GetNext(lastseen types.RobustId, cancelled *bool) []Mess
 			os.messagesMu.Unlock()
 			return next.Messages
 		}
-		if cancelled != nil && *cancelled {
+		select {
+		case <-ctx.Done():
 			os.messagesMu.Unlock()
 			return []Message{}
+		default:
 		}
 		os.newMessage.Wait()
 	}
