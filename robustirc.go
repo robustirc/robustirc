@@ -22,6 +22,8 @@ import (
 	"runtime/pprof"
 	"time"
 
+	"golang.org/x/net/http2"
+
 	"github.com/julienschmidt/httprouter"
 	"github.com/kardianos/osext"
 	"github.com/prometheus/client_golang/prometheus"
@@ -517,15 +519,16 @@ func main() {
 		}
 	}))
 
+	srv := http.Server{Addr: *listen}
+	if err := http2.ConfigureServer(&srv, nil); err != nil {
+		log.Fatal(err)
+	}
+
 	// Manually create the net.TCPListener so that joinMaster() does not run
 	// into connection refused errors (the master will try to contact the
 	// node before acknowledging the join).
-	tlsconfig := &tls.Config{
-		NextProtos:   []string{"http/1.1"},
-		Certificates: make([]tls.Certificate, 1),
-	}
-
-	tlsconfig.Certificates[0], err = tls.LoadX509KeyPair(*tlsCertPath, *tlsKeyPath)
+	srv.TLSConfig.Certificates = make([]tls.Certificate, 1)
+	srv.TLSConfig.Certificates[0], err = tls.LoadX509KeyPair(*tlsCertPath, *tlsKeyPath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -535,8 +538,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	tlsListener := tls.NewListener(tcpKeepAliveListener{ln.(*net.TCPListener)}, tlsconfig)
-	srv := http.Server{Addr: *listen}
+	tlsListener := tls.NewListener(tcpKeepAliveListener{ln.(*net.TCPListener)}, srv.TLSConfig)
 	go srv.Serve(tlsListener)
 
 	log.Printf("RobustIRC listening on %q. For status, see %s\n",
