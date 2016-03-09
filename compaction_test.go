@@ -188,10 +188,12 @@ func applyAndCompact(t *testing.T, input []string) []string {
 	if err != nil {
 		t.Fatalf("Unexpected error in NewLevelDBStore: %v", err)
 	}
+	defer logstore.Close()
 	ircstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "irclog"), false)
 	if err != nil {
 		t.Fatalf("Unexpected error in NewLevelDBStore: %v", err)
 	}
+	defer ircstore.Close()
 	fsm := FSM{logstore, ircstore}
 
 	var logs []*raft.Log
