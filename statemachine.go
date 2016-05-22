@@ -170,9 +170,6 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 			return err
 		}
 
-		// TODO(secure): is it okay to re-apply these entries? i.e., when
-		// restoring snapshots during normal operation (when does that
-		// happen?), will we re-send messages to clients?
 		fsm.Apply(&entry)
 	}
 
