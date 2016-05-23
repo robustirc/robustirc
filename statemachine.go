@@ -35,7 +35,7 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 	}
 
 	msg := types.NewRobustMessageFromBytes(l.Data)
-	log.Printf("Apply(msg.Type=%s)\n", msg.Type)
+	glog.Infof("Apply(msg.Type=%s)\n", msg.Type)
 
 	defer func() {
 		if msg.Type == types.RobustMessageOfDeath {
