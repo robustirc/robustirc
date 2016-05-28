@@ -87,12 +87,12 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 		sink.Cancel()
 		return err
 	}
-	// TODO: add an index over paramsJoin.msgid and paramsPart.msgid (cannot be primary key because it is not unique)
 	const nonIrcCommandStmt = `
 CREATE TABLE createSession (msgid integer not null unique primary key, session integer not null);
 CREATE TABLE deleteSession (msgid integer not null unique primary key, session integer not null);
 CREATE TABLE allMessages (msgid integer not null unique primary key, session integer not null, irccommand string null);
 CREATE VIEW allMessagesWin AS SELECT * FROM allMessages WHERE msgid < %d;
+CREATE INDEX allMessagesSessionIdx ON allMessages (session);
 CREATE VIEW createSessionWin AS SELECT * FROM createSession WHERE msgid < %d;
 CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 `

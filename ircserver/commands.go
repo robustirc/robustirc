@@ -619,7 +619,13 @@ func (i *IRCServer) cmdUser(s *Session, reply *Replyctx, msg *irc.Message) {
 
 func prepareStmtJoin(db *sql.DB) (*sql.Stmt, error) {
 	const (
-		createStmt  = "CREATE TABLE paramsJoin (msgid integer not null, session integer not null, channel text not null)"
+		// We cannot make msgid unique because one JOIN message may contain
+		// multiple channels.
+		createStmt = `
+		CREATE TABLE paramsJoin (msgid integer not null, session integer not null, channel text not null);
+		CREATE INDEX paramsJoinMsgid ON paramsJoin (msgid);
+		CREATE INDEX paramsJoinSession ON paramsJoin (session);
+		`
 		prepareStmt = "INSERT INTO paramsJoin (msgid, session, channel) VALUES (?, ?, ?)"
 	)
 	return createAndPrepare(db, createStmt, prepareStmt)
@@ -861,7 +867,13 @@ func (i *IRCServer) cmdKick(s *Session, reply *Replyctx, msg *irc.Message) {
 
 func prepareStmtPart(db *sql.DB) (*sql.Stmt, error) {
 	const (
-		createStmt  = "CREATE TABLE paramsPart (msgid integer not null, session integer not null, channel text not null)"
+		// We cannot make msgid unique because one JOIN message may contain
+		// multiple channels.
+		createStmt = `
+		CREATE TABLE paramsPart (msgid integer not null, session integer not null, channel text not null);
+		CREATE INDEX paramsPartMsgid ON paramsPart (msgid);
+		CREATE INDEX paramsPartSession ON paramsPart (session);
+		`
 		prepareStmt = "INSERT INTO paramsPart (msgid, session, channel) VALUES (?, ?, ?)"
 	)
 	return createAndPrepare(db, createStmt, prepareStmt)
