@@ -91,7 +91,7 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 	const nonIrcCommandStmt = `
 CREATE TABLE createSession (msgid integer not null unique primary key, session integer not null);
 CREATE TABLE deleteSession (msgid integer not null unique primary key, session integer not null);
-CREATE TABLE allMessages (msgid integer not null unique primary key, session integer not null);
+CREATE TABLE allMessages (msgid integer not null unique primary key, session integer not null, irccommand string null);
 CREATE VIEW allMessagesWin AS SELECT * FROM allMessages WHERE msgid < %d;
 CREATE VIEW createSessionWin AS SELECT * FROM createSession WHERE msgid < %d;
 CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
@@ -106,7 +106,7 @@ CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 	}
 
 	var allMessagesStmt, createSessionStmt, deleteSessionStmt *sql.Stmt
-	allMessagesStmt, err = db.Prepare("INSERT INTO allMessages (msgid, session) VALUES (?, ?)")
+	allMessagesStmt, err = db.Prepare("INSERT INTO allMessages (msgid, session, irccommand) VALUES (?, ?, ?)")
 	if err == nil {
 		defer allMessagesStmt.Close()
 		createSessionStmt, err = db.Prepare("INSERT INTO createSession (msgid, session) VALUES (?, ?)")
@@ -173,6 +173,7 @@ CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 
 		msgid := parsed.Id
 		session := parsed.Session
+		ircCmdNullable := sql.NullString{Valid: false}
 
 		switch parsed.Type {
 		case types.RobustMessageOfDeath:
@@ -220,6 +221,7 @@ CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 				continue
 			}
 			irccmd := strings.ToUpper(ircmsg.Command)
+			ircCmdNullable = sql.NullString{String: irccmd, Valid: true}
 
 			// Kind of a hack: we need to keep track of which sessions are
 			// services connections and which are not, so that we can look at
@@ -250,7 +252,7 @@ CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 			}
 		}
 
-		if _, err := allMessagesStmt.Exec(msgid.Id, session.Id); err != nil {
+		if _, err := allMessagesStmt.Exec(msgid.Id, session.Id, ircCmdNullable); err != nil {
 			sink.Cancel()
 			return err
 		}

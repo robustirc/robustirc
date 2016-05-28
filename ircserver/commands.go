@@ -659,6 +659,36 @@ FROM
 WHERE
     p.msgid NOT NULL;
 
+-- Delete all (sequences of) JOIN messages which are directly followed by a deleteSession message.
+INSERT INTO candidates
+SELECT
+   j.msgid AS join_msgid,
+   j.session AS session,
+   j.channel AS channel,
+   d.msgid AS part_msgid
+FROM
+   (
+		SELECT
+			js.msgid AS msgid,
+			js.session AS session,
+			js.channel AS channel,
+			MIN(a.msgid) AS next_msgid
+		FROM
+			paramsJoinWin AS js
+			INNER JOIN allMessagesWin AS a
+			ON (
+				js.session = a.session AND
+				(a.irccommand != 'JOIN' OR a.irccommand IS NULL) AND
+				a.msgid > js.msgid
+			)
+		GROUP BY js.msgid
+	) AS j
+	INNER JOIN deleteSessionWin AS d
+	ON (
+		j.session = d.session AND
+		j.next_msgid = d.msgid
+	);
+
 DELETE FROM
     candidates
 WHERE
