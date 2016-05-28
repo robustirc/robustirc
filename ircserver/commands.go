@@ -1418,6 +1418,31 @@ WHERE
             )
     );
 
+-- Delete all AWAY messages which are directly followed by a deleteSession message.
+INSERT INTO deleteIds
+SELECT
+	a.msgid AS msgid
+FROM
+	(
+		SELECT
+			aw.msgid AS msgid,
+			aw.session AS session,
+			MIN(a.msgid) AS next_msgid
+		FROM
+			paramsAwayWin AS aw
+			INNER JOIN allMessagesWin AS a
+			ON (
+				aw.session = a.session AND
+				a.msgid > aw.msgid
+			)
+		GROUP BY aw.msgid
+	) AS a
+	INNER JOIN deleteSessionWin AS d
+	ON (
+		a.session = d.session AND
+		a.next_msgid = d.msgid
+	);
+
 DELETE FROM paramsAway WHERE msgid IN (SELECT msgid FROM deleteIds);
 
 -- Delete all remaining AWAY commands that are no-ops.
