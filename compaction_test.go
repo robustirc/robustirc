@@ -219,7 +219,9 @@ func applyAndCompact(t *testing.T, input []string) []string {
 	}
 	s := rawsnap.(*robustSnapshot)
 	sink := inMemorySink{}
-	s.Persist(&sink)
+	if err := s.Persist(&sink); err != nil {
+		t.Fatalf("Unexpected error in Persist: %v", err)
+	}
 
 	dec := json.NewDecoder(&sink.b)
 	var output []string
