@@ -1567,8 +1567,8 @@ func (i *IRCServer) cmdAway(s *Session, reply *Replyctx, msg *irc.Message) {
 
 func prepareStmtTopic(db *sql.DB) (*sql.Stmt, error) {
 	const (
-		createStmt  = "CREATE TABLE paramsTopic (msgid integer not null unique primary key, session integer not null, channel text not null)"
-		prepareStmt = "INSERT INTO paramsTopic (msgid, session, channel) VALUES (?, ?, ?)"
+		createStmt  = "CREATE TABLE paramsTopic (msgid integer not null unique primary key, session integer not null, channel text not null, trailing text)"
+		prepareStmt = "INSERT INTO paramsTopic (msgid, session, channel, trailing) VALUES (?, ?, ?, ?)"
 	)
 	return createAndPrepare(db, createStmt, prepareStmt)
 }
@@ -1584,7 +1584,10 @@ func insertTopic(msgid, session types.RobustId, ircmsg *irc.Message, stmt *sql.S
 	if len(ircmsg.Params) < 1 {
 		return nil
 	}
-	_, err := stmt.Exec(msgid.Id, session.Id, ircmsg.Params[0])
+	_, err := stmt.Exec(msgid.Id, session.Id, ircmsg.Params[0],
+		sql.NullString{
+			String: ircmsg.Trailing,
+			Valid:  ircmsg.Trailing != "" || ircmsg.EmptyTrailing})
 	return err
 }
 
@@ -1602,7 +1605,8 @@ WHERE
         FROM
             paramsTopicWin
         GROUP BY channel
-    );
+    )
+	OR trailing IS NULL;
 DELETE FROM paramsTopic WHERE msgid IN (SELECT msgid FROM deleteIds)
 `
 
