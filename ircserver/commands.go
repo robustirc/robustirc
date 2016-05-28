@@ -364,13 +364,13 @@ FROM
             next.msgid AS msgid,
             next.session AS session,
             next.next_msgid AS next_msgid,
-            a.msgid AS prev_msgid
+            MAX(a.msgid) AS prev_msgid
         FROM
             (
                 SELECT
                     n.msgid AS msgid,
                     n.session AS session,
-                    a.msgid AS next_msgid
+                    MIN(a.msgid) AS next_msgid
                 FROM
                     paramsNickWin AS n
                     INNER JOIN allMessagesWin AS a
@@ -378,15 +378,14 @@ FROM
                         n.session = a.session AND
                         a.msgid > n.msgid
                     )
-                LIMIT 1
+                GROUP BY n.msgid
             ) AS next
             INNER JOIN allMessagesWin AS a
             ON (
                 next.session = a.session AND
                 a.msgid < next.msgid
             )
-            ORDER BY a.msgid DESC
-            LIMIT 1
+            GROUP BY next.msgid
     ) AS a
 	INNER JOIN (
         SELECT msgid, session FROM deleteSessionWin
@@ -555,7 +554,7 @@ FROM
         SELECT
             u.msgid AS msgid,
             u.session AS session,
-            a.msgid AS next_msgid
+            MIN(a.msgid) AS next_msgid
         FROM
             paramsUserWin AS u
             INNER JOIN allMessagesWin AS a
@@ -563,7 +562,7 @@ FROM
                 u.session = a.session AND
                 a.msgid > u.msgid
             )
-        LIMIT 1
+		GROUP BY u.msgid
     ) AS a
     INNER JOIN paramsQuitWin AS q
     ON (
@@ -579,7 +578,7 @@ FROM
         SELECT
             u.msgid AS msgid,
             u.session AS session,
-            a.msgid AS next_msgid
+            MIN(a.msgid) AS next_msgid
         FROM
             paramsUserWin AS u
             INNER JOIN allMessagesWin AS a
@@ -587,7 +586,7 @@ FROM
                 u.session = a.session AND
                 a.msgid > u.msgid
             )
-        LIMIT 1
+        GROUP BY u.msgid
     ) AS a
     INNER JOIN deleteSessionWin AS d
     ON (
@@ -943,7 +942,7 @@ FROM
         SELECT
             q.msgid AS msgid,
             q.session AS session,
-            a.msgid AS next_msgid
+            MAX(a.msgid) AS next_msgid
         FROM
             paramsQuitWin AS q
             INNER JOIN allMessagesWin AS a
@@ -951,8 +950,7 @@ FROM
                 q.session = a.session AND
                 a.msgid < q.msgid
             )
-        ORDER BY a.msgid DESC
-        LIMIT 1
+        GROUP BY q.msgid
     ) AS a
     INNER JOIN createSessionWin AS c
     ON (
@@ -971,7 +969,7 @@ FROM
         SELECT
             q.msgid AS msgid,
             q.session AS session,
-            a.msgid AS next_msgid
+            MIN(a.msgid) AS next_msgid
         FROM
             paramsQuitWin AS q
             INNER JOIN allMessagesWin AS a
@@ -979,7 +977,7 @@ FROM
                 q.session = a.session AND
                 a.msgid > q.msgid
             )
-        LIMIT 1
+        GROUP BY q.msgid
     ) AS a
     INNER JOIN deleteSessionWin AS d
     ON (

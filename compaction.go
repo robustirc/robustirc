@@ -342,7 +342,7 @@ FROM
         SELECT
             d.msgid AS msgid,
             d.session AS session,
-            a.msgid AS next_msgid
+            MAX(a.msgid) AS next_msgid
         FROM
             deleteSessionWin AS d
             INNER JOIN allMessagesWin AS a
@@ -350,8 +350,7 @@ FROM
                 d.session = a.session AND
                 a.msgid < d.msgid
             )
-        ORDER BY a.msgid DESC
-        LIMIT 1
+        GROUP BY d.msgid
     ) AS a
     INNER JOIN createSessionWin AS c
     ON (

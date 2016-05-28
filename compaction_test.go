@@ -515,6 +515,30 @@ func TestCompactSessionDelete(t *testing.T) {
 	mustMatchStrings(t, input, output, want)
 }
 
+func TestCompactSessionDeleteJoinNotFirst(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chan"}`,
+		`{"Id": {"Id": 10}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 11}, "Session": {"Id": 10}, "Type": 2, "Data": "NICK mero"}`,
+		`{"Id": {"Id": 12}, "Session": {"Id": 10}, "Type": 2, "Data": "USER blah 0 * :Axel Wagner"}`,
+		`{"Id": {"Id": 14}, "Session": {"Id": 10}, "Type": 1, "Data": "bye"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chan"}`,
+	}
+
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
 func TestCompactSessionQuit(t *testing.T) {
 	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
