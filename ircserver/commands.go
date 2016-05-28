@@ -106,8 +106,12 @@ func init() {
 		ImmediatelyCompactable: true,
 	}
 	Commands["MODE"] = &ircCommand{
-		Func:      (*IRCServer).cmdMode,
-		MinParams: 1,
+		Func:                   (*IRCServer).cmdMode,
+		MinParams:              1,
+		CompactionPrepareStmt:  prepareStmtMode,
+		CompactionPrepareViews: prepareViewsMode,
+		CompactionInsert:       insertMode,
+		Compact:                compactMode,
 		// TODO: relevantMode, start with removing read-only MODE, e.g. MODE #chaos-hd or MODE #chaos-hd b or MODE #chaos-hd +b
 	}
 	Commands["WHO"] = &ircCommand{
@@ -1117,6 +1121,52 @@ func (i *IRCServer) cmdPrivmsg(s *Session, reply *Replyctx, msg *irc.Message) {
 			EmptyTrailing: true,
 		})
 	}
+}
+
+func prepareStmtMode(db *sql.DB) (*sql.Stmt, error) {
+	const (
+		createStmt  = "CREATE TABLE paramsMode (msgid integer not null unique primary key, session integer not null, channel text not null, modestr text)"
+		prepareStmt = "INSERT INTO paramsMode (msgid, session, channel, modestr) VALUES (?, ?, ?, ?)"
+	)
+	return createAndPrepare(db, createStmt, prepareStmt)
+}
+
+func prepareViewsMode(db *sql.DB, compactionEnd time.Time) error {
+	_, err := db.Exec(
+		fmt.Sprintf("CREATE VIEW paramsModeWin AS SELECT * FROM paramsMode WHERE msgid < %d",
+			compactionEnd.UnixNano()))
+	return err
+}
+
+func insertMode(msgid, session types.RobustId, ircmsg *irc.Message, stmt *sql.Stmt) error {
+	if len(ircmsg.Params) < 1 {
+		return nil
+	}
+	var modestr string
+	if len(ircmsg.Params) > 1 {
+		modestr = ircmsg.Params[1]
+	}
+	_, err := stmt.Exec(msgid.Id, session.Id, ircmsg.Params[0],
+		sql.NullString{
+			String: modestr,
+			Valid:  modestr != ""})
+	return err
+}
+
+func compactMode(db *sql.DB) error {
+	const query = `
+CREATE TEMPORARY TABLE deleteIds AS
+SELECT
+    msgid
+FROM
+    paramsModeWin
+WHERE
+	modestr IS NULL;
+DELETE FROM paramsMode WHERE msgid IN (SELECT msgid FROM deleteIds)
+`
+
+	_, err := db.Exec(query)
+	return err
 }
 
 func (i *IRCServer) cmdMode(s *Session, reply *Replyctx, msg *irc.Message) {
