@@ -335,10 +335,13 @@ func (s *robustSnapshot) compact(db *sql.DB) (bool, error) {
 	}
 
 	const stmt = `
--- Delete all deleteSession messages immediately preceded by a createSession message.
-CREATE TEMPORARY TABLE deleteIds AS
+-- Delete all deleteSession messages immediately preceded by a createSession
+-- message (or commands in between which do not modify state of anything but
+-- the session in question).
+CREATE TEMPORARY TABLE candidates AS
 SELECT
-    a.msgid AS msgid
+    a.msgid AS msgid,
+    a.session AS session
 FROM
     (
         SELECT
@@ -350,6 +353,10 @@ FROM
             INNER JOIN allMessagesWin AS a
             ON (
                 d.session = a.session AND
+                (a.irccommand IS NULL OR
+                 (a.irccommand != 'NICK' AND
+                  a.irccommand != 'PASS' AND
+                  a.irccommand != 'QUIT')) AND
                 a.msgid < d.msgid
             )
         GROUP BY d.msgid
@@ -359,22 +366,42 @@ FROM
         a.session = c.session AND
         a.next_msgid = c.msgid
     );
-DELETE FROM deleteSession WHERE msgid IN (SELECT msgid FROM deleteIds);
+DELETE FROM deleteSession WHERE msgid IN (SELECT msgid FROM candidates);
 
 -- Delete all createSession messages for sessions which have no other message
-INSERT INTO deleteIds
+-- (except for messages which do not modify state of anything but the session
+-- in question).
+INSERT INTO candidates
 SELECT
-    c.msgid
+    c.msgid,
+    c.session
 FROM
     createSession AS c
     LEFT JOIN allMessagesWin AS a
     ON (
-        c.msgid <> a.msgid AND
-        c.session = a.session
+        c.msgid != a.msgid AND
+        c.session = a.session AND
+        a.irccommand != 'NICK' AND
+        a.irccommand != 'PASS' AND
+        a.irccommand != 'QUIT'
     )
 WHERE
     a.msgid IS NULL;
 
+INSERT INTO candidates
+SELECT
+    a.msgid,
+    a.session
+FROM
+    allMessagesWin AS a
+    LEFT JOIN candidates AS d
+    ON (
+        a.session = d.session
+    )
+    WHERE d.session IS NOT NULL;
+
+CREATE TEMPORARY TABLE deleteIds AS SELECT msgid FROM candidates;
+DROP TABLE candidates;
 DELETE FROM createSession WHERE msgid IN (SELECT msgid FROM deleteIds);
 `
 

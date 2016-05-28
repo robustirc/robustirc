@@ -359,52 +359,6 @@ DELETE FROM candidates WHERE msgid IN (
 CREATE TEMPORARY TABLE deleteIds AS SELECT msgid FROM candidates;
 DROP TABLE candidates;
 
--- Delete all NICK messages which are preceded by createSession and followed by deleteSession or QUIT
-INSERT INTO deleteIds SELECT
-    a.msgid AS msgid
-FROM
-    (
-        SELECT
-            next.msgid AS msgid,
-            next.session AS session,
-            next.next_msgid AS next_msgid,
-            MAX(a.msgid) AS prev_msgid
-        FROM
-            (
-                SELECT
-                    n.msgid AS msgid,
-                    n.session AS session,
-                    MIN(a.msgid) AS next_msgid
-                FROM
-                    paramsNickWin AS n
-                    INNER JOIN allMessagesWin AS a
-                    ON (
-                        n.session = a.session AND
-                        a.msgid > n.msgid
-                    )
-                GROUP BY n.msgid
-            ) AS next
-            INNER JOIN allMessagesWin AS a
-            ON (
-                next.session = a.session AND
-                a.msgid < next.msgid
-            )
-            GROUP BY next.msgid
-    ) AS a
-	INNER JOIN (
-        SELECT msgid, session FROM deleteSessionWin
-        UNION SELECT msgid, session FROM paramsQuitWin
-    ) AS dq
-	ON (
-        a.session = dq.session AND
-        a.next_msgid = dq.msgid
-    )
-	INNER JOIN createSessionWin AS c
-	ON (
-        a.session = c.session AND
-        a.prev_msgid = c.msgid
-    );
-
 DELETE FROM paramsNick WHERE msgid IN (SELECT msgid FROM deleteIds)
 `
 
