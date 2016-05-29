@@ -349,7 +349,8 @@ FROM
             d.session AS session,
             MAX(a.msgid) AS next_msgid
         FROM
-            deleteSessionWin AS d
+            (SELECT msgid, session FROM deleteSessionWin
+             UNION SELECT msgid, session FROM paramsQuitWin) AS d
             INNER JOIN allMessagesWin AS a
             ON (
                 d.session = a.session AND
@@ -367,26 +368,6 @@ FROM
         a.next_msgid = c.msgid
     );
 DELETE FROM deleteSession WHERE msgid IN (SELECT msgid FROM candidates);
-
--- Delete all createSession messages for sessions which have no other message
--- (except for messages which do not modify state of anything but the session
--- in question).
-INSERT INTO candidates
-SELECT
-    c.msgid,
-    c.session
-FROM
-    createSession AS c
-    LEFT JOIN allMessagesWin AS a
-    ON (
-        c.msgid != a.msgid AND
-        c.session = a.session AND
-        a.irccommand != 'NICK' AND
-        a.irccommand != 'PASS' AND
-        a.irccommand != 'QUIT'
-    )
-WHERE
-    a.msgid IS NULL;
 
 INSERT INTO candidates
 SELECT
