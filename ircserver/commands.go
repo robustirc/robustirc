@@ -298,8 +298,11 @@ func (i *IRCServer) login(s *Session, reply *Replyctx, msg *irc.Message) {
 
 func prepareStmtNick(db *sql.DB) (*sql.Stmt, error) {
 	const (
-		createStmt  = "CREATE TABLE paramsNick (msgid integer not null unique primary key, session integer not null)"
-		prepareStmt = "INSERT INTO paramsNick (msgid, session) VALUES (?, ?)"
+		createStmt = `
+		CREATE TABLE paramsNick (msgid integer not null unique primary key, session integer not null, nick text collate nocase);
+		CREATE INDEX paramsNickNickIdx ON paramsNick (nick);
+		`
+		prepareStmt = "INSERT INTO paramsNick (msgid, session, nick) VALUES (?, ?, ?)"
 	)
 	return createAndPrepare(db, createStmt, prepareStmt)
 }
@@ -315,7 +318,7 @@ func insertNick(msgid, session types.RobustId, ircmsg *irc.Message, stmt *sql.St
 	if len(ircmsg.Params) < 1 {
 		return nil
 	}
-	_, err := stmt.Exec(msgid.Id, session.Id)
+	_, err := stmt.Exec(msgid.Id, session.Id, ircmsg.Params[0])
 	return err
 }
 
@@ -324,6 +327,7 @@ func compactNick(db *sql.DB) error {
 CREATE TEMPORARY TABLE candidates AS
 SELECT
     a.msgid AS msgid,
+    a.nick AS nick,
     a.session AS session,
     MIN(b.msgid) AS superseding_msgid
 FROM
@@ -350,6 +354,19 @@ DELETE FROM candidates WHERE msgid IN (
         INNER JOIN paramsTopicWin AS t
         ON (
             c.session = t.session AND
+            t.msgid > c.msgid AND
+            t.msgid < c.superseding_msgid
+        )
+);
+DELETE FROM candidates WHERE msgid IN (
+    SELECT
+        c.msgid
+    FROM
+        candidates AS c
+        INNER JOIN paramsModeWin AS t
+        ON (
+            c.session = t.session AND
+            c.nick = t.channel AND
             t.msgid > c.msgid AND
             t.msgid < c.superseding_msgid
         )
@@ -1043,7 +1060,7 @@ func (i *IRCServer) cmdPrivmsg(s *Session, reply *Replyctx, msg *irc.Message) {
 
 func prepareStmtMode(db *sql.DB) (*sql.Stmt, error) {
 	const (
-		createStmt  = "CREATE TABLE paramsMode (msgid integer not null unique primary key, session integer not null, channel text not null, modestr text)"
+		createStmt  = "CREATE TABLE paramsMode (msgid integer not null unique primary key, session integer not null, channel text not null collate nocase, modestr text)"
 		prepareStmt = "INSERT INTO paramsMode (msgid, session, channel, modestr) VALUES (?, ?, ?, ?)"
 	)
 	return createAndPrepare(db, createStmt, prepareStmt)

@@ -335,6 +335,29 @@ func (s *robustSnapshot) compact(db *sql.DB) (bool, error) {
 	}
 
 	const stmt = `
+-- allMessagesWinDel is like allMessagesWin, except we change messages (see the
+-- REPLACE statement below) in order to judge whether a session can safely be
+-- deleted in its entirety.
+CREATE TEMPORARY TABLE allMessagesWinDel (msgid integer not null unique primary key, session integer not null, irccommand string null);
+INSERT INTO allMessagesWinDel SELECT * FROM allMessagesWin;
+
+-- Change irccommand='MODE' messages to read irccommand='_robustirc_mode_user'
+-- in case they are a user mode change (as opposed to a channel mode change)
+-- and assign them to the target session, i.e. of the user whose modes got
+-- changed, not the user who sent the message (these might be different in case
+-- an IRC operator sends the message).
+REPLACE INTO allMessagesWinDel
+	SELECT
+		m.msgid,
+		MAX(n.session) AS session,
+		'_robustirc_mode_user' AS irccommand
+	FROM
+		paramsModeWin AS m LEFT JOIN
+		paramsNick AS n ON (m.channel = n.nick AND n.msgid < m.msgid)
+	WHERE
+		SUBSTR(channel, 1, 1) != '#'
+	GROUP BY m.msgid;
+
 -- Delete all deleteSession messages immediately preceded by a createSession
 -- message (or commands in between which do not modify state of anything but
 -- the session in question).
@@ -351,13 +374,14 @@ FROM
         FROM
             (SELECT msgid, session FROM deleteSessionWin
              UNION SELECT msgid, session FROM paramsQuitWin) AS d
-            INNER JOIN allMessagesWin AS a
+            INNER JOIN allMessagesWinDel AS a
             ON (
                 d.session = a.session AND
                 (a.irccommand IS NULL OR
                  (a.irccommand != 'NICK' AND
                   a.irccommand != 'USER' AND
                   a.irccommand != 'PASS' AND
+                  a.irccommand != '_robustirc_mode_user' AND
                   a.irccommand != 'QUIT')) AND
                 a.msgid < d.msgid
             )
@@ -384,6 +408,7 @@ FROM
 
 CREATE TEMPORARY TABLE deleteIds AS SELECT msgid FROM candidates;
 DROP TABLE candidates;
+DROP TABLE allMessagesWinDel;
 DELETE FROM createSession WHERE msgid IN (SELECT msgid FROM deleteIds);
 `
 
