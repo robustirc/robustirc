@@ -502,54 +502,6 @@ FROM
     ON (
         a.session = b.session AND
         b.msgid < a.msgid
-    )
-
--- Delete all USER messages which are directly followed by a QUIT message.
-UNION SELECT
-    a.msgid AS msgid
-FROM
-    (
-        SELECT
-            u.msgid AS msgid,
-            u.session AS session,
-            MIN(a.msgid) AS next_msgid
-        FROM
-            paramsUserWin AS u
-            INNER JOIN allMessagesWin AS a
-            ON (
-                u.session = a.session AND
-                a.msgid > u.msgid
-            )
-		GROUP BY u.msgid
-    ) AS a
-    INNER JOIN paramsQuitWin AS q
-    ON (
-        a.session = q.session AND
-        a.next_msgid = q.msgid
-    )
-
--- Delete all USER messages which are directly followed by a deleteSession message.
-UNION SELECT
-    a.msgid AS msgid
-FROM
-    (
-        SELECT
-            u.msgid AS msgid,
-            u.session AS session,
-            MIN(a.msgid) AS next_msgid
-        FROM
-            paramsUserWin AS u
-            INNER JOIN allMessagesWin AS a
-            ON (
-                u.session = a.session AND
-                a.msgid > u.msgid
-            )
-        GROUP BY u.msgid
-    ) AS a
-    INNER JOIN deleteSessionWin AS d
-    ON (
-        a.session = d.session AND
-        a.next_msgid = d.msgid
     );
 
 DELETE FROM paramsUser WHERE msgid IN (SELECT msgid FROM deleteIds)

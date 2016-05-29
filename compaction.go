@@ -356,6 +356,7 @@ FROM
                 d.session = a.session AND
                 (a.irccommand IS NULL OR
                  (a.irccommand != 'NICK' AND
+                  a.irccommand != 'USER' AND
                   a.irccommand != 'PASS' AND
                   a.irccommand != 'QUIT')) AND
                 a.msgid < d.msgid
