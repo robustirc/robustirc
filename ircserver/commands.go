@@ -645,7 +645,7 @@ FROM
 				(a.irccommand != 'JOIN' OR a.irccommand IS NULL) AND
 				a.msgid > js.msgid
 			)
-		GROUP BY js.msgid
+		GROUP BY js.msgid, js.channel
 	) AS j
 	INNER JOIN deleteSessionWin AS d
 	ON (
