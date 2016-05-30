@@ -1058,10 +1058,86 @@ func (i *IRCServer) cmdPrivmsg(s *Session, reply *Replyctx, msg *irc.Message) {
 	}
 }
 
+type modeCmd struct {
+	Mode  string
+	Param string
+}
+
+type modeCmds []modeCmd
+
+func (cmds modeCmds) IRCParams() []string {
+	var add, remove []modeCmd
+	for _, mode := range cmds {
+		if mode.Mode[0] == '+' {
+			add = append(add, mode)
+		} else {
+			remove = append(remove, mode)
+		}
+	}
+	var params []string
+	var modeStr string
+	if len(add) > 0 {
+		modeStr = modeStr + "+"
+		for _, mode := range add {
+			modeStr = modeStr + string(mode.Mode[1])
+			if mode.Param != "" {
+				params = append(params, mode.Param)
+			}
+		}
+	}
+	if len(remove) > 0 {
+		modeStr = modeStr + "-"
+		for _, mode := range remove {
+			modeStr = modeStr + string(mode.Mode[1])
+			if mode.Param != "" {
+				params = append(params, mode.Param)
+			}
+		}
+	}
+
+	return append([]string{modeStr}, params...)
+}
+
+func normalizeModes(msg *irc.Message) []modeCmd {
+	if len(msg.Params) <= 1 {
+		return nil
+	}
+	var results []modeCmd
+	// true for adding a mode, false for removing it
+	adding := true
+	modestr := msg.Params[1]
+	modearg := 2
+	for _, char := range modestr {
+		var mode modeCmd
+		switch char {
+		case '+', '-':
+			adding = (char == '+')
+		case 'o':
+			// Modes which require a parameter.
+			if len(msg.Params) > modearg {
+				mode.Param = msg.Params[modearg]
+			}
+			modearg++
+			fallthrough
+		default:
+			if adding {
+				mode.Mode = "+" + string(char)
+			} else {
+				mode.Mode = "-" + string(char)
+			}
+		}
+		if mode.Mode == "" {
+			continue
+		}
+		results = append(results, mode)
+	}
+	return results
+}
+
 func prepareStmtMode(db *sql.DB) (*sql.Stmt, error) {
 	const (
-		createStmt  = "CREATE TABLE paramsMode (msgid integer not null unique primary key, session integer not null, channel text not null collate nocase, modestr text)"
-		prepareStmt = "INSERT INTO paramsMode (msgid, session, channel, modestr) VALUES (?, ?, ?, ?)"
+		createStmt  = "CREATE TABLE paramsMode (msgid integer not null, session integer not null, channel text not null collate nocase, mode text, param text)"
+		prepareStmt = "INSERT INTO paramsMode (msgid, session, channel, mode, param) VALUES (?, ?, ?, ?, ?)"
 	)
 	return createAndPrepare(db, createStmt, prepareStmt)
 }
@@ -1077,15 +1153,25 @@ func insertMode(msgid, session types.RobustId, ircmsg *irc.Message, stmt *sql.St
 	if len(ircmsg.Params) < 1 {
 		return nil
 	}
-	var modestr string
-	if len(ircmsg.Params) > 1 {
-		modestr = ircmsg.Params[1]
+	modes := normalizeModes(ircmsg)
+	if len(modes) == 0 {
+		// Insert a MODE statement with mode and param being NULL so that
+		// compactMode() can insert the msgid into deleteIds.
+		_, err := stmt.Exec(msgid.Id, session.Id, ircmsg.Params[0],
+			sql.NullString{Valid: false},
+			sql.NullString{Valid: false})
+		return err
 	}
-	_, err := stmt.Exec(msgid.Id, session.Id, ircmsg.Params[0],
-		sql.NullString{
-			String: modestr,
-			Valid:  modestr != ""})
-	return err
+	for _, mode := range modes {
+		if _, err := stmt.Exec(msgid.Id, session.Id, ircmsg.Params[0],
+			mode.Mode,
+			sql.NullString{
+				String: mode.Param,
+				Valid:  mode.Param != ""}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func compactMode(db *sql.DB) error {
@@ -1096,7 +1182,9 @@ SELECT
 FROM
     paramsModeWin
 WHERE
-	modestr IS NULL;
+	mode IS NULL OR
+	(mode = '+b' AND param IS NULL);
+-- TODO: expand the above to all query-only modes once we support more.
 DELETE FROM paramsMode WHERE msgid IN (SELECT msgid FROM deleteIds)
 `
 
@@ -1110,61 +1198,80 @@ func (i *IRCServer) cmdMode(s *Session, reply *Replyctx, msg *irc.Message) {
 	if s.Channels[ChanToLower(channelname)] {
 		// Channel must exist, the user is in it.
 		c := i.channels[ChanToLower(channelname)]
-		var modestr string
-		if len(msg.Params) > 1 {
-			modestr = msg.Params[1]
-		}
-		// TODO(secure): this is special cased for now. The behavior in
-		// UnrealIRCD is to silently ignore query-modes (like b) when combined
-		// with any other mode, even if it’s another query mode (like e).
-		if modestr == "+b" {
+		modes := normalizeModes(msg)
+		queryOnly := true
+
+		if len(modes) == 0 {
+			modestr := "+"
+			for mode := 'A'; mode < 'z'; mode++ {
+				if c.modes[mode] {
+					modestr += string(mode)
+				}
+			}
 			i.sendUser(s, reply, &irc.Message{
-				Prefix:   i.ServerPrefix,
-				Command:  irc.RPL_ENDOFBANLIST,
-				Params:   []string{s.Nick, channelname},
-				Trailing: "End of Channel Ban List",
+				Prefix:  i.ServerPrefix,
+				Command: irc.RPL_CHANNELMODEIS,
+				Params:  []string{s.Nick, channelname, modestr},
 			})
 			return
 		}
-		if strings.HasPrefix(modestr, "+") || strings.HasPrefix(modestr, "-") {
-			if !c.nicks[NickToLower(s.Nick)][chanop] && !s.Operator {
-				i.sendUser(s, reply, &irc.Message{
-					Prefix:   i.ServerPrefix,
-					Command:  irc.ERR_CHANOPRIVSNEEDED,
-					Params:   []string{s.Nick, channelname},
-					Trailing: "You're not channel operator",
-				})
-				return
-			}
-			// true for adding a mode, false for removing it
-			newvalue := strings.HasPrefix(modestr, "+")
-			modearg := 2
-			for _, char := range modestr[1:] {
+
+		isChanOp := c.nicks[NickToLower(s.Nick)][chanop] || s.Operator
+
+		for _, mode := range modes {
+			char := mode.Mode[1]
+			if mode.Mode != "+b" {
+				// Non-query modes
+				queryOnly = false
+				if !isChanOp {
+					i.sendUser(s, reply, &irc.Message{
+						Prefix:   i.ServerPrefix,
+						Command:  irc.ERR_CHANOPRIVSNEEDED,
+						Params:   []string{s.Nick, channelname},
+						Trailing: "You're not channel operator",
+					})
+					return
+				}
+				newvalue := (mode.Mode[0] == '+')
 				switch char {
-				case '+', '-':
-					newvalue = (char == '+')
 				case 't', 's', 'i', 'n':
 					c.modes[char] = newvalue
 				case 'o':
-					if len(msg.Params) > modearg {
-						nick := msg.Params[modearg]
-						perms, ok := c.nicks[NickToLower(nick)]
-						if !ok {
-							i.sendUser(s, reply, &irc.Message{
-								Prefix:   i.ServerPrefix,
-								Command:  irc.ERR_USERNOTINCHANNEL,
-								Params:   []string{s.Nick, nick, channelname},
-								Trailing: "They aren't on that channel",
-							})
-						} else {
-							// If the user already is a chanop, silently do
-							// nothing (like UnrealIRCd).
-							if perms[chanop] != newvalue {
-								c.nicks[NickToLower(nick)][chanop] = newvalue
-							}
+					nick := mode.Param
+					perms, ok := c.nicks[NickToLower(nick)]
+					if !ok {
+						i.sendUser(s, reply, &irc.Message{
+							Prefix:   i.ServerPrefix,
+							Command:  irc.ERR_USERNOTINCHANNEL,
+							Params:   []string{s.Nick, nick, channelname},
+							Trailing: "They aren't on that channel",
+						})
+					} else {
+						// If the user already is a chanop, silently do
+						// nothing (like UnrealIRCd).
+						if perms[chanop] != newvalue {
+							c.nicks[NickToLower(nick)][chanop] = newvalue
 						}
 					}
-					modearg++
+				default:
+					i.sendUser(s, reply, &irc.Message{
+						Prefix:   i.ServerPrefix,
+						Command:  irc.ERR_UNKNOWNMODE,
+						Params:   []string{s.Nick, string(char)},
+						Trailing: "is unknown mode char to me",
+					})
+				}
+			} else {
+				// Query modes
+				switch char {
+				case 'b':
+					i.sendUser(s, reply, &irc.Message{
+						Prefix:   i.ServerPrefix,
+						Command:  irc.RPL_ENDOFBANLIST,
+						Params:   []string{s.Nick, channelname},
+						Trailing: "End of Channel Ban List",
+					})
+
 				default:
 					i.sendUser(s, reply, &irc.Message{
 						Prefix:   i.ServerPrefix,
@@ -1174,38 +1281,22 @@ func (i *IRCServer) cmdMode(s *Session, reply *Replyctx, msg *irc.Message) {
 					})
 				}
 			}
-			if reply.replyid > 0 {
-				// TODO(secure): see how other ircds are handling this. do they sanity check the entire mode string before applying it, or do they keep valid modes while erroring for others?
-				return
-			}
-			i.sendServices(reply,
-				i.sendChannel(c, reply, &irc.Message{
-					Prefix:  &s.ircPrefix,
-					Command: irc.MODE,
-					Params:  msg.Params[:modearg],
-				}))
+		}
+
+		if queryOnly {
 			return
 		}
-		if len(msg.Params) > 1 && msg.Params[1] == "b" {
-			i.sendUser(s, reply, &irc.Message{
-				Prefix:   i.ServerPrefix,
-				Command:  irc.RPL_ENDOFBANLIST,
-				Params:   []string{s.Nick, channelname},
-				Trailing: "End of Channel Ban List",
-			})
+
+		if reply.replyid > 0 {
+			// TODO(secure): see how other ircds are handling mixtures of valid/invalid modes. do they sanity check the entire mode string before applying it, or do they keep valid modes while erroring for others?
 			return
 		}
-		modestr = "+"
-		for mode := 'A'; mode < 'z'; mode++ {
-			if c.modes[mode] {
-				modestr += string(mode)
-			}
-		}
-		i.sendUser(s, reply, &irc.Message{
-			Prefix:  i.ServerPrefix,
-			Command: irc.RPL_CHANNELMODEIS,
-			Params:  []string{s.Nick, channelname, modestr},
-		})
+		i.sendServices(reply,
+			i.sendChannel(c, reply, &irc.Message{
+				Prefix:  &s.ircPrefix,
+				Command: irc.MODE,
+				Params:  append([]string{channelname}, modeCmds(modes).IRCParams()...),
+			}))
 		return
 	}
 	if NickToLower(channelname) == NickToLower(s.Nick) {

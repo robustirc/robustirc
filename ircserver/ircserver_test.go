@@ -283,6 +283,10 @@ func mustMatchInterestedMsgs(t *testing.T, i *IRCServer, msg *irc.Message, msgs 
 	for idx, sessionid := range sessions {
 		// TODO(secure): We might need to refactor this to do a finer-grained
 		// comparison instead of just the first message.
+		if len(msgs) == 0 {
+			failed = true
+			break
+		}
 		got[idx] = msgs[0].InterestingFor[sessionid.Id]
 		if got[idx] != want[idx] {
 			failed = true
@@ -944,7 +948,7 @@ func TestChannelMemberStatus(t *testing.T) {
 
 	mustMatchMsg(t,
 		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("MODE #test -o+o xeen sECuRE")),
-		":xeen!baz@robust/0x13b5aa0a2bcfb8af MODE #test -o+o xeen sECuRE")
+		":xeen!baz@robust/0x13b5aa0a2bcfb8af MODE #test +o-o sECuRE xeen")
 
 	mustMatchMsg(t,
 		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("MODE #test +o xeen")),
