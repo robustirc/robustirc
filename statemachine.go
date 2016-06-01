@@ -1,11 +1,13 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/raft"
@@ -65,6 +67,9 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		}
 	}()
 
+	ircCmdNullable := sql.NullString{Valid: false}
+	sessionId := msg.Session
+
 	switch msg.Type {
 	case types.RobustMessageOfDeath:
 		// To prevent the message from being accepted again.
@@ -73,12 +78,17 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 
 	case types.RobustCreateSession:
 		ircServer.CreateSession(msg.Id, msg.Data)
+		sessionId = msg.Id
+
+		ircServer.CompactionDatabase.ExecStmt("_create", msg.Id.Id, sessionId.Id)
 
 	case types.RobustDeleteSession:
 		if _, err := ircServer.GetSession(msg.Session); err == nil {
 			// TODO(secure): overwrite QUIT messages for services with an faq entry explaining that they are not robust yet.
 			reply := ircServer.ProcessMessage(msg.Id, msg.Session, irc.ParseMessage("QUIT :"+string(msg.Data)))
 			ircServer.SendMessages(reply, msg.Session, msg.Id.Id)
+
+			ircServer.CompactionDatabase.ExecStmt("_delete", msg.Id.Id, sessionId.Id)
 		}
 
 	case types.RobustIRCFromClient:
@@ -87,8 +97,16 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		if err := ircServer.UpdateLastClientMessageID(&msg); err != nil {
 			log.Printf("Error updating the last message for session: %v\n", err)
 		} else {
-			reply := ircServer.ProcessMessage(msg.Id, msg.Session, irc.ParseMessage(string(msg.Data)))
-			ircServer.SendMessages(reply, msg.Session, msg.Id.Id)
+			ircmsg := irc.ParseMessage(string(msg.Data))
+
+			s, err := ircServer.GetSession(msg.Session)
+			var serverPrefix string
+			if err == nil && s.Server {
+				serverPrefix = "server_"
+			}
+			ircCmdNullable = sql.NullString{String: serverPrefix + strings.ToUpper(ircmsg.Command), Valid: true}
+			reply := ircServer.ProcessMessage(msg.Id, msg.Session, ircmsg)
+			ircServer.SendMessages(reply, msg.Session, sessionId.Id)
 		}
 
 	case types.RobustConfig:
@@ -100,6 +118,8 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 			ircServer.Config = netConfig.IRC
 		}
 	}
+
+	ircServer.CompactionDatabase.ExecStmt("_all", msg.Id.Id, sessionId.Id, ircCmdNullable)
 
 	appliedMessages.WithLabelValues(msg.Type.String()).Inc()
 
@@ -158,6 +178,9 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 	}
 	fsm.ircstore = ircStore
 
+	if err := ircServer.CompactionDatabase.Close(); err != nil {
+		log.Fatal(err)
+	}
 	ircServer = ircserver.NewIRCServer(*raftDir, *network, time.Now())
 
 	decoder := json.NewDecoder(snap)

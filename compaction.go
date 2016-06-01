@@ -1,17 +1,11 @@
 package main
 
-// Generate errors.go which is used in returnedOnlyErrors() below.
-//go:generate go run generrors.go
-
 import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/hashicorp/raft"
@@ -20,8 +14,6 @@ import (
 	"github.com/robustirc/robustirc/types"
 	"github.com/sorcix/irc"
 	"github.com/stapelberg/glog"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 // returnedOnlyErrors returns true if and only if |msgid| resulted in at least
@@ -34,7 +26,7 @@ func returnedOnlyErrors(msgid types.RobustId) bool {
 			glog.Errorf("Output message not parsable\n")
 			continue
 		}
-		if !errorCodes[ircmsg.Command] {
+		if !ircserver.ErrorCodes[ircmsg.Command] {
 			return false
 		}
 	}
@@ -67,102 +59,52 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 	}
 
 	s.compactionEnd = compactionStart.Add(-7 * 24 * time.Hour)
-	f, err := ioutil.TempFile(*raftDir, "temp-compaction.sqlite3")
-	if err != nil {
-		sink.Cancel()
-		return err
-	}
-	tempfile := f.Name()
-	f.Close()
-	db, err := sql.Open("sqlite3", tempfile)
-	if err != nil {
-		sink.Cancel()
-		return err
-	}
-	defer func() {
-		db.Close()
-		os.Remove(tempfile)
-	}()
-	if _, err := db.Exec("pragma synchronous = off"); err != nil {
-		sink.Cancel()
-		return err
-	}
-	const nonIrcCommandStmt = `
-CREATE TABLE createSession (msgid integer not null unique primary key, session integer not null);
-CREATE TABLE deleteSession (msgid integer not null unique primary key, session integer not null);
-CREATE TABLE allMessages (msgid integer not null unique primary key, session integer not null, irccommand string null);
+
+	db := ircServer.CompactionDatabase.DB
+
+	const windows = `
 CREATE VIEW allMessagesWin AS SELECT * FROM allMessages WHERE msgid < %d;
-CREATE INDEX allMessagesSessionIdx ON allMessages (session);
 CREATE VIEW createSessionWin AS SELECT * FROM createSession WHERE msgid < %d;
 CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 `
+
 	if _, err := db.Exec(
-		fmt.Sprintf(nonIrcCommandStmt,
+		fmt.Sprintf(windows,
 			s.compactionEnd.UnixNano(),
 			s.compactionEnd.UnixNano(),
 			s.compactionEnd.UnixNano())); err != nil {
-		sink.Cancel()
 		return err
 	}
 
-	var allMessagesStmt, createSessionStmt, deleteSessionStmt *sql.Stmt
-	allMessagesStmt, err = db.Prepare("INSERT INTO allMessages (msgid, session, irccommand) VALUES (?, ?, ?)")
-	if err == nil {
-		defer allMessagesStmt.Close()
-		createSessionStmt, err = db.Prepare("INSERT INTO createSession (msgid, session) VALUES (?, ?)")
-	}
-	if err == nil {
-		defer createSessionStmt.Close()
-		deleteSessionStmt, err = db.Prepare("INSERT INTO deleteSession (msgid, session) VALUES (?, ?)")
-	}
-	if err == nil {
-		defer deleteSessionStmt.Close()
-	}
-	if err != nil {
-		sink.Cancel()
-		return err
-	}
-
-	// Let each IRC command prepare their tables and prepared statements.
-	stmts := make(map[string]*sql.Stmt)
-	for name, cmd := range ircserver.Commands {
-		if cmd.CompactionPrepareStmt == nil {
+	for _, cmd := range ircserver.Commands {
+		if cmd.CompactionPrepareViews == nil {
 			continue
 		}
-		var err error
-		stmts[name], err = cmd.CompactionPrepareStmt(db)
-		if err == nil {
-			defer stmts[name].Close()
-			err = cmd.CompactionPrepareViews(db, s.compactionEnd)
-		}
-		if err != nil {
-			sink.Cancel()
+		if err := cmd.CompactionPrepareViews(db, s.compactionEnd); err != nil {
 			return err
 		}
 	}
 
-	// First pass: insert all messages into database
+	// First pass: build up s.idToIdx
 	iterator := s.store.GetBulkIterator(s.firstIndex, s.lastIndex+1)
 	defer iterator.Release()
 	available := iterator.First()
 	for available {
 		var nlog raft.Log
 		if err := iterator.Error(); err != nil {
-			glog.Errorf("Error while iterating through the log: %v", err)
-			available = iterator.Next()
-			continue
+			return err
 		}
 		i := binary.BigEndian.Uint64(iterator.Key())
 		value := iterator.Value()
 		if err := json.Unmarshal(value, &nlog); err != nil {
 			glog.Errorf("Skipping log entry %d because of a JSON unmarshaling error: %v", i, err)
+			available = iterator.Next()
 			continue
 		}
 		available = iterator.Next()
 
-		// TODO: compact raft messages as well, so that peer changes are not kept forever
 		if nlog.Type != raft.LogCommand {
-			continue
+			return fmt.Errorf("nlog.Type = %d instead of LogCommand", nlog.Type)
 		}
 
 		parsed := types.NewRobustMessageFromBytes(nlog.Data)
@@ -170,11 +112,6 @@ CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 			break
 		}
 		s.idToIdx[parsed.Id.Id] = i
-
-		msgid := parsed.Id
-		session := parsed.Session
-		ircCmdNullable := sql.NullString{Valid: false}
-
 		switch parsed.Type {
 		case types.RobustMessageOfDeath:
 			s.del[i] = parsed.Id
@@ -192,69 +129,16 @@ CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 			glog.Errorf("Compaction: saw unexpected message type %v (log id %d, message id %v)\n", parsed.Type, i, parsed.Id)
 			continue
 
+		case types.RobustIRCFromClient:
+			fallthrough
+		case types.RobustCreateSession:
+			fallthrough
+		case types.RobustDeleteSession:
+		// Handled in FSM.Apply()
+
 		default:
 			glog.Errorf("Compaction: saw message of unknown type %v (log id %d, message id %v)\n", parsed.Type, i, parsed.Id)
 			continue
-
-		case types.RobustCreateSession:
-			session = parsed.Id
-			if _, err := createSessionStmt.Exec(msgid.Id, session.Id); err != nil {
-				sink.Cancel()
-				return err
-			}
-
-		case types.RobustDeleteSession:
-			if _, err := deleteSessionStmt.Exec(msgid.Id, session.Id); err != nil {
-				sink.Cancel()
-				return err
-			}
-
-		case types.RobustIRCFromClient:
-			if returnedOnlyErrors(types.RobustId{Id: parsed.Id.Id}) {
-				s.del[i] = parsed.Id
-				continue
-			}
-
-			ircmsg := irc.ParseMessage(parsed.Data)
-			if ircmsg == nil {
-				s.del[i] = parsed.Id
-				continue
-			}
-			irccmd := strings.ToUpper(ircmsg.Command)
-			ircCmdNullable = sql.NullString{String: irccmd, Valid: true}
-
-			// Kind of a hack: we need to keep track of which sessions are
-			// services connections and which are not, so that we can look at
-			// the correct relevant-function (e.g. server_NICK vs. NICK).
-			var serverPrefix string
-			if irccmd == "SERVER" {
-				s.servers[parsed.Session.Id] = true
-			} else {
-				if s.servers[session.Id] {
-					serverPrefix = "server_"
-				}
-			}
-			c, ok := ircserver.Commands[serverPrefix+irccmd]
-			if !ok {
-				// TODO: commands we don’t know should be okay to compact away, right?
-				glog.Errorf("Could not find command %q", serverPrefix+irccmd)
-				continue
-			}
-			if c.ImmediatelyCompactable {
-				s.del[i] = parsed.Id
-				continue
-			}
-			if c.CompactionInsert != nil {
-				if err := c.CompactionInsert(msgid, session, ircmsg, stmts[serverPrefix+irccmd]); err != nil {
-					sink.Cancel()
-					return err
-				}
-			}
-		}
-
-		if _, err := allMessagesStmt.Exec(msgid.Id, session.Id, ircCmdNullable); err != nil {
-			sink.Cancel()
-			return err
 		}
 	}
 
@@ -268,31 +152,47 @@ CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 		var err error
 		changed, err = s.compact(db)
 		if err != nil {
-			sink.Cancel()
+			return err
+		}
+	}
+
+	if _, err := db.Exec(`
+		DROP VIEW allMessagesWin;
+		DROP VIEW createSessionWin;
+		DROP VIEW deleteSessionWin;
+		`); err != nil {
+		return err
+	}
+
+	for _, cmd := range ircserver.Commands {
+		if cmd.CompactionDropViews == nil {
+			continue
+		}
+		if err := cmd.CompactionDropViews(db); err != nil {
 			return err
 		}
 	}
 
 	log.Printf("Copying non-deleted messages into snapshot\n")
 
+	snapshotBytes := 0
 	available = iterator.First()
 	for available {
 		if err := iterator.Error(); err != nil {
-			sink.Cancel()
 			return err
 		}
 		i := binary.BigEndian.Uint64(iterator.Key())
 		value := iterator.Value()
 		if _, ok := s.del[i]; !ok {
-			if _, err := sink.Write(value); err != nil {
-				sink.Cancel()
+			n, err := sink.Write(value)
+			if err != nil {
 				return err
 			}
+			snapshotBytes += n
 		}
 		available = iterator.Next()
 	}
-
-	sink.Close()
+	log.Printf("snapshot: wrote %d bytes", snapshotBytes)
 
 	if s.skipDeletionForCanary {
 		log.Printf("Skipping deletion (canary mode)\n")
@@ -318,46 +218,81 @@ func (s *robustSnapshot) Release() {
 // compact invokes all irc command’s |Compact| callbacks and runs the
 // compaction for createSession and deleteSession messages.
 func (s *robustSnapshot) compact(db *sql.DB) (bool, error) {
-	changed := false
+	const nonModifying = `
+CREATE TEMPORARY TABLE deleteIds AS
+SELECT msgid FROM allMessagesWin WHERE irccommand = 'TOPIC' AND msgid NOT IN (SELECT msgid FROM paramsTopicWin)
+UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'NICK' AND msgid NOT IN (SELECT msgid FROM paramsNickWin)
+UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'USER' AND msgid NOT IN (SELECT msgid FROM paramsUserWin)
+UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'JOIN' AND msgid NOT IN (SELECT msgid FROM paramsJoinWin)
+UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'PART' AND msgid NOT IN (SELECT msgid FROM paramsPartWin)
+UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'QUIT' AND msgid NOT IN (SELECT msgid FROM paramsQuitWin)
+UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'MODE' AND msgid NOT IN (SELECT msgid FROM paramsModeWin)
+UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'AWAY' AND msgid NOT IN (SELECT msgid FROM paramsAwayWin);
+	`
+	started := time.Now()
+	if _, err := db.Exec(nonModifying); err != nil {
+		return false, err
+	}
 
-	for _, cmd := range ircserver.Commands {
-		if cmd.Compact == nil {
-			continue
-		}
-		if err := cmd.Compact(db); err != nil {
+	changed, err := s.markResultForCompaction(db, "non-modifying", started)
+	if err != nil {
+		return changed, err
+	}
+
+	if _, err := db.Exec("CREATE TEMPORARY TABLE validCommands (command text not null)"); err != nil {
+		return changed, err
+	}
+	validCommandInsert, err := db.Prepare("INSERT INTO validCommands (command) VALUES (?)")
+	if err != nil {
+		return changed, err
+	}
+	defer validCommandInsert.Close()
+
+	immediatelyCompactable, err := db.Prepare("CREATE TEMPORARY TABLE deleteIds AS SELECT msgid FROM allMessagesWin WHERE irccommand = ?")
+	if err != nil {
+		return changed, err
+	}
+	defer immediatelyCompactable.Close()
+
+	for n, cmd := range ircserver.Commands {
+		if _, err := validCommandInsert.Exec(n); err != nil {
 			return changed, err
 		}
-		c, err := s.markResultForCompaction(db)
+		started := time.Now()
+		if cmd.Compact != nil {
+			if err := cmd.Compact(db); err != nil {
+				return changed, err
+			}
+		} else if cmd.ImmediatelyCompactable {
+			if _, err := immediatelyCompactable.Exec(n); err != nil {
+				return changed, err
+			}
+		} else {
+			continue
+		}
+		c, err := s.markResultForCompaction(db, "command "+n, started)
 		if err != nil {
 			return changed, err
 		}
 		changed = changed || c
 	}
 
+	const invalidCommands = `
+	CREATE TEMPORARY TABLE deleteIds AS SELECT msgid FROM allMessagesWin WHERE irccommand NOT IN (SELECT command FROM validCommands);
+	DROP TABLE validCommands;
+	`
+	started = time.Now()
+	_, err = db.Exec(invalidCommands)
+	if err != nil {
+		return changed, err
+	}
+
+	c, err := s.markResultForCompaction(db, "invalid commands", started)
+	if err != nil {
+		return changed, err
+	}
+
 	const stmt = `
--- allMessagesWinDel is like allMessagesWin, except we change messages (see the
--- REPLACE statement below) in order to judge whether a session can safely be
--- deleted in its entirety.
-CREATE TEMPORARY TABLE allMessagesWinDel (msgid integer not null unique primary key, session integer not null, irccommand string null);
-INSERT INTO allMessagesWinDel SELECT * FROM allMessagesWin;
-
--- Change irccommand='MODE' messages to read irccommand='_robustirc_mode_user'
--- in case they are a user mode change (as opposed to a channel mode change)
--- and assign them to the target session, i.e. of the user whose modes got
--- changed, not the user who sent the message (these might be different in case
--- an IRC operator sends the message).
-REPLACE INTO allMessagesWinDel
-	SELECT
-		m.msgid,
-		MAX(n.session) AS session,
-		'_robustirc_mode_user' AS irccommand
-	FROM
-		paramsModeWin AS m LEFT JOIN
-		paramsNick AS n ON (m.channel = n.nick AND n.msgid < m.msgid)
-	WHERE
-		SUBSTR(channel, 1, 1) != '#'
-	GROUP BY m.msgid;
-
 -- Delete all deleteSession messages immediately preceded by a createSession
 -- message (or commands in between which do not modify state of anything but
 -- the session in question).
@@ -374,14 +309,13 @@ FROM
         FROM
             (SELECT msgid, session FROM deleteSessionWin
              UNION SELECT msgid, session FROM paramsQuitWin) AS d
-            INNER JOIN allMessagesWinDel AS a
+            INNER JOIN allMessagesWin AS a
             ON (
                 d.session = a.session AND
                 (a.irccommand IS NULL OR
                  (a.irccommand != 'NICK' AND
                   a.irccommand != 'USER' AND
                   a.irccommand != 'PASS' AND
-                  a.irccommand != '_robustirc_mode_user' AND
                   a.irccommand != 'QUIT')) AND
                 a.msgid < d.msgid
             )
@@ -408,16 +342,16 @@ FROM
 
 CREATE TEMPORARY TABLE deleteIds AS SELECT msgid FROM candidates;
 DROP TABLE candidates;
-DROP TABLE allMessagesWinDel;
 DELETE FROM createSession WHERE msgid IN (SELECT msgid FROM deleteIds);
 `
 
-	_, err := db.Exec(stmt)
+	started = time.Now()
+	_, err = db.Exec(stmt)
 	if err != nil {
 		return changed, err
 	}
 
-	c, err := s.markResultForCompaction(db)
+	c, err = s.markResultForCompaction(db, "deleteSession, createSession", started)
 	if err != nil {
 		return changed, err
 	}
@@ -427,13 +361,14 @@ DELETE FROM createSession WHERE msgid IN (SELECT msgid FROM deleteIds);
 // markResultForCompaction updates |s.del| with all messages whose ids are in
 // the deleteIds table. It then removes these messages from the allMessages
 // table and drops the deleteIds table.
-func (s *robustSnapshot) markResultForCompaction(db *sql.DB) (bool, error) {
+func (s *robustSnapshot) markResultForCompaction(db *sql.DB, label string, started time.Time) (bool, error) {
 	changed := false
 	rows, err := db.Query("SELECT msgid FROM deleteIds")
 	if err != nil {
 		return changed, err
 	}
 	defer rows.Close()
+	deleted := 0
 	for rows.Next() {
 		var msgid int64
 		if err := rows.Scan(&msgid); err != nil {
@@ -445,10 +380,12 @@ func (s *robustSnapshot) markResultForCompaction(db *sql.DB) (bool, error) {
 		}
 		s.del[idx] = types.RobustId{Id: msgid}
 		changed = true
+		deleted++
 	}
 	if err := rows.Err(); err != nil {
 		return changed, err
 	}
+	log.Printf("%d rows deleted in %v (step %q)\n", deleted, time.Since(started), label)
 
 	if _, err := db.Exec("DELETE FROM allMessages WHERE msgid IN (SELECT msgid FROM deleteIds)"); err != nil {
 		return changed, err

@@ -216,6 +216,8 @@ type IRCServer struct {
 
 	// Config contains the IRC-related part of the RobustIRC configuration.
 	Config config.IRC
+
+	CompactionDatabase *compactionDatabase
 }
 
 // NewIRCServer returns a new IRC server.
@@ -224,16 +226,21 @@ func NewIRCServer(raftdir, networkname string, serverCreation time.Time) *IRCSer
 	if err != nil {
 		log.Panicf("Could not create new outputstream: %v\n", err)
 	}
+	cdb, err := initializeCompaction(raftdir)
+	if err != nil {
+		log.Panicf("Could not initialize compaction: %v\n", err)
+	}
 	return &IRCServer{
-		channels:        make(map[lcChan]*channel),
-		svsholds:        make(map[lcNick]svshold),
-		nicks:           make(map[lcNick]*Session),
-		sessions:        make(map[types.RobustId]*Session),
-		sessionsMu:      &sync.RWMutex{},
-		lastProcessedMu: &sync.RWMutex{},
-		output:          os,
-		ServerPrefix:    &irc.Prefix{Name: networkname},
-		ServerCreation:  serverCreation,
+		channels:           make(map[lcChan]*channel),
+		svsholds:           make(map[lcNick]svshold),
+		nicks:              make(map[lcNick]*Session),
+		sessions:           make(map[types.RobustId]*Session),
+		sessionsMu:         &sync.RWMutex{},
+		lastProcessedMu:    &sync.RWMutex{},
+		output:             os,
+		ServerPrefix:       &irc.Prefix{Name: networkname},
+		ServerCreation:     serverCreation,
+		CompactionDatabase: cdb,
 	}
 }
 

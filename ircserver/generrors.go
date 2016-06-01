@@ -21,11 +21,11 @@ func main() {
 	}
 	defer output.Close()
 
-	fmt.Fprintf(output, `package main
+	fmt.Fprintf(output, `package ircserver
 
 import "github.com/sorcix/irc"
 
-var errorCodes = make(map[string]bool)
+var ErrorCodes = make(map[string]bool)
 
 func init() {
 `)
@@ -51,7 +51,7 @@ func init() {
 			if !strings.HasPrefix(ident, "ERR_") {
 				return false
 			}
-			fmt.Fprintf(output, "\terrorCodes[irc.%s] = true\n", ident)
+			fmt.Fprintf(output, "\tErrorCodes[irc.%s] = true\n", ident)
 			return true
 		})
 	}

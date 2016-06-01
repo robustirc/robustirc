@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/robustirc/robustirc/types"
 	"github.com/sorcix/irc"
 )
 
@@ -25,18 +24,18 @@ type ircCommand struct {
 	ImmediatelyCompactable bool
 
 	// CompactionPrepareStmt creates the necessary tables and returns a
-	// prepared statement that will be passed to CompactionInsert for each
+	// prepared statement that will be passed to Func for each
 	// message of this command.
 	CompactionPrepareStmt func(*sql.DB) (*sql.Stmt, error)
 
-	// CompactionPrepareViews is called in each compaction run. The command is
-	// expected to create database views that only expose messages that are
+	// CompactionPrepareViews is called before each compaction run. The command
+	// is expected to create database views that only expose messages that are
 	// relevant for a compaction of all messages until |compactionEnd|.
 	CompactionPrepareViews func(*sql.DB, time.Time) error
 
-	// CompactionInsert inserts a message using the prepared statement created
-	// with CompactionPrepareStmt.
-	CompactionInsert func(types.RobustId, types.RobustId, *irc.Message, *sql.Stmt) error
+	// CompactionDropViews is called after each compaction run. The command is
+	// expected to drop the database views created by CompactionPrepareViews.
+	CompactionDropViews func(*sql.DB) error
 
 	// Compact is called in each compaction pass and deletes all messages that
 	// are no longer relevant. It is expected to store the message ids of all
@@ -59,7 +58,7 @@ func init() {
 		Func: (*IRCServer).cmdNick,
 		CompactionPrepareStmt:  prepareStmtNick,
 		CompactionPrepareViews: prepareViewsNick,
-		CompactionInsert:       insertNick,
+		CompactionDropViews:    dropViewsNick,
 		Compact:                compactNick,
 	}
 	Commands["USER"] = &ircCommand{
@@ -67,7 +66,7 @@ func init() {
 		MinParams:              3,
 		CompactionPrepareStmt:  prepareStmtUser,
 		CompactionPrepareViews: prepareViewsUser,
-		CompactionInsert:       insertUser,
+		CompactionDropViews:    dropViewsUser,
 		Compact:                compactUser,
 	}
 	Commands["JOIN"] = &ircCommand{
@@ -75,7 +74,7 @@ func init() {
 		MinParams:              1,
 		CompactionPrepareStmt:  prepareStmtJoin,
 		CompactionPrepareViews: prepareViewsJoin,
-		CompactionInsert:       insertJoin,
+		CompactionDropViews:    dropViewsJoin,
 		Compact:                compactJoin,
 	}
 	Commands["PART"] = &ircCommand{
@@ -83,7 +82,7 @@ func init() {
 		MinParams:              1,
 		CompactionPrepareStmt:  prepareStmtPart,
 		CompactionPrepareViews: prepareViewsPart,
-		CompactionInsert:       insertPart,
+		CompactionDropViews:    dropViewsPart,
 		Compact:                compactPart,
 	}
 	Commands["KICK"] = &ircCommand{
@@ -94,7 +93,7 @@ func init() {
 		Func: (*IRCServer).cmdQuit,
 		CompactionPrepareStmt:  prepareStmtQuit,
 		CompactionPrepareViews: prepareViewsQuit,
-		CompactionInsert:       insertQuit,
+		CompactionDropViews:    dropViewsQuit,
 		Compact:                compactQuit,
 	}
 	Commands["PRIVMSG"] = &ircCommand{
@@ -110,8 +109,7 @@ func init() {
 		MinParams:              1,
 		CompactionPrepareStmt:  prepareStmtMode,
 		CompactionPrepareViews: prepareViewsMode,
-		CompactionInsert:       insertMode,
-		Compact:                compactMode,
+		CompactionDropViews:    dropViewsMode,
 		// TODO: relevantMode, start with removing read-only MODE, e.g. MODE #chaos-hd or MODE #chaos-hd b or MODE #chaos-hd +b
 	}
 	Commands["WHO"] = &ircCommand{
@@ -127,7 +125,7 @@ func init() {
 		Func: (*IRCServer).cmdAway,
 		CompactionPrepareStmt:  prepareStmtAway,
 		CompactionPrepareViews: prepareViewsAway,
-		CompactionInsert:       insertAway,
+		CompactionDropViews:    dropViewsAway,
 		Compact:                compactAway,
 	}
 	Commands["TOPIC"] = &ircCommand{
@@ -135,7 +133,7 @@ func init() {
 		MinParams:              1,
 		CompactionPrepareStmt:  prepareStmtTopic,
 		CompactionPrepareViews: prepareViewsTopic,
-		CompactionInsert:       insertTopic,
+		CompactionDropViews:    dropViewsTopic,
 		Compact:                compactTopic,
 	}
 	Commands["MOTD"] = &ircCommand{
@@ -314,11 +312,8 @@ func prepareViewsNick(db *sql.DB, compactionEnd time.Time) error {
 	return err
 }
 
-func insertNick(msgid, session types.RobustId, ircmsg *irc.Message, stmt *sql.Stmt) error {
-	if len(ircmsg.Params) < 1 {
-		return nil
-	}
-	_, err := stmt.Exec(msgid.Id, session.Id, ircmsg.Params[0])
+func dropViewsNick(db *sql.DB) error {
+	_, err := db.Exec("DROP VIEW paramsNickWin")
 	return err
 }
 
@@ -458,6 +453,9 @@ func (i *IRCServer) cmdNick(s *Session, reply *Replyctx, msg *irc.Message) {
 		}
 	}
 	s.updateIrcPrefix()
+
+	i.CompactionDatabase.ExecStmt("NICK", reply.msgid, s.Id.Id, nick)
+
 	if oldNick != "" {
 		i.sendServices(reply,
 			i.sendCommonChannels(s, reply,
@@ -499,11 +497,8 @@ func prepareViewsUser(db *sql.DB, compactionEnd time.Time) error {
 	return err
 }
 
-func insertUser(msgid, session types.RobustId, ircmsg *irc.Message, stmt *sql.Stmt) error {
-	if len(ircmsg.Params) < 1 {
-		return nil
-	}
-	_, err := stmt.Exec(msgid.Id, session.Id)
+func dropViewsUser(db *sql.DB) error {
+	_, err := db.Exec("DROP VIEW paramsUserWin")
 	return err
 }
 
@@ -535,6 +530,9 @@ func (i *IRCServer) cmdUser(s *Session, reply *Replyctx, msg *irc.Message) {
 	s.Username = msg.Params[0]
 	s.Realname = msg.Trailing
 	s.updateIrcPrefix()
+
+	i.CompactionDatabase.ExecStmt("USER", reply.msgid, s.Id.Id)
+
 	if !loggedIn && s.loggedIn() {
 		i.login(s, reply, msg)
 	}
@@ -545,7 +543,7 @@ func prepareStmtJoin(db *sql.DB) (*sql.Stmt, error) {
 		// We cannot make msgid unique because one JOIN message may contain
 		// multiple channels.
 		createStmt = `
-		CREATE TABLE paramsJoin (msgid integer not null, session integer not null, channel text not null);
+		CREATE TABLE paramsJoin (msgid integer not null, session integer not null, channel text not null collate nocase);
 		CREATE INDEX paramsJoinMsgid ON paramsJoin (msgid);
 		CREATE INDEX paramsJoinSession ON paramsJoin (session);
 		`
@@ -561,16 +559,9 @@ func prepareViewsJoin(db *sql.DB, compactionEnd time.Time) error {
 	return err
 }
 
-func insertJoin(msgid, session types.RobustId, ircmsg *irc.Message, stmt *sql.Stmt) error {
-	if len(ircmsg.Params) < 1 {
-		return nil
-	}
-	for _, channelname := range strings.Split(ircmsg.Params[0], ",") {
-		if _, err := stmt.Exec(msgid.Id, session.Id, strings.ToLower(channelname)); err != nil {
-			return err
-		}
-	}
-	return nil
+func dropViewsJoin(db *sql.DB) error {
+	_, err := db.Exec("DROP VIEW paramsJoinWin")
+	return err
 }
 
 func compactJoin(db *sql.DB) error {
@@ -639,6 +630,7 @@ WHERE
             )
     );
 
+-- Retain JOIN messages for multiple channels of which not all have been left.
 DELETE FROM
     candidates
 WHERE
@@ -723,6 +715,8 @@ func (i *IRCServer) cmdJoin(s *Session, reply *Replyctx, msg *irc.Message) {
 		// Integrate the topic response by simulating a TOPIC command.
 		i.cmdTopic(s, reply, &irc.Message{Command: irc.TOPIC, Params: []string{channelname}})
 		i.cmdNames(s, reply, &irc.Message{Command: irc.NAMES, Params: []string{channelname}})
+
+		i.CompactionDatabase.ExecStmt("JOIN", reply.msgid, s.Id.Id, channelname)
 	}
 }
 
@@ -793,7 +787,7 @@ func prepareStmtPart(db *sql.DB) (*sql.Stmt, error) {
 		// We cannot make msgid unique because one JOIN message may contain
 		// multiple channels.
 		createStmt = `
-		CREATE TABLE paramsPart (msgid integer not null, session integer not null, channel text not null);
+		CREATE TABLE paramsPart (msgid integer not null, session integer not null, channel text not null collate nocase);
 		CREATE INDEX paramsPartMsgid ON paramsPart (msgid);
 		CREATE INDEX paramsPartSession ON paramsPart (session);
 		`
@@ -809,16 +803,9 @@ func prepareViewsPart(db *sql.DB, compactionEnd time.Time) error {
 	return err
 }
 
-func insertPart(msgid, session types.RobustId, ircmsg *irc.Message, stmt *sql.Stmt) error {
-	if len(ircmsg.Params) < 1 {
-		return nil
-	}
-	for _, channelname := range strings.Split(ircmsg.Params[0], ",") {
-		if _, err := stmt.Exec(msgid.Id, session.Id, strings.ToLower(channelname)); err != nil {
-			return err
-		}
-	}
-	return nil
+func dropViewsPart(db *sql.DB) error {
+	_, err := db.Exec("DROP VIEW paramsPartWin")
+	return err
 }
 
 func compactPart(db *sql.DB) error {
@@ -877,6 +864,8 @@ func (i *IRCServer) cmdPart(s *Session, reply *Replyctx, msg *irc.Message) {
 		delete(c.nicks, NickToLower(s.Nick))
 		i.maybeDeleteChannel(c)
 		delete(s.Channels, ChanToLower(channelname))
+
+		i.CompactionDatabase.ExecStmt("PART", reply.msgid, s.Id.Id, channelname)
 	}
 }
 
@@ -895,8 +884,8 @@ func prepareViewsQuit(db *sql.DB, compactionEnd time.Time) error {
 	return err
 }
 
-func insertQuit(msgid, session types.RobustId, ircmsg *irc.Message, stmt *sql.Stmt) error {
-	_, err := stmt.Exec(msgid.Id, session.Id)
+func dropViewsQuit(db *sql.DB) error {
+	_, err := db.Exec("DROP VIEW paramsQuitWin")
 	return err
 }
 
@@ -975,6 +964,8 @@ func (i *IRCServer) cmdQuit(s *Session, reply *Replyctx, msg *irc.Message) {
 			Trailing: fmt.Sprintf("Closing Link: %s[%s] (%s)", s.Nick, s.ircPrefix.Host, msg.Trailing),
 		})
 	}
+
+	i.CompactionDatabase.ExecStmt("QUIT", reply.msgid, s.Id.Id)
 }
 
 func (i *IRCServer) cmdPrivmsg(s *Session, reply *Replyctx, msg *irc.Message) {
@@ -1149,46 +1140,8 @@ func prepareViewsMode(db *sql.DB, compactionEnd time.Time) error {
 	return err
 }
 
-func insertMode(msgid, session types.RobustId, ircmsg *irc.Message, stmt *sql.Stmt) error {
-	if len(ircmsg.Params) < 1 {
-		return nil
-	}
-	modes := normalizeModes(ircmsg)
-	if len(modes) == 0 {
-		// Insert a MODE statement with mode and param being NULL so that
-		// compactMode() can insert the msgid into deleteIds.
-		_, err := stmt.Exec(msgid.Id, session.Id, ircmsg.Params[0],
-			sql.NullString{Valid: false},
-			sql.NullString{Valid: false})
-		return err
-	}
-	for _, mode := range modes {
-		if _, err := stmt.Exec(msgid.Id, session.Id, ircmsg.Params[0],
-			mode.Mode,
-			sql.NullString{
-				String: mode.Param,
-				Valid:  mode.Param != ""}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func compactMode(db *sql.DB) error {
-	const query = `
-CREATE TEMPORARY TABLE deleteIds AS
-SELECT
-    msgid
-FROM
-    paramsModeWin
-WHERE
-	mode IS NULL OR
-	(mode = '+b' AND param IS NULL);
--- TODO: expand the above to all query-only modes once we support more.
-DELETE FROM paramsMode WHERE msgid IN (SELECT msgid FROM deleteIds)
-`
-
-	_, err := db.Exec(query)
+func dropViewsMode(db *sql.DB) error {
+	_, err := db.Exec("DROP VIEW paramsModeWin")
 	return err
 }
 
@@ -1236,6 +1189,11 @@ func (i *IRCServer) cmdMode(s *Session, reply *Replyctx, msg *irc.Message) {
 				switch char {
 				case 't', 's', 'i', 'n':
 					c.modes[char] = newvalue
+
+					i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, channelname, mode.Mode,
+						sql.NullString{
+							String: mode.Param,
+							Valid:  mode.Param != ""})
 				case 'o':
 					nick := mode.Param
 					perms, ok := c.nicks[NickToLower(nick)]
@@ -1251,6 +1209,11 @@ func (i *IRCServer) cmdMode(s *Session, reply *Replyctx, msg *irc.Message) {
 						// nothing (like UnrealIRCd).
 						if perms[chanop] != newvalue {
 							c.nicks[NickToLower(nick)][chanop] = newvalue
+
+							i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, channelname, mode.Mode,
+								sql.NullString{
+									String: mode.Param,
+									Valid:  mode.Param != ""})
 						}
 					}
 				default:
@@ -1499,8 +1462,8 @@ func prepareViewsAway(db *sql.DB, compactionEnd time.Time) error {
 	return err
 }
 
-func insertAway(msgid, session types.RobustId, ircmsg *irc.Message, stmt *sql.Stmt) error {
-	_, err := stmt.Exec(msgid.Id, session.Id, ircmsg.Trailing)
+func dropViewsAway(db *sql.DB) error {
+	_, err := db.Exec("DROP VIEW paramsAwayWin")
 	return err
 }
 
@@ -1562,6 +1525,7 @@ DELETE FROM paramsAway WHERE msgid IN (SELECT msgid FROM deleteIds);
 
 func (i *IRCServer) cmdAway(s *Session, reply *Replyctx, msg *irc.Message) {
 	s.AwayMsg = strings.TrimSpace(msg.Trailing)
+	i.CompactionDatabase.ExecStmt("AWAY", reply.msgid, s.Id.Id, msg.Trailing)
 	if s.AwayMsg != "" {
 		i.sendUser(s, reply, &irc.Message{
 			Prefix:   i.ServerPrefix,
@@ -1594,14 +1558,8 @@ func prepareViewsTopic(db *sql.DB, compactionEnd time.Time) error {
 	return err
 }
 
-func insertTopic(msgid, session types.RobustId, ircmsg *irc.Message, stmt *sql.Stmt) error {
-	if len(ircmsg.Params) < 1 {
-		return nil
-	}
-	_, err := stmt.Exec(msgid.Id, session.Id, ircmsg.Params[0],
-		sql.NullString{
-			String: ircmsg.Trailing,
-			Valid:  ircmsg.Trailing != "" || ircmsg.EmptyTrailing})
+func dropViewsTopic(db *sql.DB) error {
+	_, err := db.Exec("DROP VIEW paramsTopicWin")
 	return err
 }
 
@@ -1646,6 +1604,11 @@ func (i *IRCServer) cmdTopic(s *Session, reply *Replyctx, msg *irc.Message) {
 		c.topicNick = ""
 		c.topicTime = time.Time{}
 		c.topic = ""
+
+		i.CompactionDatabase.ExecStmt("TOPIC", reply.msgid, s.Id.Id, channel,
+			sql.NullString{
+				String: msg.Trailing,
+				Valid:  msg.Trailing != "" || msg.EmptyTrailing})
 
 		i.sendChannel(c, reply, &irc.Message{
 			Prefix:        &s.ircPrefix,
@@ -1717,6 +1680,11 @@ func (i *IRCServer) cmdTopic(s *Session, reply *Replyctx, msg *irc.Message) {
 	c.topicNick = s.Nick
 	c.topicTime = s.LastActivity
 	c.topic = msg.Trailing
+
+	i.CompactionDatabase.ExecStmt("TOPIC", reply.msgid, s.Id.Id, channel,
+		sql.NullString{
+			String: msg.Trailing,
+			Valid:  msg.Trailing != "" || msg.EmptyTrailing})
 
 	i.sendChannel(c, reply, &irc.Message{
 		Prefix:   &s.ircPrefix,
