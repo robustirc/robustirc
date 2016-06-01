@@ -602,7 +602,9 @@ FROM
 			INNER JOIN allMessagesWin AS a
 			ON (
 				js.session = a.session AND
-				(a.irccommand != 'JOIN' OR a.irccommand IS NULL) AND
+				(a.irccommand IS NULL OR
+				 (a.irccommand != 'JOIN' AND
+				  a.irccommand != 'PART')) AND
 				a.msgid > js.msgid
 			)
 		GROUP BY js.msgid, js.channel

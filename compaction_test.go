@@ -618,6 +618,23 @@ func TestCompactSessionDeleteJoinMultiple(t *testing.T) {
 	mustMatchStrings(t, input, output, want)
 }
 
+func TestCompactSessionDeleteJoinMultiplePartOne(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chan,#chan2"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #chan"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 1, "Data": "bye"}`,
+	}
+	want := []string{}
+
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
 func TestCompactSessionDeleteJoinMode(t *testing.T) {
 	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
