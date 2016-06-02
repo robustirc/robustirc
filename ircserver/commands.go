@@ -319,7 +319,7 @@ func dropViewsNick(db *sql.DB) error {
 
 func compactNick(db *sql.DB) error {
 	const query = `
-CREATE TEMPORARY TABLE candidates AS
+CREATE TABLE candidates AS
 SELECT
     a.msgid AS msgid,
     a.nick AS nick,
@@ -368,7 +368,7 @@ DELETE FROM candidates WHERE msgid IN (
 );
 
 -- sqlite3 cannot drop columns in ALTER TABLE statements, so we need to copy.
-CREATE TEMPORARY TABLE deleteIds AS SELECT msgid FROM candidates;
+CREATE TABLE deleteIds AS SELECT msgid FROM candidates;
 DROP TABLE candidates;
 
 DELETE FROM paramsNick WHERE msgid IN (SELECT msgid FROM deleteIds)
@@ -504,7 +504,7 @@ func dropViewsUser(db *sql.DB) error {
 
 func compactUser(db *sql.DB) error {
 	const query = `
-CREATE TEMPORARY TABLE deleteIds AS
+CREATE TABLE deleteIds AS
 -- Delete all but the first USER message of each session.
 SELECT 
     a.msgid AS msgid
@@ -566,7 +566,7 @@ func dropViewsJoin(db *sql.DB) error {
 
 func compactJoin(db *sql.DB) error {
 	const query = `
-CREATE TEMPORARY TABLE candidates AS
+CREATE TABLE candidates AS
 SELECT
     j.msgid AS join_msgid,
     j.session AS session,
@@ -651,7 +651,7 @@ WHERE
     );
 
 -- sqlite3 cannot drop columns in ALTER TABLE statements, so we need to copy.
-CREATE TEMPORARY TABLE deleteIds AS SELECT join_msgid AS msgid FROM candidates;
+CREATE TABLE deleteIds AS SELECT join_msgid AS msgid FROM candidates;
 DROP TABLE candidates;
 
 DELETE FROM paramsJoin WHERE msgid IN (SELECT msgid FROM deleteIds)
@@ -812,7 +812,7 @@ func dropViewsPart(db *sql.DB) error {
 
 func compactPart(db *sql.DB) error {
 	const query = `
-CREATE TEMPORARY TABLE deleteIds AS
+CREATE TABLE deleteIds AS
 SELECT
     p.msgid AS msgid
 FROM
@@ -894,7 +894,7 @@ func dropViewsQuit(db *sql.DB) error {
 func compactQuit(db *sql.DB) error {
 	const query = `
 -- Delete all QUIT messages immediately preceded by a createSession message.
-CREATE TEMPORARY TABLE deleteIds AS
+CREATE TABLE deleteIds AS
 SELECT
     a.msgid AS msgid
 FROM
@@ -1471,7 +1471,7 @@ func dropViewsAway(db *sql.DB) error {
 
 func compactAway(db *sql.DB) error {
 	const query = `
-CREATE TEMPORARY TABLE deleteIds AS
+CREATE TABLE deleteIds AS
 SELECT
     msgid
 FROM
@@ -1567,7 +1567,7 @@ func dropViewsTopic(db *sql.DB) error {
 
 func compactTopic(db *sql.DB) error {
 	const query = `
-CREATE TEMPORARY TABLE deleteIds AS
+CREATE TABLE deleteIds AS
 SELECT
     msgid
 FROM

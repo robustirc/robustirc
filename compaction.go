@@ -223,7 +223,7 @@ func (s *robustSnapshot) Release() {
 // compaction for createSession and deleteSession messages.
 func (s *robustSnapshot) compact(db *sql.DB) (bool, error) {
 	const nonModifying = `
-CREATE TEMPORARY TABLE deleteIds AS
+CREATE TABLE deleteIds AS
 SELECT msgid FROM allMessagesWin WHERE irccommand = 'TOPIC' AND msgid NOT IN (SELECT msgid FROM paramsTopicWin)
 UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'NICK' AND msgid NOT IN (SELECT msgid FROM paramsNickWin)
 UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'USER' AND msgid NOT IN (SELECT msgid FROM paramsUserWin)
@@ -243,7 +243,7 @@ UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'AWAY' AND msgid NOT I
 		return changed, err
 	}
 
-	if _, err := db.Exec("CREATE TEMPORARY TABLE validCommands (command text not null)"); err != nil {
+	if _, err := db.Exec("CREATE TABLE validCommands (command text not null)"); err != nil {
 		return changed, err
 	}
 	validCommandInsert, err := db.Prepare("INSERT INTO validCommands (command) VALUES (?)")
@@ -252,7 +252,7 @@ UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'AWAY' AND msgid NOT I
 	}
 	defer validCommandInsert.Close()
 
-	immediatelyCompactable, err := db.Prepare("CREATE TEMPORARY TABLE deleteIds AS SELECT msgid FROM allMessagesWin WHERE irccommand = ?")
+	immediatelyCompactable, err := db.Prepare("CREATE TABLE deleteIds AS SELECT msgid FROM allMessagesWin WHERE irccommand = ?")
 	if err != nil {
 		return changed, err
 	}
@@ -282,7 +282,7 @@ UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'AWAY' AND msgid NOT I
 	}
 
 	const invalidCommands = `
-	CREATE TEMPORARY TABLE deleteIds AS SELECT msgid FROM allMessagesWin WHERE irccommand NOT IN (SELECT command FROM validCommands);
+	CREATE TABLE deleteIds AS SELECT msgid FROM allMessagesWin WHERE irccommand NOT IN (SELECT command FROM validCommands);
 	DROP TABLE validCommands;
 	`
 	started = time.Now()
@@ -300,7 +300,7 @@ UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'AWAY' AND msgid NOT I
 -- Delete all deleteSession messages immediately preceded by a createSession
 -- message (or commands in between which do not modify state of anything but
 -- the session in question).
-CREATE TEMPORARY TABLE candidates AS
+CREATE TABLE candidates AS
 SELECT
     a.msgid AS msgid,
     a.session AS session
@@ -344,7 +344,7 @@ FROM
     )
     WHERE d.session IS NOT NULL;
 
-CREATE TEMPORARY TABLE deleteIds AS SELECT msgid FROM candidates;
+CREATE TABLE deleteIds AS SELECT msgid FROM candidates;
 DROP TABLE candidates;
 DELETE FROM createSession WHERE msgid IN (SELECT msgid FROM deleteIds);
 `
