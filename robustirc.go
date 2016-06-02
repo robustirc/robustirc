@@ -347,6 +347,10 @@ func main() {
 		log.Fatalf("Could not delete old outputstream databases: %v\n", err)
 	}
 
+	if err := ircserver.DeleteOldDatabases(*raftDir); err != nil {
+		log.Fatalf("Could not delete old compaction databases: %v\n", err)
+	}
+
 	log.Printf("Initializing RobustIRC…\n")
 
 	if *networkPassword == "" {

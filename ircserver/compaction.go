@@ -7,6 +7,9 @@ import (
 	"database/sql"
 	"io/ioutil"
 	"log"
+	"os"
+	"path/filepath"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -27,7 +30,10 @@ func (c *compactionDatabase) Close() error {
 			return err
 		}
 	}
-	return c.DB.Close()
+	if err := c.DB.Close(); err != nil {
+		return err
+	}
+	return os.Remove(c.Name)
 }
 
 // ExecStmt is a convenience wrapper around compactionDatabase which can be
@@ -103,4 +109,24 @@ CREATE INDEX allMessagesSessionIdx ON allMessages (session);
 	cdb.Name = tempfile
 	cdb.DB = db
 	return cdb, nil
+}
+
+func DeleteOldDatabases(tmpdir string) error {
+	dir, err := os.Open(tmpdir)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	names, err := dir.Readdirnames(-1)
+	if err != nil {
+		return err
+	}
+	for _, name := range names {
+		if strings.HasPrefix(name, "permanent-compaction.sqlite3") {
+			if err := os.Remove(filepath.Join(tmpdir, name)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
