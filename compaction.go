@@ -173,6 +173,10 @@ CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 		}
 	}
 
+	if _, err := db.Exec("VACUUM"); err != nil {
+		return err
+	}
+
 	log.Printf("Copying non-deleted messages into snapshot\n")
 
 	snapshotBytes := 0
