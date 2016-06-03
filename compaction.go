@@ -9,12 +9,24 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/types"
 	"github.com/sorcix/irc"
 	"github.com/stapelberg/glog"
 )
+
+var (
+	compactionDurations = prometheus.NewSummary(prometheus.SummaryOpts{
+		Name: "compaction_duration_milliseconds",
+		Help: "A summary of compaction wall-clock time, in milliseconds.",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(compactionDurations)
+}
 
 // returnedOnlyErrors returns true if and only if |msgid| resulted in at least
 // one error and not a single non-error IRC reply.
@@ -212,6 +224,7 @@ CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 	}
 
 	log.Printf("Snapshot done\n")
+	compactionDurations.Observe(float64((time.Now().Sub(compactionStart)).Nanoseconds() / int64(time.Millisecond)))
 
 	return nil
 }
