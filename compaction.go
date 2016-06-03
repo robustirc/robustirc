@@ -22,10 +22,15 @@ var (
 		Name: "compaction_duration_milliseconds",
 		Help: "A summary of compaction wall-clock time, in milliseconds.",
 	})
+	numDeleteSessionsWin = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "num_delete_sessions_win",
+		Help: "Number of deleteSession messages in the compaction window.",
+	})
 )
 
 func init() {
 	prometheus.MustRegister(compactionDurations)
+	prometheus.MustRegister(numDeleteSessionsWin)
 }
 
 // returnedOnlyErrors returns true if and only if |msgid| resulted in at least
@@ -167,6 +172,13 @@ CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 			return err
 		}
 	}
+
+	var deleteSessions int
+	if err := db.QueryRow("SELECT COUNT(*) FROM deleteSessionWin").Scan(&deleteSessions); err != nil {
+		return err
+	}
+	log.Printf("%d deleteSessions left in compaction window\n", deleteSessions)
+	numDeleteSessionsWin.Set(float64(deleteSessions))
 
 	if _, err := db.Exec(`
 		DROP VIEW allMessagesWin;
