@@ -63,6 +63,48 @@ func (c *compactionDatabase) ExecStmt(stmt string, args ...interface{}) {
 	}
 }
 
+type Preparer interface {
+	Prepare(query string) (*sql.Stmt, error)
+}
+
+func (c *compactionDatabase) PrepareStatements(p Preparer) error {
+	for _, stmt := range c.Statements {
+		if err := stmt.Close(); err != nil {
+			return err
+		}
+	}
+
+	var err error
+	c.Statements["_all"], err = p.Prepare("INSERT INTO allMessages (msgid, session, irccommand) VALUES (?, ?, ?)")
+	if err != nil {
+		return err
+	}
+
+	c.Statements["_create"], err = p.Prepare("INSERT INTO createSession (msgid, session) VALUES (?, ?)")
+	if err != nil {
+		return err
+	}
+
+	c.Statements["_delete"], err = p.Prepare("INSERT INTO deleteSession (msgid, session) VALUES (?, ?)")
+	if err != nil {
+		return err
+	}
+
+	// Let each IRC command prepare their statements.
+	for name, cmd := range Commands {
+		if cmd.CompactionPrepareStmt == nil {
+			continue
+		}
+		var err error
+		c.Statements[name], err = cmd.CompactionPrepareStmt(p)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // initializeCompaction creates a new SQLite database and initializes it.
 func initializeCompaction(raftDir string) (*compactionDatabase, error) {
 	cdb := &compactionDatabase{
@@ -100,31 +142,18 @@ CREATE INDEX allMessagesSessionIdx ON allMessages (session);
 		return nil, err
 	}
 
-	cdb.Statements["_all"], err = db.Prepare("INSERT INTO allMessages (msgid, session, irccommand) VALUES (?, ?, ?)")
-	if err != nil {
-		return nil, err
-	}
-
-	cdb.Statements["_create"], err = db.Prepare("INSERT INTO createSession (msgid, session) VALUES (?, ?)")
-	if err != nil {
-		return nil, err
-	}
-
-	cdb.Statements["_delete"], err = db.Prepare("INSERT INTO deleteSession (msgid, session) VALUES (?, ?)")
-	if err != nil {
-		return nil, err
-	}
-
-	// Let each IRC command prepare their tables and prepared statements.
-	for name, cmd := range Commands {
-		if cmd.CompactionPrepareStmt == nil {
+	// Let each IRC command prepare their tables.
+	for _, cmd := range Commands {
+		if cmd.CompactionCreate == nil {
 			continue
 		}
-		var err error
-		cdb.Statements[name], err = cmd.CompactionPrepareStmt(db)
-		if err != nil {
+		if err := cmd.CompactionCreate(db); err != nil {
 			return nil, err
 		}
+	}
+
+	if err := cdb.PrepareStatements(db); err != nil {
+		return nil, err
 	}
 
 	cdb.Name = tempfile

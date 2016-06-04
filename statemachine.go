@@ -182,6 +182,14 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 		log.Fatal(err)
 	}
 	ircServer = ircserver.NewIRCServer(*raftDir, *network, time.Now())
+	db := ircServer.CompactionDatabase.DB
+	tx, err := db.Begin()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := ircServer.CompactionDatabase.PrepareStatements(tx); err != nil {
+		log.Fatal(err)
+	}
 
 	decoder := json.NewDecoder(snap)
 	for {
@@ -194,6 +202,12 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 		}
 
 		fsm.Apply(&entry)
+	}
+	if err := tx.Commit(); err != nil {
+		log.Fatal(err)
+	}
+	if err := ircServer.CompactionDatabase.PrepareStatements(db); err != nil {
+		log.Fatal(err)
 	}
 
 	log.Printf("Restored snapshot\n")

@@ -23,10 +23,12 @@ type ircCommand struct {
 	// immediately compacted once they are old enough (e.g. for PING).
 	ImmediatelyCompactable bool
 
-	// CompactionPrepareStmt creates the necessary tables and returns a
-	// prepared statement that will be passed to Func for each
-	// message of this command.
-	CompactionPrepareStmt func(*sql.DB) (*sql.Stmt, error)
+	// CompactionCreate creates the necessary tables.
+	CompactionCreate func(*sql.DB) error
+
+	// CompactionPrepareStmt returns a prepared statement that will be passed
+	// to Func for each message of this command.
+	CompactionPrepareStmt func(Preparer) (*sql.Stmt, error)
 
 	// CompactionPrepareViews is called before each compaction run. The command
 	// is expected to create database views that only expose messages that are
@@ -55,7 +57,8 @@ func init() {
 		ImmediatelyCompactable: true,
 	}
 	Commands["NICK"] = &ircCommand{
-		Func: (*IRCServer).cmdNick,
+		Func:                   (*IRCServer).cmdNick,
+		CompactionCreate:       createNick,
 		CompactionPrepareStmt:  prepareStmtNick,
 		CompactionPrepareViews: prepareViewsNick,
 		CompactionDropViews:    dropViewsNick,
@@ -64,6 +67,7 @@ func init() {
 	Commands["USER"] = &ircCommand{
 		Func:                   (*IRCServer).cmdUser,
 		MinParams:              3,
+		CompactionCreate:       createUser,
 		CompactionPrepareStmt:  prepareStmtUser,
 		CompactionPrepareViews: prepareViewsUser,
 		CompactionDropViews:    dropViewsUser,
@@ -72,6 +76,7 @@ func init() {
 	Commands["JOIN"] = &ircCommand{
 		Func:                   (*IRCServer).cmdJoin,
 		MinParams:              1,
+		CompactionCreate:       createJoin,
 		CompactionPrepareStmt:  prepareStmtJoin,
 		CompactionPrepareViews: prepareViewsJoin,
 		CompactionDropViews:    dropViewsJoin,
@@ -80,6 +85,7 @@ func init() {
 	Commands["PART"] = &ircCommand{
 		Func:                   (*IRCServer).cmdPart,
 		MinParams:              1,
+		CompactionCreate:       createPart,
 		CompactionPrepareStmt:  prepareStmtPart,
 		CompactionPrepareViews: prepareViewsPart,
 		CompactionDropViews:    dropViewsPart,
@@ -90,7 +96,8 @@ func init() {
 		MinParams: 2,
 	}
 	Commands["QUIT"] = &ircCommand{
-		Func: (*IRCServer).cmdQuit,
+		Func:                   (*IRCServer).cmdQuit,
+		CompactionCreate:       createQuit,
 		CompactionPrepareStmt:  prepareStmtQuit,
 		CompactionPrepareViews: prepareViewsQuit,
 		CompactionDropViews:    dropViewsQuit,
@@ -107,6 +114,7 @@ func init() {
 	Commands["MODE"] = &ircCommand{
 		Func:                   (*IRCServer).cmdMode,
 		MinParams:              1,
+		CompactionCreate:       createMode,
 		CompactionPrepareStmt:  prepareStmtMode,
 		CompactionPrepareViews: prepareViewsMode,
 		CompactionDropViews:    dropViewsMode,
@@ -122,7 +130,8 @@ func init() {
 		MinParams: 1,
 	}
 	Commands["AWAY"] = &ircCommand{
-		Func: (*IRCServer).cmdAway,
+		Func:                   (*IRCServer).cmdAway,
+		CompactionCreate:       createAway,
 		CompactionPrepareStmt:  prepareStmtAway,
 		CompactionPrepareViews: prepareViewsAway,
 		CompactionDropViews:    dropViewsAway,
@@ -131,6 +140,7 @@ func init() {
 	Commands["TOPIC"] = &ircCommand{
 		Func:                   (*IRCServer).cmdTopic,
 		MinParams:              1,
+		CompactionCreate:       createTopic,
 		CompactionPrepareStmt:  prepareStmtTopic,
 		CompactionPrepareViews: prepareViewsTopic,
 		CompactionDropViews:    dropViewsTopic,
@@ -294,15 +304,18 @@ func (i *IRCServer) login(s *Session, reply *Replyctx, msg *irc.Message) {
 	i.cmdMotd(s, reply, msg)
 }
 
-func prepareStmtNick(db *sql.DB) (*sql.Stmt, error) {
-	const (
-		createStmt = `
+func createNick(db *sql.DB) error {
+	const createStmt = `
 		CREATE TABLE paramsNick (msgid integer not null unique primary key, session integer not null, nick text collate nocase);
 		CREATE INDEX paramsNickNickIdx ON paramsNick (nick);
 		`
-		prepareStmt = "INSERT INTO paramsNick (msgid, session, nick) VALUES (?, ?, ?)"
-	)
-	return createAndPrepare(db, createStmt, prepareStmt)
+
+	_, err := db.Exec(createStmt)
+	return err
+}
+
+func prepareStmtNick(p Preparer) (*sql.Stmt, error) {
+	return p.Prepare("INSERT INTO paramsNick (msgid, session, nick) VALUES (?, ?, ?)")
 }
 
 func prepareViewsNick(tx *sql.Tx, compactionEnd time.Time) error {
@@ -472,22 +485,13 @@ func (i *IRCServer) cmdNick(s *Session, reply *Replyctx, msg *irc.Message) {
 	}
 }
 
-// createAndPrepare is a helper function which encapsulates the common case for
-// a CompactionPrepareStmt callback: it calls tx.Exec to create a new table,
-// then tx.Prepare for a prepared INSERT statement on that table.
-func createAndPrepare(db *sql.DB, createStmt, prepareStmt string) (*sql.Stmt, error) {
-	if _, err := db.Exec(createStmt); err != nil {
-		return nil, err
-	}
-	return db.Prepare(prepareStmt)
+func createUser(db *sql.DB) error {
+	_, err := db.Exec("CREATE TABLE paramsUser (msgid integer not null unique primary key, session integer not null)")
+	return err
 }
 
-func prepareStmtUser(db *sql.DB) (*sql.Stmt, error) {
-	const (
-		createStmt  = "CREATE TABLE paramsUser (msgid integer not null unique primary key, session integer not null)"
-		prepareStmt = "INSERT INTO paramsUser (msgid, session) VALUES (?, ?)"
-	)
-	return createAndPrepare(db, createStmt, prepareStmt)
+func prepareStmtUser(p Preparer) (*sql.Stmt, error) {
+	return p.Prepare("INSERT INTO paramsUser (msgid, session) VALUES (?, ?)")
 }
 
 func prepareViewsUser(tx *sql.Tx, compactionEnd time.Time) error {
@@ -538,18 +542,20 @@ func (i *IRCServer) cmdUser(s *Session, reply *Replyctx, msg *irc.Message) {
 	}
 }
 
-func prepareStmtJoin(db *sql.DB) (*sql.Stmt, error) {
-	const (
-		// We cannot make msgid unique because one JOIN message may contain
-		// multiple channels.
-		createStmt = `
+func createJoin(db *sql.DB) error {
+	// We cannot make msgid unique because one JOIN message may contain
+	// multiple channels.
+	const createStmt = `
 		CREATE TABLE paramsJoin (msgid integer not null, session integer not null, channel text not null collate nocase);
 		CREATE INDEX paramsJoinMsgid ON paramsJoin (msgid);
 		CREATE INDEX paramsJoinSession ON paramsJoin (session);
 		`
-		prepareStmt = "INSERT INTO paramsJoin (msgid, session, channel) VALUES (?, ?, ?)"
-	)
-	return createAndPrepare(db, createStmt, prepareStmt)
+	_, err := db.Exec(createStmt)
+	return err
+}
+
+func prepareStmtJoin(p Preparer) (*sql.Stmt, error) {
+	return p.Prepare("INSERT INTO paramsJoin (msgid, session, channel) VALUES (?, ?, ?)")
 }
 
 func prepareViewsJoin(tx *sql.Tx, compactionEnd time.Time) error {
@@ -784,18 +790,20 @@ func (i *IRCServer) cmdKick(s *Session, reply *Replyctx, msg *irc.Message) {
 	delete(session.Channels, ChanToLower(channelname))
 }
 
-func prepareStmtPart(db *sql.DB) (*sql.Stmt, error) {
-	const (
-		// We cannot make msgid unique because one JOIN message may contain
-		// multiple channels.
-		createStmt = `
+func createPart(db *sql.DB) error {
+	// We cannot make msgid unique because one JOIN message may contain
+	// multiple channels.
+	const createStmt = `
 		CREATE TABLE paramsPart (msgid integer not null, session integer not null, channel text not null collate nocase);
 		CREATE INDEX paramsPartMsgid ON paramsPart (msgid);
 		CREATE INDEX paramsPartSession ON paramsPart (session);
 		`
-		prepareStmt = "INSERT INTO paramsPart (msgid, session, channel) VALUES (?, ?, ?)"
-	)
-	return createAndPrepare(db, createStmt, prepareStmt)
+	_, err := db.Exec(createStmt)
+	return err
+}
+
+func prepareStmtPart(p Preparer) (*sql.Stmt, error) {
+	return p.Prepare("INSERT INTO paramsPart (msgid, session, channel) VALUES (?, ?, ?)")
 }
 
 func prepareViewsPart(tx *sql.Tx, compactionEnd time.Time) error {
@@ -871,12 +879,13 @@ func (i *IRCServer) cmdPart(s *Session, reply *Replyctx, msg *irc.Message) {
 	}
 }
 
-func prepareStmtQuit(db *sql.DB) (*sql.Stmt, error) {
-	const (
-		createStmt  = "CREATE TABLE paramsQuit (msgid integer not null unique primary key, session integer not null)"
-		prepareStmt = "INSERT INTO paramsQuit (msgid, session) VALUES (?, ?)"
-	)
-	return createAndPrepare(db, createStmt, prepareStmt)
+func createQuit(db *sql.DB) error {
+	_, err := db.Exec("CREATE TABLE paramsQuit (msgid integer not null unique primary key, session integer not null)")
+	return err
+}
+
+func prepareStmtQuit(p Preparer) (*sql.Stmt, error) {
+	return p.Prepare("INSERT INTO paramsQuit (msgid, session) VALUES (?, ?)")
 }
 
 func prepareViewsQuit(tx *sql.Tx, compactionEnd time.Time) error {
@@ -1127,12 +1136,13 @@ func normalizeModes(msg *irc.Message) []modeCmd {
 	return results
 }
 
-func prepareStmtMode(db *sql.DB) (*sql.Stmt, error) {
-	const (
-		createStmt  = "CREATE TABLE paramsMode (msgid integer not null, session integer not null, channel text not null collate nocase, mode text, param text)"
-		prepareStmt = "INSERT INTO paramsMode (msgid, session, channel, mode, param) VALUES (?, ?, ?, ?, ?)"
-	)
-	return createAndPrepare(db, createStmt, prepareStmt)
+func createMode(db *sql.DB) error {
+	_, err := db.Exec("CREATE TABLE paramsMode (msgid integer not null, session integer not null, channel text not null collate nocase, mode text, param text)")
+	return err
+}
+
+func prepareStmtMode(p Preparer) (*sql.Stmt, error) {
+	return p.Prepare("INSERT INTO paramsMode (msgid, session, channel, mode, param) VALUES (?, ?, ?, ?, ?)")
 }
 
 func prepareViewsMode(tx *sql.Tx, compactionEnd time.Time) error {
@@ -1449,12 +1459,13 @@ func (i *IRCServer) cmdKill(s *Session, reply *Replyctx, msg *irc.Message) {
 	})
 }
 
-func prepareStmtAway(db *sql.DB) (*sql.Stmt, error) {
-	const (
-		createStmt  = "CREATE TABLE paramsAway (msgid integer not null unique primary key, session integer not null, trailing text not null)"
-		prepareStmt = "INSERT INTO paramsAway (msgid, session, trailing) VALUES (?, ?, ?)"
-	)
-	return createAndPrepare(db, createStmt, prepareStmt)
+func createAway(db *sql.DB) error {
+	_, err := db.Exec("CREATE TABLE paramsAway (msgid integer not null unique primary key, session integer not null, trailing text not null)")
+	return err
+}
+
+func prepareStmtAway(p Preparer) (*sql.Stmt, error) {
+	return p.Prepare("INSERT INTO paramsAway (msgid, session, trailing) VALUES (?, ?, ?)")
 }
 
 func prepareViewsAway(tx *sql.Tx, compactionEnd time.Time) error {
@@ -1545,12 +1556,13 @@ func (i *IRCServer) cmdAway(s *Session, reply *Replyctx, msg *irc.Message) {
 	})
 }
 
-func prepareStmtTopic(db *sql.DB) (*sql.Stmt, error) {
-	const (
-		createStmt  = "CREATE TABLE paramsTopic (msgid integer not null unique primary key, session integer not null, channel text not null, trailing text)"
-		prepareStmt = "INSERT INTO paramsTopic (msgid, session, channel, trailing) VALUES (?, ?, ?, ?)"
-	)
-	return createAndPrepare(db, createStmt, prepareStmt)
+func createTopic(db *sql.DB) error {
+	_, err := db.Exec("CREATE TABLE paramsTopic (msgid integer not null unique primary key, session integer not null, channel text not null, trailing text)")
+	return err
+}
+
+func prepareStmtTopic(p Preparer) (*sql.Stmt, error) {
+	return p.Prepare("INSERT INTO paramsTopic (msgid, session, channel, trailing) VALUES (?, ?, ?, ?)")
 }
 
 func prepareViewsTopic(tx *sql.Tx, compactionEnd time.Time) error {
