@@ -160,14 +160,20 @@ func (s *LevelDBStore) StoreLogs(logs []*raft.Log) error {
 
 // DeleteRange implements raft.LogStore.
 func (s *LevelDBStore) DeleteRange(min, max uint64) error {
+	iterator := s.GetBulkIterator(min, max+1)
+	defer iterator.Release()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	var batch leveldb.Batch
-	key := make([]byte, binary.Size(uint64(0)))
-	for n := min; n <= max; n++ {
-		binary.BigEndian.PutUint64(key, n)
-		batch.Delete(key)
+	available := iterator.First()
+	for available {
+		if err := iterator.Error(); err != nil {
+			return err
+		}
+		batch.Delete(iterator.Key())
+		available = iterator.Next()
 	}
 	if err := s.db.Write(&batch, nil); err != nil {
 		return err
