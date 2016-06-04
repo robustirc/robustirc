@@ -18,6 +18,7 @@ import (
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/types"
+	"github.com/stapelberg/glog"
 
 	"github.com/hashicorp/raft"
 )
@@ -798,6 +799,94 @@ func TestCompactNickInUse(t *testing.T) {
 	mustMatchStrings(t, input, output, want)
 }
 
+func TestCompactSessionDeleteInvite(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 4}, "Type": 2, "Data": "NICK mero"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": "USER mero mero localhost :Axel Wagner"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": "JOIN #test"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 4}, "Type": 2, "Data": "INVITE secure #test"}`,
+		`{"Id": {"Id": 9}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test"}`,
+		`{"Id": {"Id": 10}, "Session": {"Id": 1}, "Type": 1, "Data": "bye"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 4}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 4}, "Type": 2, "Data": "NICK mero"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": "USER mero mero localhost :Axel Wagner"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": "JOIN #test"}`,
+	}
+
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
+func TestCompactKeepInvite(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 4}, "Type": 2, "Data": "NICK mero"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": "USER mero mero localhost :Axel Wagner"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": "JOIN #test_keep"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 4}, "Type": 2, "Data": "INVITE secure #test_keep"}`,
+		`{"Id": {"Id": 9}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test_keep"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 4}, "Type": 2, "Data": "NICK mero"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": "USER mero mero localhost :Axel Wagner"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": "JOIN #test_keep"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 4}, "Type": 2, "Data": "INVITE secure #test_keep"}`,
+		`{"Id": {"Id": 9}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test_keep"}`,
+	}
+
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
+func TestCompactKeepInviteBoth(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 4}, "Type": 2, "Data": "NICK mero"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": "USER mero mero localhost :Axel Wagner"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": "JOIN #test_keep2"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 4}, "Type": 2, "Data": "INVITE secure #test_keep2"}`,
+		`{"Id": {"Id": 9}, "Session": {"Id": 4}, "Type": 1, "Data": "bye"}`,
+		`{"Id": {"Id": 10}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test_keep2"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 4}, "Type": 2, "Data": "NICK mero"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": "USER mero mero localhost :Axel Wagner"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": "JOIN #test_keep2"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 4}, "Type": 2, "Data": "INVITE secure #test_keep2"}`,
+		`{"Id": {"Id": 9}, "Session": {"Id": 4}, "Type": 1, "Data": "bye"}`,
+		`{"Id": {"Id": 10}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test_keep2"}`,
+	}
+
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
 func TestCompactInvalidCommands(t *testing.T) {
 	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 
@@ -905,11 +994,13 @@ func TestCompactAway(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
+	defer glog.Flush()
 	flag.Parse()
 	tempdir, err := ioutil.TempDir("", "robustirc-test-raftdir-")
 	if err != nil {
 		log.Fatal(err)
 	}
 	raftDir = &tempdir
+	// TODO: cleanup tmp-outputstream and permanent-compaction*
 	os.Exit(m.Run())
 }

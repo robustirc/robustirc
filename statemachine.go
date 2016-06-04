@@ -67,29 +67,28 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		}
 	}()
 
-	ircCmdNullable := sql.NullString{Valid: false}
 	sessionId := msg.Session
 
 	switch msg.Type {
 	case types.RobustMessageOfDeath:
 		// To prevent the message from being accepted again.
 		ircServer.UpdateLastClientMessageID(&msg)
-		log.Printf("Skipped message of death.\n")
+		log.Printf("Skipped message of death with msgid %d.\n", msg.Id.Id)
 
 	case types.RobustCreateSession:
 		ircServer.CreateSession(msg.Id, msg.Data)
 		sessionId = msg.Id
 
 		ircServer.CompactionDatabase.ExecStmt("_create", msg.Id.Id, sessionId.Id)
-
+		ircServer.CompactionDatabase.ExecStmt("_all", msg.Id.Id, sessionId.Id, sql.NullString{Valid: false})
 	case types.RobustDeleteSession:
 		if _, err := ircServer.GetSession(msg.Session); err == nil {
 			// TODO(secure): overwrite QUIT messages for services with an faq entry explaining that they are not robust yet.
 			reply := ircServer.ProcessMessage(msg.Id, msg.Session, irc.ParseMessage("QUIT :"+string(msg.Data)))
 			ircServer.SendMessages(reply, msg.Session, msg.Id.Id)
-
-			ircServer.CompactionDatabase.ExecStmt("_delete", msg.Id.Id, sessionId.Id)
 		}
+		ircServer.CompactionDatabase.ExecStmt("_delete", msg.Id.Id, sessionId.Id)
+		ircServer.CompactionDatabase.ExecStmt("_all", msg.Id.Id, sessionId.Id, sql.NullString{Valid: false})
 
 	case types.RobustIRCFromClient:
 		// Need to do this first, because ircserver.ProcessMessage could delete
@@ -104,7 +103,8 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 			if err == nil && s.Server {
 				serverPrefix = "server_"
 			}
-			ircCmdNullable = sql.NullString{String: serverPrefix + strings.ToUpper(ircmsg.Command), Valid: true}
+			ircCmdNullable := sql.NullString{String: serverPrefix + strings.ToUpper(ircmsg.Command), Valid: true}
+			ircServer.CompactionDatabase.ExecStmt("_all", msg.Id.Id, sessionId.Id, ircCmdNullable)
 			reply := ircServer.ProcessMessage(msg.Id, msg.Session, ircmsg)
 			ircServer.SendMessages(reply, msg.Session, sessionId.Id)
 		}
@@ -118,8 +118,6 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 			ircServer.Config = netConfig.IRC
 		}
 	}
-
-	ircServer.CompactionDatabase.ExecStmt("_all", msg.Id.Id, sessionId.Id, ircCmdNullable)
 
 	appliedMessages.WithLabelValues(msg.Type.String()).Inc()
 

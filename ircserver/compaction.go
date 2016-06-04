@@ -90,6 +90,11 @@ func (c *compactionDatabase) PrepareStatements(p Preparer) error {
 		return err
 	}
 
+	c.Statements["_all_target"], err = p.Prepare("UPDATE allMessages SET target_session = ? WHERE msgid = ?")
+	if err != nil {
+		return err
+	}
+
 	// Let each IRC command prepare their statements.
 	for name, cmd := range Commands {
 		if cmd.CompactionPrepareStmt == nil {
@@ -131,7 +136,7 @@ func initializeCompaction(raftDir string) (*compactionDatabase, error) {
 	const nonIrcCommandStmt = `
 CREATE TABLE createSession (msgid integer not null unique primary key, session integer not null);
 CREATE TABLE deleteSession (msgid integer not null unique primary key, session integer not null);
-CREATE TABLE allMessages (msgid integer not null unique primary key, session integer not null, irccommand string null);
+CREATE TABLE allMessages (msgid integer not null unique primary key, session integer not null, target_session integer null, irccommand string null);
 CREATE INDEX allMessagesSessionIdx ON allMessages (session);
 `
 	if _, err := tx.Exec(nonIrcCommandStmt); err != nil {

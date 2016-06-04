@@ -160,8 +160,13 @@ func init() {
 		ImmediatelyCompactable: true,
 	}
 	Commands["INVITE"] = &ircCommand{
-		Func:      (*IRCServer).cmdInvite,
-		MinParams: 2,
+		Func:                   (*IRCServer).cmdInvite,
+		CompactionCreate:       createInvite,
+		CompactionPrepareStmt:  prepareStmtInvite,
+		CompactionPrepareViews: prepareViewsInvite,
+		CompactionDropViews:    dropViewsInvite,
+		Compact:                compactInvite,
+		MinParams:              2,
 	}
 	Commands["USERHOST"] = &ircCommand{
 		Func: (*IRCServer).cmdUserhost,
@@ -1890,6 +1895,64 @@ func (i *IRCServer) cmdList(s *Session, reply *Replyctx, msg *irc.Message) {
 	})
 }
 
+func createInvite(db *sql.DB) error {
+	_, err := db.Exec("CREATE TABLE paramsInvite (msgid integer not null unique primary key, session integer not null, target_session integer not null, channel text not null)")
+	return err
+}
+
+func prepareStmtInvite(p Preparer) (*sql.Stmt, error) {
+	return p.Prepare("INSERT INTO paramsInvite (msgid, session, target_session, channel) VALUES (?, ?, ?, ?)")
+}
+
+func prepareViewsInvite(tx *sql.Tx, compactionEnd time.Time) error {
+	_, err := tx.Exec(
+		fmt.Sprintf("CREATE VIEW paramsInviteWin AS SELECT * FROM paramsInvite WHERE msgid < %d",
+			compactionEnd.UnixNano()))
+	return err
+}
+
+func dropViewsInvite(tx *sql.Tx) error {
+	_, err := tx.Exec("DROP VIEW paramsInviteWin")
+	return err
+}
+
+func compactInvite(tx *sql.Tx) error {
+	const query = `
+-- Delete all (sequences of) INVITE messages which are directly followed by a
+-- deleteSession message of the target_session.
+CREATE TABLE deleteIds AS
+SELECT
+   j.msgid AS msgid
+FROM
+   (
+		SELECT
+			i.msgid AS msgid,
+			i.target_session AS session,
+			MIN(a.msgid) AS next_msgid
+		FROM
+			paramsInviteWin AS i
+			INNER JOIN allMessagesWin AS a
+			ON (
+				i.target_session = a.session AND
+				(a.irccommand IS NULL OR
+				 (a.irccommand != 'JOIN' AND
+				  a.irccommand != 'PART')) AND
+				a.msgid > i.msgid
+			)
+		GROUP BY i.msgid
+	) AS j
+	INNER JOIN deleteSessionWin AS d
+	ON (
+		j.session = d.session AND
+		j.next_msgid = d.msgid
+	)
+	WHERE d.msgid IS NOT NULL;
+DELETE FROM paramsInvite WHERE msgid IN (SELECT msgid FROM deleteIds)
+`
+	_, err := tx.Exec(query)
+	return err
+}
+
 func (i *IRCServer) cmdInvite(s *Session, reply *Replyctx, msg *irc.Message) {
 	nickname := msg.Params[0]
 	channelname := msg.Params[1]
@@ -1941,6 +2004,8 @@ func (i *IRCServer) cmdInvite(s *Session, reply *Replyctx, msg *irc.Message) {
 		return
 	}
 	session.invitedTo[ChanToLower(channelname)] = true
+	i.CompactionDatabase.ExecStmt("INVITE", reply.msgid, s.Id.Id, session.Id.Id, channelname)
+	i.CompactionDatabase.ExecStmt("_all_target", session.Id.Id, reply.msgid)
 	i.sendUser(s, reply, &irc.Message{
 		Prefix:  i.ServerPrefix,
 		Command: irc.RPL_INVITING,

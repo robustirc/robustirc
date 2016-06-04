@@ -365,6 +365,7 @@ FROM
     );
 DELETE FROM deleteSession WHERE msgid IN (SELECT msgid FROM candidates);
 
+-- delete all messages of the sessions which are slated to be deleted.
 INSERT INTO candidates
 SELECT
     a.msgid,
