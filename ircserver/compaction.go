@@ -10,8 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/mattn/go-sqlite3"
+	"github.com/stapelberg/glog"
 )
 
 type compactionDatabase struct {
@@ -45,8 +47,19 @@ func (c *compactionDatabase) ExecStmt(stmt string, args ...interface{}) {
 	if c == nil {
 		return
 	}
-	if _, err := c.Statements[stmt].Exec(args...); err != nil {
-		log.Panicf("Inserting into compaction SQLite database %q: %v", c.Name, err)
+	const maxRetries = 50
+	for i := 0; i < maxRetries; i++ {
+		if _, err := c.Statements[stmt].Exec(args...); err != nil {
+			if sqliteErr, ok := err.(sqlite3.Error); ok {
+				if sqliteErr.Code == sqlite3.ErrBusy || sqliteErr.Code == sqlite3.ErrLocked {
+					glog.Warningf("Database locked (%v), retry %d of %d\n", err, i, maxRetries)
+					time.Sleep(100 * time.Millisecond)
+					continue
+				}
+			}
+			log.Panicf("Inserting into compaction SQLite database %q: %v", c.Name, err)
+		}
+		break
 	}
 }
 
