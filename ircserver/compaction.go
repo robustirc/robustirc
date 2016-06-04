@@ -82,13 +82,21 @@ func initializeCompaction(raftDir string) (*compactionDatabase, error) {
 	if _, err := db.Exec("pragma synchronous = off"); err != nil {
 		return nil, err
 	}
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
 	const nonIrcCommandStmt = `
 CREATE TABLE createSession (msgid integer not null unique primary key, session integer not null);
 CREATE TABLE deleteSession (msgid integer not null unique primary key, session integer not null);
 CREATE TABLE allMessages (msgid integer not null unique primary key, session integer not null, irccommand string null);
 CREATE INDEX allMessagesSessionIdx ON allMessages (session);
 `
-	if _, err := db.Exec(nonIrcCommandStmt); err != nil {
+	if _, err := tx.Exec(nonIrcCommandStmt); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 

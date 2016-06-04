@@ -31,16 +31,16 @@ type ircCommand struct {
 	// CompactionPrepareViews is called before each compaction run. The command
 	// is expected to create database views that only expose messages that are
 	// relevant for a compaction of all messages until |compactionEnd|.
-	CompactionPrepareViews func(*sql.DB, time.Time) error
+	CompactionPrepareViews func(*sql.Tx, time.Time) error
 
 	// CompactionDropViews is called after each compaction run. The command is
 	// expected to drop the database views created by CompactionPrepareViews.
-	CompactionDropViews func(*sql.DB) error
+	CompactionDropViews func(*sql.Tx) error
 
 	// Compact is called in each compaction pass and deletes all messages that
 	// are no longer relevant. It is expected to store the message ids of all
 	// deleted messages in a temporary table called deleteIds.
-	Compact func(*sql.DB) error
+	Compact func(*sql.Tx) error
 
 	// MinParams ensures that enough parameters were specified.
 	// irc.ERR_NEEDMOREPARAMS is returned in case less than MinParams
@@ -305,19 +305,19 @@ func prepareStmtNick(db *sql.DB) (*sql.Stmt, error) {
 	return createAndPrepare(db, createStmt, prepareStmt)
 }
 
-func prepareViewsNick(db *sql.DB, compactionEnd time.Time) error {
-	_, err := db.Exec(
+func prepareViewsNick(tx *sql.Tx, compactionEnd time.Time) error {
+	_, err := tx.Exec(
 		fmt.Sprintf("CREATE VIEW paramsNickWin AS SELECT * FROM paramsNick WHERE msgid < %d",
 			compactionEnd.UnixNano()))
 	return err
 }
 
-func dropViewsNick(db *sql.DB) error {
-	_, err := db.Exec("DROP VIEW paramsNickWin")
+func dropViewsNick(tx *sql.Tx) error {
+	_, err := tx.Exec("DROP VIEW paramsNickWin")
 	return err
 }
 
-func compactNick(db *sql.DB) error {
+func compactNick(tx *sql.Tx) error {
 	const query = `
 CREATE TABLE candidates AS
 SELECT
@@ -374,7 +374,7 @@ DROP TABLE candidates;
 DELETE FROM paramsNick WHERE msgid IN (SELECT msgid FROM deleteIds)
 `
 
-	_, err := db.Exec(query)
+	_, err := tx.Exec(query)
 	return err
 }
 
@@ -473,8 +473,8 @@ func (i *IRCServer) cmdNick(s *Session, reply *Replyctx, msg *irc.Message) {
 }
 
 // createAndPrepare is a helper function which encapsulates the common case for
-// a CompactionPrepareStmt callback: it calls db.Exec to create a new table,
-// then db.Prepare for a prepared INSERT statement on that table.
+// a CompactionPrepareStmt callback: it calls tx.Exec to create a new table,
+// then tx.Prepare for a prepared INSERT statement on that table.
 func createAndPrepare(db *sql.DB, createStmt, prepareStmt string) (*sql.Stmt, error) {
 	if _, err := db.Exec(createStmt); err != nil {
 		return nil, err
@@ -490,19 +490,19 @@ func prepareStmtUser(db *sql.DB) (*sql.Stmt, error) {
 	return createAndPrepare(db, createStmt, prepareStmt)
 }
 
-func prepareViewsUser(db *sql.DB, compactionEnd time.Time) error {
-	_, err := db.Exec(
+func prepareViewsUser(tx *sql.Tx, compactionEnd time.Time) error {
+	_, err := tx.Exec(
 		fmt.Sprintf("CREATE VIEW paramsUserWin AS SELECT * FROM paramsUser WHERE msgid < %d",
 			compactionEnd.UnixNano()))
 	return err
 }
 
-func dropViewsUser(db *sql.DB) error {
-	_, err := db.Exec("DROP VIEW paramsUserWin")
+func dropViewsUser(tx *sql.Tx) error {
+	_, err := tx.Exec("DROP VIEW paramsUserWin")
 	return err
 }
 
-func compactUser(db *sql.DB) error {
+func compactUser(tx *sql.Tx) error {
 	const query = `
 CREATE TABLE deleteIds AS
 -- Delete all but the first USER message of each session.
@@ -519,7 +519,7 @@ FROM
 DELETE FROM paramsUser WHERE msgid IN (SELECT msgid FROM deleteIds)
 	`
 
-	_, err := db.Exec(query)
+	_, err := tx.Exec(query)
 	return err
 }
 
@@ -552,19 +552,19 @@ func prepareStmtJoin(db *sql.DB) (*sql.Stmt, error) {
 	return createAndPrepare(db, createStmt, prepareStmt)
 }
 
-func prepareViewsJoin(db *sql.DB, compactionEnd time.Time) error {
-	_, err := db.Exec(
+func prepareViewsJoin(tx *sql.Tx, compactionEnd time.Time) error {
+	_, err := tx.Exec(
 		fmt.Sprintf("CREATE VIEW paramsJoinWin AS SELECT * FROM paramsJoin WHERE msgid < %d",
 			compactionEnd.UnixNano()))
 	return err
 }
 
-func dropViewsJoin(db *sql.DB) error {
-	_, err := db.Exec("DROP VIEW paramsJoinWin")
+func dropViewsJoin(tx *sql.Tx) error {
+	_, err := tx.Exec("DROP VIEW paramsJoinWin")
 	return err
 }
 
-func compactJoin(db *sql.DB) error {
+func compactJoin(tx *sql.Tx) error {
 	const query = `
 CREATE TABLE candidates AS
 SELECT
@@ -657,7 +657,7 @@ DROP TABLE candidates;
 DELETE FROM paramsJoin WHERE msgid IN (SELECT msgid FROM deleteIds)
 `
 
-	_, err := db.Exec(query)
+	_, err := tx.Exec(query)
 	return err
 }
 
@@ -798,19 +798,19 @@ func prepareStmtPart(db *sql.DB) (*sql.Stmt, error) {
 	return createAndPrepare(db, createStmt, prepareStmt)
 }
 
-func prepareViewsPart(db *sql.DB, compactionEnd time.Time) error {
-	_, err := db.Exec(
+func prepareViewsPart(tx *sql.Tx, compactionEnd time.Time) error {
+	_, err := tx.Exec(
 		fmt.Sprintf("CREATE VIEW paramsPartWin AS SELECT * FROM paramsPart WHERE msgid < %d",
 			compactionEnd.UnixNano()))
 	return err
 }
 
-func dropViewsPart(db *sql.DB) error {
-	_, err := db.Exec("DROP VIEW paramsPartWin")
+func dropViewsPart(tx *sql.Tx) error {
+	_, err := tx.Exec("DROP VIEW paramsPartWin")
 	return err
 }
 
-func compactPart(db *sql.DB) error {
+func compactPart(tx *sql.Tx) error {
 	const query = `
 CREATE TABLE deleteIds AS
 SELECT
@@ -829,7 +829,7 @@ HAVING COUNT(j.msgid) = 0;
 DELETE FROM paramsPart WHERE msgid IN (SELECT msgid FROM deleteIds)
 `
 
-	_, err := db.Exec(query)
+	_, err := tx.Exec(query)
 	return err
 }
 
@@ -879,19 +879,19 @@ func prepareStmtQuit(db *sql.DB) (*sql.Stmt, error) {
 	return createAndPrepare(db, createStmt, prepareStmt)
 }
 
-func prepareViewsQuit(db *sql.DB, compactionEnd time.Time) error {
-	_, err := db.Exec(
+func prepareViewsQuit(tx *sql.Tx, compactionEnd time.Time) error {
+	_, err := tx.Exec(
 		fmt.Sprintf("CREATE VIEW paramsQuitWin AS SELECT * FROM paramsQuit WHERE msgid < %d",
 			compactionEnd.UnixNano()))
 	return err
 }
 
-func dropViewsQuit(db *sql.DB) error {
-	_, err := db.Exec("DROP VIEW paramsQuitWin")
+func dropViewsQuit(tx *sql.Tx) error {
+	_, err := tx.Exec("DROP VIEW paramsQuitWin")
 	return err
 }
 
-func compactQuit(db *sql.DB) error {
+func compactQuit(tx *sql.Tx) error {
 	const query = `
 -- Delete all QUIT messages immediately preceded by a createSession message.
 CREATE TABLE deleteIds AS
@@ -947,7 +947,7 @@ FROM
 DELETE FROM paramsQuit WHERE msgid IN (SELECT msgid FROM deleteIds);
 `
 
-	_, err := db.Exec(query)
+	_, err := tx.Exec(query)
 	return err
 }
 
@@ -1135,15 +1135,15 @@ func prepareStmtMode(db *sql.DB) (*sql.Stmt, error) {
 	return createAndPrepare(db, createStmt, prepareStmt)
 }
 
-func prepareViewsMode(db *sql.DB, compactionEnd time.Time) error {
-	_, err := db.Exec(
+func prepareViewsMode(tx *sql.Tx, compactionEnd time.Time) error {
+	_, err := tx.Exec(
 		fmt.Sprintf("CREATE VIEW paramsModeWin AS SELECT * FROM paramsMode WHERE msgid < %d",
 			compactionEnd.UnixNano()))
 	return err
 }
 
-func dropViewsMode(db *sql.DB) error {
-	_, err := db.Exec("DROP VIEW paramsModeWin")
+func dropViewsMode(tx *sql.Tx) error {
+	_, err := tx.Exec("DROP VIEW paramsModeWin")
 	return err
 }
 
@@ -1457,19 +1457,19 @@ func prepareStmtAway(db *sql.DB) (*sql.Stmt, error) {
 	return createAndPrepare(db, createStmt, prepareStmt)
 }
 
-func prepareViewsAway(db *sql.DB, compactionEnd time.Time) error {
-	_, err := db.Exec(
+func prepareViewsAway(tx *sql.Tx, compactionEnd time.Time) error {
+	_, err := tx.Exec(
 		fmt.Sprintf("CREATE VIEW paramsAwayWin AS SELECT * FROM paramsAway WHERE msgid < %d",
 			compactionEnd.UnixNano()))
 	return err
 }
 
-func dropViewsAway(db *sql.DB) error {
-	_, err := db.Exec("DROP VIEW paramsAwayWin")
+func dropViewsAway(tx *sql.Tx) error {
+	_, err := tx.Exec("DROP VIEW paramsAwayWin")
 	return err
 }
 
-func compactAway(db *sql.DB) error {
+func compactAway(tx *sql.Tx) error {
 	const query = `
 CREATE TABLE deleteIds AS
 SELECT
@@ -1521,7 +1521,7 @@ INSERT INTO deleteIds SELECT msgid FROM paramsAwayWin WHERE trailing = '';
 DELETE FROM paramsAway WHERE msgid IN (SELECT msgid FROM deleteIds);
 `
 
-	_, err := db.Exec(query)
+	_, err := tx.Exec(query)
 	return err
 }
 
@@ -1553,19 +1553,19 @@ func prepareStmtTopic(db *sql.DB) (*sql.Stmt, error) {
 	return createAndPrepare(db, createStmt, prepareStmt)
 }
 
-func prepareViewsTopic(db *sql.DB, compactionEnd time.Time) error {
-	_, err := db.Exec(
+func prepareViewsTopic(tx *sql.Tx, compactionEnd time.Time) error {
+	_, err := tx.Exec(
 		fmt.Sprintf("CREATE VIEW paramsTopicWin AS SELECT * FROM paramsTopic WHERE msgid < %d",
 			compactionEnd.UnixNano()))
 	return err
 }
 
-func dropViewsTopic(db *sql.DB) error {
-	_, err := db.Exec("DROP VIEW paramsTopicWin")
+func dropViewsTopic(tx *sql.Tx) error {
+	_, err := tx.Exec("DROP VIEW paramsTopicWin")
 	return err
 }
 
-func compactTopic(db *sql.DB) error {
+func compactTopic(tx *sql.Tx) error {
 	const query = `
 CREATE TABLE deleteIds AS
 SELECT
@@ -1584,7 +1584,7 @@ WHERE
 DELETE FROM paramsTopic WHERE msgid IN (SELECT msgid FROM deleteIds)
 `
 
-	_, err := db.Exec(query)
+	_, err := tx.Exec(query)
 	return err
 }
 

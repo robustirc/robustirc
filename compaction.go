@@ -78,6 +78,10 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 	s.compactionEnd = compactionStart.Add(-7 * 24 * time.Hour)
 
 	db := ircServer.CompactionDatabase.DB
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
 
 	const windows = `
 CREATE VIEW allMessagesWin AS SELECT * FROM allMessages WHERE msgid < %d;
@@ -85,7 +89,7 @@ CREATE VIEW createSessionWin AS SELECT * FROM createSession WHERE msgid < %d;
 CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 `
 
-	if _, err := db.Exec(
+	if _, err := tx.Exec(
 		fmt.Sprintf(windows,
 			s.compactionEnd.UnixNano(),
 			s.compactionEnd.UnixNano(),
@@ -97,7 +101,7 @@ CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 		if cmd.CompactionPrepareViews == nil {
 			continue
 		}
-		if err := cmd.CompactionPrepareViews(db, s.compactionEnd); err != nil {
+		if err := cmd.CompactionPrepareViews(tx, s.compactionEnd); err != nil {
 			return err
 		}
 	}
@@ -167,20 +171,20 @@ CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 		log.Printf("Compaction pass %d\n", pass)
 		pass++
 		var err error
-		changed, err = s.compact(db)
+		changed, err = s.compact(tx)
 		if err != nil {
 			return err
 		}
 	}
 
 	var deleteSessions int
-	if err := db.QueryRow("SELECT COUNT(*) FROM deleteSessionWin").Scan(&deleteSessions); err != nil {
+	if err := tx.QueryRow("SELECT COUNT(*) FROM deleteSessionWin").Scan(&deleteSessions); err != nil {
 		return err
 	}
 	log.Printf("%d deleteSessions left in compaction window\n", deleteSessions)
 	numDeleteSessionsWin.Set(float64(deleteSessions))
 
-	if _, err := db.Exec(`
+	if _, err := tx.Exec(`
 		DROP VIEW allMessagesWin;
 		DROP VIEW createSessionWin;
 		DROP VIEW deleteSessionWin;
@@ -192,9 +196,13 @@ CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 		if cmd.CompactionDropViews == nil {
 			continue
 		}
-		if err := cmd.CompactionDropViews(db); err != nil {
+		if err := cmd.CompactionDropViews(tx); err != nil {
 			return err
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
 	}
 
 	if _, err := db.Exec("VACUUM"); err != nil {
@@ -246,7 +254,7 @@ func (s *robustSnapshot) Release() {
 
 // compact invokes all irc command’s |Compact| callbacks and runs the
 // compaction for createSession and deleteSession messages.
-func (s *robustSnapshot) compact(db *sql.DB) (bool, error) {
+func (s *robustSnapshot) compact(tx *sql.Tx) (bool, error) {
 	const nonModifying = `
 CREATE TABLE deleteIds AS
 SELECT msgid FROM allMessagesWin WHERE irccommand = 'TOPIC' AND msgid NOT IN (SELECT msgid FROM paramsTopicWin)
@@ -259,25 +267,25 @@ UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'MODE' AND msgid NOT I
 UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'AWAY' AND msgid NOT IN (SELECT msgid FROM paramsAwayWin);
 	`
 	started := time.Now()
-	if _, err := db.Exec(nonModifying); err != nil {
+	if _, err := tx.Exec(nonModifying); err != nil {
 		return false, err
 	}
 
-	changed, err := s.markResultForCompaction(db, "non-modifying", started)
+	changed, err := s.markResultForCompaction(tx, "non-modifying", started)
 	if err != nil {
 		return changed, err
 	}
 
-	if _, err := db.Exec("CREATE TABLE validCommands (command text not null)"); err != nil {
+	if _, err := tx.Exec("CREATE TABLE validCommands (command text not null)"); err != nil {
 		return changed, err
 	}
-	validCommandInsert, err := db.Prepare("INSERT INTO validCommands (command) VALUES (?)")
+	validCommandInsert, err := tx.Prepare("INSERT INTO validCommands (command) VALUES (?)")
 	if err != nil {
 		return changed, err
 	}
 	defer validCommandInsert.Close()
 
-	immediatelyCompactable, err := db.Prepare("CREATE TABLE deleteIds AS SELECT msgid FROM allMessagesWin WHERE irccommand = ?")
+	immediatelyCompactable, err := tx.Prepare("CREATE TABLE deleteIds AS SELECT msgid FROM allMessagesWin WHERE irccommand = ?")
 	if err != nil {
 		return changed, err
 	}
@@ -289,7 +297,7 @@ UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'AWAY' AND msgid NOT I
 		}
 		started := time.Now()
 		if cmd.Compact != nil {
-			if err := cmd.Compact(db); err != nil {
+			if err := cmd.Compact(tx); err != nil {
 				return changed, err
 			}
 		} else if cmd.ImmediatelyCompactable {
@@ -299,7 +307,7 @@ UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'AWAY' AND msgid NOT I
 		} else {
 			continue
 		}
-		c, err := s.markResultForCompaction(db, "command "+n, started)
+		c, err := s.markResultForCompaction(tx, "command "+n, started)
 		if err != nil {
 			return changed, err
 		}
@@ -311,12 +319,12 @@ UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'AWAY' AND msgid NOT I
 	DROP TABLE validCommands;
 	`
 	started = time.Now()
-	_, err = db.Exec(invalidCommands)
+	_, err = tx.Exec(invalidCommands)
 	if err != nil {
 		return changed, err
 	}
 
-	c, err := s.markResultForCompaction(db, "invalid commands", started)
+	c, err := s.markResultForCompaction(tx, "invalid commands", started)
 	if err != nil {
 		return changed, err
 	}
@@ -375,12 +383,12 @@ DELETE FROM createSession WHERE msgid IN (SELECT msgid FROM deleteIds);
 `
 
 	started = time.Now()
-	_, err = db.Exec(stmt)
+	_, err = tx.Exec(stmt)
 	if err != nil {
 		return changed, err
 	}
 
-	c, err = s.markResultForCompaction(db, "deleteSession, createSession", started)
+	c, err = s.markResultForCompaction(tx, "deleteSession, createSession", started)
 	if err != nil {
 		return changed, err
 	}
@@ -390,9 +398,9 @@ DELETE FROM createSession WHERE msgid IN (SELECT msgid FROM deleteIds);
 // markResultForCompaction updates |s.del| with all messages whose ids are in
 // the deleteIds table. It then removes these messages from the allMessages
 // table and drops the deleteIds table.
-func (s *robustSnapshot) markResultForCompaction(db *sql.DB, label string, started time.Time) (bool, error) {
+func (s *robustSnapshot) markResultForCompaction(tx *sql.Tx, label string, started time.Time) (bool, error) {
 	changed := false
-	rows, err := db.Query("SELECT msgid FROM deleteIds")
+	rows, err := tx.Query("SELECT msgid FROM deleteIds")
 	if err != nil {
 		return changed, err
 	}
@@ -416,10 +424,10 @@ func (s *robustSnapshot) markResultForCompaction(db *sql.DB, label string, start
 	}
 	log.Printf("%d rows deleted in %v (step %q)\n", deleted, time.Since(started), label)
 
-	if _, err := db.Exec("DELETE FROM allMessages WHERE msgid IN (SELECT msgid FROM deleteIds)"); err != nil {
+	if _, err := tx.Exec("DELETE FROM allMessages WHERE msgid IN (SELECT msgid FROM deleteIds)"); err != nil {
 		return changed, err
 	}
 
-	_, err = db.Exec("DROP TABLE deleteIds")
+	_, err = tx.Exec("DROP TABLE deleteIds")
 	return changed, nil
 }
