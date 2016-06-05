@@ -353,6 +353,8 @@ FROM
                  (a.irccommand != 'NICK' AND
                   a.irccommand != 'USER' AND
                   a.irccommand != 'PASS' AND
+                  a.irccommand != 'SERVER' AND
+                  a.irccommand != 'server_NICK' AND
                   a.irccommand != 'QUIT')) AND
                 a.msgid < d.msgid
             )
