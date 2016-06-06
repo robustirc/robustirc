@@ -66,7 +66,11 @@ func init() {
 	Commands["server_SVSPART"] = &ircCommand{Func: (*IRCServer).cmdServerSvspart, MinParams: 2}
 	Commands["server_KILL"] = &ircCommand{Func: (*IRCServer).cmdServerKill, MinParams: 1}
 	Commands["server_KICK"] = &ircCommand{Func: (*IRCServer).cmdServerKick, MinParams: 2}
-	Commands["server_INVITE"] = &ircCommand{Func: (*IRCServer).cmdServerInvite, MinParams: 2}
+	Commands["server_INVITE"] = &ircCommand{
+		Func:      (*IRCServer).cmdServerInvite,
+		MinParams: 2,
+		// Compaction is handled by Commands["INVITE"]
+	}
 }
 
 func servicesPrefix(prefix *irc.Prefix) *irc.Prefix {
@@ -1073,6 +1077,8 @@ func (i *IRCServer) cmdServerInvite(s *Session, reply *Replyctx, msg *irc.Messag
 	}
 
 	session.invitedTo[ChanToLower(channelname)] = true
+	i.CompactionDatabase.ExecStmt("INVITE", reply.msgid, s.Id.Id, session.Id.Id, channelname)
+	i.CompactionDatabase.ExecStmt("_all_target", session.Id.Id, reply.msgid)
 	i.sendServices(reply, &irc.Message{
 		Prefix:  i.ServerPrefix,
 		Command: irc.RPL_INVITING,
