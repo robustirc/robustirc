@@ -643,7 +643,8 @@ func (i *IRCServer) cmdServerJoin(s *Session, reply *Replyctx, msg *irc.Message)
 		}
 
 		nick := NickToLower(msg.Prefix.Name)
-		if _, ok := i.nicks[nick]; !ok {
+		session, ok := i.nicks[nick]
+		if !ok {
 			i.sendServices(reply, &irc.Message{
 				Prefix:   i.ServerPrefix,
 				Command:  irc.ERR_NOSUCHNICK,
@@ -668,9 +669,9 @@ func (i *IRCServer) cmdServerJoin(s *Session, reply *Replyctx, msg *irc.Message)
 		if !ok {
 			c.nicks[nick][chanop] = true
 		}
-		s.Channels[ChanToLower(channelname)] = true
+		session.Channels[ChanToLower(channelname)] = true
 
-		i.sendCommonChannels(s, reply, &irc.Message{
+		i.sendCommonChannels(session, reply, &irc.Message{
 			Prefix:   servicesPrefix(msg.Prefix),
 			Command:  irc.JOIN,
 			Trailing: channelname,
@@ -701,8 +702,9 @@ func (i *IRCServer) cmdServerPart(s *Session, reply *Replyctx, msg *irc.Message)
 			})
 			continue
 		}
+		session, _ := i.nicks[NickToLower(msg.Prefix.Name)]
 
-		i.sendCommonChannels(s, reply, &irc.Message{
+		i.sendCommonChannels(session, reply, &irc.Message{
 			Prefix:  servicesPrefix(msg.Prefix),
 			Command: irc.PART,
 			Params:  []string{channelname},
@@ -711,7 +713,7 @@ func (i *IRCServer) cmdServerPart(s *Session, reply *Replyctx, msg *irc.Message)
 		// TODO(secure): reduce code duplication with cmdPart()
 		delete(c.nicks, NickToLower(msg.Prefix.Name))
 		i.maybeDeleteChannel(c)
-		delete(s.Channels, ChanToLower(channelname))
+		delete(session.Channels, ChanToLower(channelname))
 	}
 }
 
