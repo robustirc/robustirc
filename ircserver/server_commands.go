@@ -1,6 +1,7 @@
 package ircserver
 
 import (
+	"database/sql"
 	"fmt"
 	"hash/fnv"
 	"sort"
@@ -33,8 +34,22 @@ func init() {
 	Commands["server_QUIT"] = &ircCommand{Func: (*IRCServer).cmdServerQuit}
 	Commands["server_NICK"] = &ircCommand{Func: (*IRCServer).cmdServerNick}
 	Commands["server_MODE"] = &ircCommand{Func: (*IRCServer).cmdServerMode}
-	Commands["server_JOIN"] = &ircCommand{Func: (*IRCServer).cmdServerJoin}
-	Commands["server_PART"] = &ircCommand{Func: (*IRCServer).cmdServerPart}
+	Commands["server_JOIN"] = &ircCommand{
+		Func:                   (*IRCServer).cmdServerJoin,
+		CompactionCreate:       createServerJoin,
+		CompactionPrepareStmt:  prepareStmtServerJoin,
+		CompactionPrepareViews: prepareViewsServerJoin,
+		CompactionDropViews:    dropViewsServerJoin,
+		Compact:                compactServerJoin,
+	}
+	Commands["server_PART"] = &ircCommand{
+		CompactionCreate:       createServerPart,
+		CompactionPrepareStmt:  prepareStmtServerPart,
+		CompactionPrepareViews: prepareViewsServerPart,
+		CompactionDropViews:    dropViewsServerPart,
+		Compact:                compactServerPart,
+		Func:                   (*IRCServer).cmdServerPart,
+	}
 	Commands["server_PRIVMSG"] = &ircCommand{
 		Func: (*IRCServer).cmdServerPrivmsg,
 		ImmediatelyCompactable: true,
@@ -628,6 +643,136 @@ func (i *IRCServer) cmdServerSvsnick(s *Session, reply *Replyctx, msg *irc.Messa
 			})))
 }
 
+func createServerJoin(db *sql.DB) error {
+	// We cannot make msgid unique because one JOIN message may contain
+	// multiple channels.
+	const createStmt = `
+		CREATE TABLE paramsServerJoin (msgid integer not null, session integer not null, subsession integer not null, channel text not null collate nocase);
+		CREATE INDEX paramsServerJoinMsgid ON paramsServerJoin (msgid);
+		CREATE INDEX paramsServerJoinSession ON paramsServerJoin (session, subsession);
+		`
+	_, err := db.Exec(createStmt)
+	return err
+}
+
+func prepareStmtServerJoin(p Preparer) (*sql.Stmt, error) {
+	return p.Prepare("INSERT INTO paramsServerJoin (msgid, session, subsession, channel) VALUES (?, ?, ?, ?)")
+}
+
+func prepareViewsServerJoin(tx *sql.Tx, compactionEnd time.Time) error {
+	_, err := tx.Exec(
+		fmt.Sprintf("CREATE VIEW paramsServerJoinWin AS SELECT * FROM paramsServerJoin WHERE msgid < %d",
+			compactionEnd.UnixNano()))
+	return err
+}
+
+func dropViewsServerJoin(tx *sql.Tx) error {
+	_, err := tx.Exec("DROP VIEW paramsServerJoinWin")
+	return err
+}
+
+func compactServerJoin(tx *sql.Tx) error {
+	const query = `
+CREATE TABLE candidates AS
+SELECT
+    j.msgid AS join_msgid,
+    j.session AS session,
+	j.subsession AS subsession,
+    j.channel AS channel,
+    p.msgid AS part_msgid
+FROM
+    paramsServerJoinWin AS j
+    LEFT JOIN paramsServerPartWin AS p
+    ON (
+        j.session = p.session AND
+		j.subsession = p.subsession AND
+        j.msgid < p.msgid AND
+        j.channel = p.channel
+    )
+WHERE
+    p.msgid NOT NULL;
+
+-- Delete all (sequences of) JOIN messages which are directly followed by a deleteSession message.
+INSERT INTO candidates
+SELECT
+   j.msgid AS join_msgid,
+   j.session AS session,
+   j.subsession AS subsession,
+   j.channel AS channel,
+   d.msgid AS part_msgid
+FROM
+   (
+		SELECT
+			js.msgid AS msgid,
+			js.session AS session,
+			js.subsession AS subsession,
+			js.channel AS channel,
+			MIN(a.msgid) AS next_msgid
+		FROM
+			paramsServerJoinWin AS js
+			INNER JOIN allMessagesWin AS a
+			ON (
+				js.session = a.session AND
+				(a.irccommand IS NULL OR
+				 (a.irccommand != 'JOIN' AND
+				  a.irccommand != 'PART')) AND
+				a.msgid > js.msgid
+			)
+		GROUP BY js.msgid, js.channel
+	) AS j
+	INNER JOIN deleteSessionWin AS d
+	ON (
+		j.session = d.session AND
+		j.next_msgid = d.msgid
+	);
+
+-- TODO: re-add once server_TOPIC is compacted
+--DELETE FROM
+--    candidates
+--WHERE
+--    join_msgid IN (
+--        SELECT
+--            join_msgid
+--        FROM
+--            candidates AS c
+--            INNER join paramsServerTopicWin AS t
+--            ON (
+--                t.msgid > c.join_msgid AND
+--                t.msgid < c.part_msgid AND
+--                t.channel = c.channel AND
+--                t.session = c.session
+--            )
+--    );
+
+-- Retain JOIN messages for multiple channels of which not all have been left.
+DELETE FROM
+    candidates
+WHERE
+    join_msgid IN (
+        SELECT
+            msgid
+        FROM
+            paramsServerJoinWin AS j
+            LEFT JOIN candidates AS c
+            ON (
+                j.msgid = c.join_msgid AND
+                j.channel = c.channel
+            )
+        WHERE
+            c.join_msgid is null
+    );
+
+-- sqlite3 cannot drop columns in ALTER TABLE statements, so we need to copy.
+CREATE TABLE deleteIds AS SELECT join_msgid AS msgid FROM candidates;
+DROP TABLE candidates;
+
+DELETE FROM paramsServerJoin WHERE msgid IN (SELECT msgid FROM deleteIds)
+`
+
+	_, err := tx.Exec(query)
+	return err
+}
+
 func (i *IRCServer) cmdServerJoin(s *Session, reply *Replyctx, msg *irc.Message) {
 	// e.g. “:ChanServ JOIN #noname-ev” (before enforcing AKICK).
 
@@ -676,7 +821,61 @@ func (i *IRCServer) cmdServerJoin(s *Session, reply *Replyctx, msg *irc.Message)
 			Command:  irc.JOIN,
 			Trailing: channelname,
 		})
+
+		i.CompactionDatabase.ExecStmt("server_JOIN", reply.msgid, session.Id.Id, session.Id.Reply, channelname)
 	}
+}
+
+func createServerPart(db *sql.DB) error {
+	// We cannot make msgid unique because one JOIN message may contain
+	// multiple channels.
+	const createStmt = `
+		CREATE TABLE paramsServerPart (msgid integer not null, session integer not null, subsession integer not null, channel text not null collate nocase);
+		CREATE INDEX paramsServerPartMsgid ON paramsServerPart (msgid);
+		CREATE INDEX paramsServerPartSession ON paramsServerPart (session, subsession);
+		`
+	_, err := db.Exec(createStmt)
+	return err
+}
+
+func prepareStmtServerPart(p Preparer) (*sql.Stmt, error) {
+	return p.Prepare("INSERT INTO paramsServerPart (msgid, session, subsession, channel) VALUES (?, ?, ?, ?)")
+}
+
+func prepareViewsServerPart(tx *sql.Tx, compactionEnd time.Time) error {
+	_, err := tx.Exec(
+		fmt.Sprintf("CREATE VIEW paramsServerPartWin AS SELECT * FROM paramsServerPart WHERE msgid < %d",
+			compactionEnd.UnixNano()))
+	return err
+}
+
+func dropViewsServerPart(tx *sql.Tx) error {
+	_, err := tx.Exec("DROP VIEW paramsServerPartWin")
+	return err
+}
+
+func compactServerPart(tx *sql.Tx) error {
+	const query = `
+CREATE TABLE deleteIds AS
+SELECT
+    p.msgid AS msgid
+FROM
+    paramsServerPartWin AS p
+    LEFT JOIN paramsServerJoinWin AS j
+    ON (
+        p.session = j.session AND
+        p.subsession = j.subsession AND
+        p.msgid > j.msgid AND
+        p.channel = j.channel
+    )
+GROUP BY p.msgid
+HAVING COUNT(j.msgid) = 0;
+
+DELETE FROM paramsServerPart WHERE msgid IN (SELECT msgid FROM deleteIds)
+`
+
+	_, err := tx.Exec(query)
+	return err
 }
 
 func (i *IRCServer) cmdServerPart(s *Session, reply *Replyctx, msg *irc.Message) {
@@ -714,6 +913,8 @@ func (i *IRCServer) cmdServerPart(s *Session, reply *Replyctx, msg *irc.Message)
 		delete(c.nicks, NickToLower(msg.Prefix.Name))
 		i.maybeDeleteChannel(c)
 		delete(session.Channels, ChanToLower(channelname))
+
+		i.CompactionDatabase.ExecStmt("server_PART", reply.msgid, session.Id.Id, session.Id.Reply, channelname)
 	}
 }
 
