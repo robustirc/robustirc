@@ -551,16 +551,16 @@ func createJoin(db *sql.DB) error {
 	// We cannot make msgid unique because one JOIN message may contain
 	// multiple channels.
 	const createStmt = `
-		CREATE TABLE paramsJoin (msgid integer not null, session integer not null, channel text not null collate nocase);
+		CREATE TABLE paramsJoin (msgid integer not null, session integer not null, target_session integer null, channel text not null collate nocase);
 		CREATE INDEX paramsJoinMsgid ON paramsJoin (msgid);
-		CREATE INDEX paramsJoinSession ON paramsJoin (session);
+		CREATE INDEX paramsJoinSession ON paramsJoin (session, target_session);
 		`
 	_, err := db.Exec(createStmt)
 	return err
 }
 
 func prepareStmtJoin(p Preparer) (*sql.Stmt, error) {
-	return p.Prepare("INSERT INTO paramsJoin (msgid, session, channel) VALUES (?, ?, ?)")
+	return p.Prepare("INSERT INTO paramsJoin (msgid, session, target_session, channel) VALUES (?, ?, ?, ?)")
 }
 
 func prepareViewsJoin(tx *sql.Tx, compactionEnd time.Time) error {
@@ -581,13 +581,16 @@ CREATE TABLE candidates AS
 SELECT
     j.msgid AS join_msgid,
     j.session AS session,
+	j.target_session AS target_session,
     j.channel AS channel,
     p.msgid AS part_msgid
 FROM
     paramsJoinWin AS j
     LEFT JOIN paramsPartWin AS p
     ON (
-        j.session = p.session AND
+        (j.session = p.session OR
+		 j.target_session = p.session OR
+		 j.target_session = p.target_session) AND
         j.msgid < p.msgid AND
         j.channel = p.channel
     )
@@ -599,6 +602,7 @@ INSERT INTO candidates
 SELECT
    j.msgid AS join_msgid,
    j.session AS session,
+   j.target_session AS target_session,
    j.channel AS channel,
    d.msgid AS part_msgid
 FROM
@@ -606,13 +610,15 @@ FROM
 		SELECT
 			js.msgid AS msgid,
 			js.session AS session,
+			js.target_session AS target_session,
 			js.channel AS channel,
 			MIN(a.msgid) AS next_msgid
 		FROM
 			paramsJoinWin AS js
 			INNER JOIN allMessagesWin AS a
 			ON (
-				js.session = a.session AND
+				(js.session = a.session OR
+				 js.target_session = a.session) AND
 				(a.irccommand IS NULL OR
 				 (a.irccommand != 'JOIN' AND
 				  a.irccommand != 'PART')) AND
@@ -622,7 +628,8 @@ FROM
 	) AS j
 	INNER JOIN deleteSessionWin AS d
 	ON (
-		j.session = d.session AND
+		(j.session = d.session OR
+		 j.target_session = d.session) AND
 		j.next_msgid = d.msgid
 	);
 
@@ -639,7 +646,8 @@ WHERE
                 t.msgid > c.join_msgid AND
                 t.msgid < c.part_msgid AND
                 t.channel = c.channel AND
-                t.session = c.session
+                (t.session = c.session OR
+				 t.session = c.target_session)
             )
     );
 
@@ -729,7 +737,7 @@ func (i *IRCServer) cmdJoin(s *Session, reply *Replyctx, msg *irc.Message) {
 		i.cmdTopic(s, reply, &irc.Message{Command: irc.TOPIC, Params: []string{channelname}})
 		i.cmdNames(s, reply, &irc.Message{Command: irc.NAMES, Params: []string{channelname}})
 
-		i.CompactionDatabase.ExecStmt("JOIN", reply.msgid, s.Id.Id, channelname)
+		i.CompactionDatabase.ExecStmt("JOIN", reply.msgid, s.Id.Id, sql.NullInt64{Valid: false}, channelname)
 	}
 }
 
@@ -799,7 +807,7 @@ func createPart(db *sql.DB) error {
 	// We cannot make msgid unique because one JOIN message may contain
 	// multiple channels.
 	const createStmt = `
-		CREATE TABLE paramsPart (msgid integer not null, session integer not null, channel text not null collate nocase);
+		CREATE TABLE paramsPart (msgid integer not null, session integer not null, target_session integer null, channel text not null collate nocase);
 		CREATE INDEX paramsPartMsgid ON paramsPart (msgid);
 		CREATE INDEX paramsPartSession ON paramsPart (session);
 		`
@@ -808,7 +816,7 @@ func createPart(db *sql.DB) error {
 }
 
 func prepareStmtPart(p Preparer) (*sql.Stmt, error) {
-	return p.Prepare("INSERT INTO paramsPart (msgid, session, channel) VALUES (?, ?, ?)")
+	return p.Prepare("INSERT INTO paramsPart (msgid, session, target_session, channel) VALUES (?, ?, ?, ?)")
 }
 
 func prepareViewsPart(tx *sql.Tx, compactionEnd time.Time) error {
@@ -832,7 +840,9 @@ FROM
     paramsPartWin AS p
     LEFT JOIN paramsJoinWin AS j
     ON (
-        p.session = j.session AND
+        (p.session = j.session OR
+		 p.session = j.target_session OR
+		 p.target_session = j.target_session) AND
         p.msgid > j.msgid AND
         p.channel = j.channel
     )
@@ -880,7 +890,7 @@ func (i *IRCServer) cmdPart(s *Session, reply *Replyctx, msg *irc.Message) {
 		i.maybeDeleteChannel(c)
 		delete(s.Channels, ChanToLower(channelname))
 
-		i.CompactionDatabase.ExecStmt("PART", reply.msgid, s.Id.Id, channelname)
+		i.CompactionDatabase.ExecStmt("PART", reply.msgid, s.Id.Id, sql.NullInt64{Valid: false}, channelname)
 	}
 }
 

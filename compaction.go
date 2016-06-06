@@ -348,7 +348,8 @@ FROM
              UNION SELECT msgid, session FROM paramsQuitWin) AS d
             INNER JOIN allMessagesWin AS a
             ON (
-                d.session = a.session AND
+                (d.session = a.session OR
+				 d.session = a.target_session) AND
                 (a.irccommand IS NULL OR
                  (a.irccommand != 'NICK' AND
                   a.irccommand != 'USER' AND

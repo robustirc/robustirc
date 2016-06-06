@@ -62,8 +62,16 @@ func init() {
 	Commands["server_SVSNICK"] = &ircCommand{Func: (*IRCServer).cmdServerSvsnick, MinParams: 2}
 	Commands["server_SVSMODE"] = &ircCommand{Func: (*IRCServer).cmdServerSvsmode, MinParams: 2}
 	Commands["server_SVSHOLD"] = &ircCommand{Func: (*IRCServer).cmdServerSvshold, MinParams: 1}
-	Commands["server_SVSJOIN"] = &ircCommand{Func: (*IRCServer).cmdServerSvsjoin, MinParams: 2}
-	Commands["server_SVSPART"] = &ircCommand{Func: (*IRCServer).cmdServerSvspart, MinParams: 2}
+	Commands["server_SVSJOIN"] = &ircCommand{
+		Func:      (*IRCServer).cmdServerSvsjoin,
+		MinParams: 2,
+		// Compaction is handled by Commands["JOIN"]
+	}
+	Commands["server_SVSPART"] = &ircCommand{
+		Func:      (*IRCServer).cmdServerSvspart,
+		MinParams: 2,
+		// Compaction is handled by Commands["PART"]
+	}
 	Commands["server_KILL"] = &ircCommand{Func: (*IRCServer).cmdServerKill, MinParams: 1}
 	Commands["server_KICK"] = &ircCommand{Func: (*IRCServer).cmdServerKick, MinParams: 2}
 	Commands["server_INVITE"] = &ircCommand{
@@ -492,6 +500,9 @@ func (i *IRCServer) cmdServerSvsjoin(s *Session, reply *Replyctx, msg *irc.Messa
 	// Integrate the topic response by simulating a TOPIC command.
 	i.cmdTopic(session, reply, &irc.Message{Command: irc.TOPIC, Params: []string{channelname}})
 	i.cmdNames(session, reply, &irc.Message{Command: irc.NAMES, Params: []string{channelname}})
+
+	i.CompactionDatabase.ExecStmt("JOIN", reply.msgid, s.Id.Id, session.Id.Id, channelname)
+	i.CompactionDatabase.ExecStmt("_all_target", session.Id.Id, reply.msgid)
 }
 
 func (i *IRCServer) cmdServerSvspart(s *Session, reply *Replyctx, msg *irc.Message) {
@@ -540,6 +551,8 @@ func (i *IRCServer) cmdServerSvspart(s *Session, reply *Replyctx, msg *irc.Messa
 	delete(c.nicks, nick)
 	i.maybeDeleteChannel(c)
 	delete(session.Channels, ChanToLower(channelname))
+
+	i.CompactionDatabase.ExecStmt("PART", reply.msgid, s.Id.Id, session.Id.Id, channelname)
 }
 
 func (i *IRCServer) cmdServerSvsmode(s *Session, reply *Replyctx, msg *irc.Message) {
