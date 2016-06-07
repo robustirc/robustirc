@@ -92,8 +92,13 @@ func init() {
 		Compact:                compactPart,
 	}
 	Commands["KICK"] = &ircCommand{
-		Func:      (*IRCServer).cmdKick,
-		MinParams: 2,
+		Func:                   (*IRCServer).cmdKick,
+		MinParams:              2,
+		CompactionCreate:       createKick,
+		CompactionPrepareStmt:  prepareStmtKick,
+		CompactionPrepareViews: prepareViewsKick,
+		CompactionDropViews:    dropViewsKick,
+		Compact:                compactKick,
 	}
 	Commands["QUIT"] = &ircCommand{
 		Func:                   (*IRCServer).cmdQuit,
@@ -583,7 +588,8 @@ SELECT
     j.session AS session,
 	j.target_session AS target_session,
     j.channel AS channel,
-    p.msgid AS part_msgid
+    p.msgid AS part_msgid,
+	k.msgid AS kick_msgid
 FROM
     paramsJoinWin AS j
     LEFT JOIN paramsPartWin AS p
@@ -594,8 +600,15 @@ FROM
         j.msgid < p.msgid AND
         j.channel = p.channel
     )
+	LEFT JOIN paramsKickWin AS k
+	ON (
+		j.session = k.target_session AND
+		j.msgid < k.msgid AND
+		j.channel = k.channel
+	)
 WHERE
-    p.msgid NOT NULL;
+    p.msgid NOT NULL OR
+	k.msgid NOT NULL;
 
 -- Delete all (sequences of) JOIN messages which are directly followed by a deleteSession message.
 INSERT INTO candidates
@@ -604,7 +617,8 @@ SELECT
    j.session AS session,
    j.target_session AS target_session,
    j.channel AS channel,
-   d.msgid AS part_msgid
+   d.msgid AS part_msgid,
+   NULL AS kick_msgid
 FROM
    (
 		SELECT
@@ -644,10 +658,31 @@ WHERE
             INNER join paramsTopicWin AS t
             ON (
                 t.msgid > c.join_msgid AND
-                t.msgid < c.part_msgid AND
+                (t.msgid < c.part_msgid OR
+				 t.msgid < c.kick_msgid) AND
                 t.channel = c.channel AND
                 (t.session = c.session OR
 				 t.session = c.target_session)
+            )
+    );
+
+DELETE FROM
+    candidates
+WHERE
+    join_msgid IN (
+        SELECT
+            join_msgid
+        FROM
+            candidates AS c
+            INNER join paramsModeWin AS m
+            ON (
+                m.msgid > c.join_msgid AND
+                (m.msgid < c.part_msgid OR
+				 m.msgid < c.kick_msgid) AND
+                m.channel = c.channel AND
+				m.mode = '+o' AND
+                (m.session = c.session OR
+				 m.session = c.target_session)
             )
     );
 
@@ -741,6 +776,53 @@ func (i *IRCServer) cmdJoin(s *Session, reply *Replyctx, msg *irc.Message) {
 	}
 }
 
+func createKick(db *sql.DB) error {
+	const createStmt = `
+		CREATE TABLE paramsKick (msgid integer not null unique primary key, session integer not null, target_session integer null, channel text not null collate nocase);
+		`
+	_, err := db.Exec(createStmt)
+	return err
+}
+
+func prepareStmtKick(p Preparer) (*sql.Stmt, error) {
+	return p.Prepare("INSERT INTO paramsKick (msgid, session, target_session, channel) VALUES (?, ?, ?, ?)")
+}
+
+func prepareViewsKick(tx *sql.Tx, compactionEnd time.Time) error {
+	_, err := tx.Exec(
+		fmt.Sprintf("CREATE VIEW paramsKickWin AS SELECT * FROM paramsKick WHERE msgid < %d",
+			compactionEnd.UnixNano()))
+	return err
+}
+
+func dropViewsKick(tx *sql.Tx) error {
+	_, err := tx.Exec("DROP VIEW paramsKickWin")
+	return err
+}
+
+func compactKick(tx *sql.Tx) error {
+	const query = `
+CREATE TABLE deleteIds AS
+SELECT
+    k.msgid AS msgid
+FROM
+    paramsKickWin AS k
+    LEFT JOIN paramsJoinWin AS j
+    ON (
+		k.target_session = j.session AND
+        k.msgid > j.msgid AND
+        k.channel = j.channel
+    )
+GROUP BY k.msgid
+HAVING COUNT(j.msgid) = 0;
+
+DELETE FROM paramsKick WHERE msgid IN (SELECT msgid FROM deleteIds)
+`
+
+	_, err := tx.Exec(query)
+	return err
+}
+
 func (i *IRCServer) cmdKick(s *Session, reply *Replyctx, msg *irc.Message) {
 	channelname := msg.Params[0]
 	c, ok := i.channels[ChanToLower(channelname)]
@@ -801,6 +883,7 @@ func (i *IRCServer) cmdKick(s *Session, reply *Replyctx, msg *irc.Message) {
 	delete(c.nicks, NickToLower(msg.Params[1]))
 	i.maybeDeleteChannel(c)
 	delete(session.Channels, ChanToLower(channelname))
+	i.CompactionDatabase.ExecStmt("KICK", reply.msgid, s.Id.Id, session.Id.Id, channelname)
 }
 
 func createPart(db *sql.DB) error {
