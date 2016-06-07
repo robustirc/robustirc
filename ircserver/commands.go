@@ -118,7 +118,7 @@ func init() {
 		CompactionPrepareStmt:  prepareStmtMode,
 		CompactionPrepareViews: prepareViewsMode,
 		CompactionDropViews:    dropViewsMode,
-		// TODO: relevantMode, start with removing read-only MODE, e.g. MODE #chaos-hd or MODE #chaos-hd b or MODE #chaos-hd +b
+		Compact:                compactMode,
 	}
 	Commands["WHO"] = &ircCommand{
 		Func: (*IRCServer).cmdWho,
@@ -1169,6 +1169,61 @@ func prepareViewsMode(tx *sql.Tx, compactionEnd time.Time) error {
 
 func dropViewsMode(tx *sql.Tx) error {
 	_, err := tx.Exec("DROP VIEW paramsModeWin")
+	return err
+}
+
+func compactMode(tx *sql.Tx) error {
+	const query = `
+CREATE TABLE candidates AS
+SELECT
+    m.msgid AS add_msgid,
+    m.session AS session,
+    m.channel AS channel,
+	m.mode AS mode,
+    n.msgid AS remove_msgid
+FROM
+    paramsModeWin AS m
+    LEFT JOIN paramsModeWin AS n
+    ON (
+        m.msgid < n.msgid AND
+        m.channel = n.channel AND
+		SUBSTR(m.mode, 2) = SUBSTR(n.mode, 2) AND
+		SUBSTR(m.mode, 1, 1) = '+' AND
+		SUBSTR(n.mode, 1, 1) = '-'
+    )
+WHERE
+    n.msgid NOT NULL;
+
+-- Retain MODE messages with multiple modes of which not all have been
+-- superseded.
+DELETE FROM
+    candidates
+WHERE
+    add_msgid IN (
+        SELECT
+            msgid
+        FROM
+            paramsModeWin AS m
+            LEFT JOIN candidates AS c
+            ON (
+                m.msgid = c.add_msgid AND
+                m.channel = c.channel AND
+				m.mode = c.mode
+            )
+        WHERE
+            c.add_msgid is null
+    );
+
+-- sqlite3 cannot drop columns in ALTER TABLE statements, so we need to copy.
+CREATE TABLE deleteIds AS
+SELECT add_msgid AS msgid FROM candidates
+UNION SELECT remove_msgid AS msgid FROM candidates;
+DROP TABLE candidates;
+
+DELETE FROM paramsMode WHERE msgid IN (SELECT msgid FROM deleteIds)
+`
+
+	_, err := tx.Exec(query)
 	return err
 }
 

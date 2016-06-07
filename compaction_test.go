@@ -1123,6 +1123,115 @@ func TestCompactServerKeepSvsjoin(t *testing.T) {
 	mustMatchStrings(t, input, output, want)
 }
 
+func TestCompactModeCancellation(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+	ircServer.Config.Services = append(ircServer.Config.Services, config.Service{
+		Password: "mypass",
+	})
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test"}`,
+		`{"Id": {"Id": 5}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 5}, "Type": 2, "Data": "NICK mero"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 5}, "Type": 2, "Data": "USER blah 0 * :Axel Wagner"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 5}, "Type": 2, "Data": "JOIN #test"}`,
+		`{"Id": {"Id": 9}, "Session": {"Id": 1}, "Type": 2, "Data": "MODE #test +o mero"}`,
+		`{"Id": {"Id": 10}, "Session": {"Id": 1}, "Type": 2, "Data": "MODE #test +i"}`,
+		`{"Id": {"Id": 11}, "Session": {"Id": 5}, "Type": 2, "Data": "MODE #test -i"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test"}`,
+		`{"Id": {"Id": 5}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 5}, "Type": 2, "Data": "NICK mero"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 5}, "Type": 2, "Data": "USER blah 0 * :Axel Wagner"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 5}, "Type": 2, "Data": "JOIN #test"}`,
+		`{"Id": {"Id": 9}, "Session": {"Id": 1}, "Type": 2, "Data": "MODE #test +o mero"}`,
+	}
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
+// TODO(secure): enable this test once channel keys are implemented
+/*
+func TestCompactModeObsolete(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+	ircServer.Config.Services = append(ircServer.Config.Services, config.Service{
+		Password: "mypass",
+	})
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "MODE #test +k foo"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "MODE #test +k bar"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "MODE #test +k bar"}`,
+	}
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+*/
+
+func TestKeepPartialMode(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+	ircServer.Config.Services = append(ircServer.Config.Services, config.Service{
+		Password: "mypass",
+	})
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "MODE #test +int"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "MODE #test -i"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "MODE #test +int"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "MODE #test -i"}`,
+	}
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
+func TestCompactPartialMode(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+	ircServer.Config.Services = append(ircServer.Config.Services, config.Service{
+		Password: "mypass",
+	})
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "MODE #test +int"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "MODE #test -i"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 1}, "Type": 2, "Data": "MODE #test -nt"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test"}`,
+	}
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
 func TestCompactAway(t *testing.T) {
 	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 	input := []string{
