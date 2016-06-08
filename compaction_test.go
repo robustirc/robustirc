@@ -1199,6 +1199,35 @@ func TestCompactServerKill(t *testing.T) {
 	mustMatchStrings(t, input, output, want)
 }
 
+func TestCompactServerKick(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+	ircServer.Config.Services = append(ircServer.Config.Services, config.Service{
+		Password: "mypass",
+	})
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net PASS :services=mypass"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net SERVER services.robustirc.net 0 :Services for IRC Networks"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net NICK ChanServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Nick Server"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test"}`,
+		`{"Id": {"Id": 9}, "Session": {"Id": 4}, "Type": 2, "Data": ":ChanServ KICK #test sECuRE :This channel is reserved"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net PASS :services=mypass"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net SERVER services.robustirc.net 0 :Services for IRC Networks"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net NICK ChanServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Nick Server"}`,
+	}
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
 func TestCompactModeCancellation(t *testing.T) {
 	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 	ircServer.Config.Services = append(ircServer.Config.Services, config.Service{
