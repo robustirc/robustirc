@@ -1244,12 +1244,12 @@ func normalizeModes(msg *irc.Message) []modeCmd {
 }
 
 func createMode(db *sql.DB) error {
-	_, err := db.Exec("CREATE TABLE paramsMode (msgid integer not null, session integer not null, channel text not null collate nocase, mode text, param text)")
+	_, err := db.Exec("CREATE TABLE paramsMode (msgid integer not null, session integer not null, target_session integer null, channel text not null collate nocase, mode text, param text)")
 	return err
 }
 
 func prepareStmtMode(p Preparer) (*sql.Stmt, error) {
-	return p.Prepare("INSERT INTO paramsMode (msgid, session, channel, mode, param) VALUES (?, ?, ?, ?, ?)")
+	return p.Prepare("INSERT INTO paramsMode (msgid, session, target_session, channel, mode, param) VALUES (?, ?, ?, ?, ?, ?)")
 }
 
 func prepareViewsMode(tx *sql.Tx, compactionEnd time.Time) error {
@@ -1364,7 +1364,7 @@ func (i *IRCServer) cmdMode(s *Session, reply *Replyctx, msg *irc.Message) {
 				case 't', 's', 'i', 'n':
 					c.modes[char] = newvalue
 
-					i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, channelname, mode.Mode,
+					i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, sql.NullInt64{Valid: false}, channelname, mode.Mode,
 						sql.NullString{
 							String: mode.Param,
 							Valid:  mode.Param != ""})
@@ -1384,7 +1384,7 @@ func (i *IRCServer) cmdMode(s *Session, reply *Replyctx, msg *irc.Message) {
 						if perms[chanop] != newvalue {
 							c.nicks[NickToLower(nick)][chanop] = newvalue
 
-							i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, channelname, mode.Mode,
+							i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, sql.NullInt64{Valid: false}, channelname, mode.Mode,
 								sql.NullString{
 									String: mode.Param,
 									Valid:  mode.Param != ""})

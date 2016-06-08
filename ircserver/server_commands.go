@@ -74,7 +74,11 @@ func init() {
 		MinParams: 2,
 		// Compaction is handled by Commands["NICK"]
 	}
-	Commands["server_SVSMODE"] = &ircCommand{Func: (*IRCServer).cmdServerSvsmode, MinParams: 2}
+	Commands["server_SVSMODE"] = &ircCommand{
+		Func:      (*IRCServer).cmdServerSvsmode,
+		MinParams: 2,
+		// Compaction is handled by Commands["MODE"]
+	}
 	Commands["server_SVSHOLD"] = &ircCommand{Func: (*IRCServer).cmdServerSvshold, MinParams: 1}
 	Commands["server_SVSJOIN"] = &ircCommand{
 		Func:      (*IRCServer).cmdServerSvsjoin,
@@ -303,7 +307,7 @@ func (i *IRCServer) cmdServerMode(s *Session, reply *Replyctx, msg *irc.Message)
 		switch char {
 		case 't', 's', 'r', 'i':
 			c.modes[char] = newvalue
-			i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, channelname, mode.Mode,
+			i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, sql.NullInt64{Valid: false}, channelname, mode.Mode,
 				sql.NullString{
 					String: mode.Param,
 					Valid:  mode.Param != ""})
@@ -322,7 +326,7 @@ func (i *IRCServer) cmdServerMode(s *Session, reply *Replyctx, msg *irc.Message)
 				// nothing (like UnrealIRCd).
 				if perms[chanop] != newvalue {
 					c.nicks[NickToLower(nick)][chanop] = newvalue
-					i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, channelname, mode.Mode,
+					i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, sql.NullInt64{Valid: false}, channelname, mode.Mode,
 						sql.NullString{
 							String: mode.Param,
 							Valid:  mode.Param != ""})
@@ -591,22 +595,28 @@ func (i *IRCServer) cmdServerSvsmode(s *Session, reply *Replyctx, msg *irc.Messa
 		})
 		return
 	}
+	modes := normalizeModes(msg)
 
 	// true for adding a mode, false for removing it
-	newvalue := strings.HasPrefix(modestr, "+")
-	modearg := 2
-	for _, char := range modestr[1:] {
+	for _, mode := range modes {
+		newvalue := (mode.Mode[0] == '+')
+		char := mode.Mode[1]
 		switch char {
-		case '+', '-':
-			newvalue = (char == '+')
 		case 'd':
-			if len(msg.Params) > modearg {
-				session.svid = msg.Params[modearg]
-			}
-			modearg++
+			session.svid = mode.Param
+			i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, session.Id.Id, session.Nick, mode.Mode,
+				sql.NullString{
+					String: mode.Param,
+					Valid:  mode.Param != ""})
+			i.CompactionDatabase.ExecStmt("_all_target", session.Id.Id, reply.msgid)
 		case 'r':
 			// Store registered flag
 			session.modes[char] = newvalue
+			i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, session.Id.Id, session.Nick, mode.Mode,
+				sql.NullString{
+					String: mode.Param,
+					Valid:  mode.Param != ""})
+			i.CompactionDatabase.ExecStmt("_all_target", session.Id.Id, reply.msgid)
 		default:
 			i.sendServices(reply, &irc.Message{
 				Prefix:   i.ServerPrefix,

@@ -349,16 +349,18 @@ FROM
 			 UNION SELECT msgid, target_session AS session FROM paramsKillWin) AS d
             INNER JOIN allMessagesWin AS a
             ON (
-                (d.session = a.session OR
-				 d.session = a.target_session) AND
-                (a.irccommand IS NULL OR
-                 (a.irccommand != 'NICK' AND
-                  a.irccommand != 'USER' AND
-                  a.irccommand != 'PASS' AND
-                  a.irccommand != 'OPER' AND
-                  a.irccommand != 'SERVER' AND
-                  a.irccommand != 'server_NICK' AND
-                  a.irccommand != 'QUIT')) AND
+                ((d.session = a.session AND
+                  (a.irccommand IS NULL OR
+                   (a.irccommand != 'NICK' AND
+                    a.irccommand != 'USER' AND
+                    a.irccommand != 'PASS' AND
+                    a.irccommand != 'OPER' AND
+                    a.irccommand != 'SERVER' AND
+                    a.irccommand != 'server_NICK' AND
+                    a.irccommand != 'QUIT'))) OR
+				 (d.session = a.target_session AND
+				  (a.irccommand IS NULL OR
+				   (a.irccommand != 'server_SVSMODE')))) AND
                 a.msgid < d.msgid
             )
         GROUP BY d.msgid
@@ -379,7 +381,8 @@ FROM
     allMessagesWin AS a
     LEFT JOIN candidates AS d
     ON (
-        a.session = d.session
+        a.session = d.session OR
+		a.target_session = d.session
     )
     WHERE d.session IS NOT NULL;
 
