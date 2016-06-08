@@ -32,8 +32,14 @@ func init() {
 	Commands["server_PING"] = Commands["PING"]
 
 	Commands["server_QUIT"] = &ircCommand{Func: (*IRCServer).cmdServerQuit}
-	Commands["server_NICK"] = &ircCommand{Func: (*IRCServer).cmdServerNick}
-	Commands["server_MODE"] = &ircCommand{Func: (*IRCServer).cmdServerMode}
+	Commands["server_NICK"] = &ircCommand{
+		Func: (*IRCServer).cmdServerNick,
+		// Compaction is handled by Commands["NICK"]
+	}
+	Commands["server_MODE"] = &ircCommand{
+		Func: (*IRCServer).cmdServerMode,
+		// Compaction is handled by Commands["MODE"]
+	}
 	Commands["server_JOIN"] = &ircCommand{
 		Func:                   (*IRCServer).cmdServerJoin,
 		CompactionCreate:       createServerJoin,
@@ -63,7 +69,11 @@ func init() {
 		MinParams: 3,
 		// Compaction is handled by Commands["TOPIC"]
 	}
-	Commands["server_SVSNICK"] = &ircCommand{Func: (*IRCServer).cmdServerSvsnick, MinParams: 2}
+	Commands["server_SVSNICK"] = &ircCommand{
+		Func:      (*IRCServer).cmdServerSvsnick,
+		MinParams: 2,
+		// Compaction is handled by Commands["NICK"]
+	}
 	Commands["server_SVSMODE"] = &ircCommand{Func: (*IRCServer).cmdServerSvsmode, MinParams: 2}
 	Commands["server_SVSHOLD"] = &ircCommand{Func: (*IRCServer).cmdServerSvshold, MinParams: 1}
 	Commands["server_SVSJOIN"] = &ircCommand{
@@ -663,6 +673,8 @@ func (i *IRCServer) cmdServerSvsnick(s *Session, reply *Replyctx, msg *irc.Messa
 				Command:  irc.NICK,
 				Trailing: session.Nick,
 			})))
+	i.CompactionDatabase.ExecStmt("NICK", reply.msgid, s.Id.Id, session.Id.Id, session.Nick)
+	i.CompactionDatabase.ExecStmt("_all_target", session.Id.Id, reply.msgid)
 }
 
 func createServerJoin(db *sql.DB) error {

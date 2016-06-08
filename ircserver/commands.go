@@ -320,7 +320,7 @@ func (i *IRCServer) login(s *Session, reply *Replyctx, msg *irc.Message) {
 
 func createNick(db *sql.DB) error {
 	const createStmt = `
-		CREATE TABLE paramsNick (msgid integer not null unique primary key, session integer not null, nick text collate nocase);
+		CREATE TABLE paramsNick (msgid integer not null unique primary key, session integer not null, target_session integer null, nick text collate nocase);
 		CREATE INDEX paramsNickNickIdx ON paramsNick (nick);
 		`
 
@@ -329,7 +329,7 @@ func createNick(db *sql.DB) error {
 }
 
 func prepareStmtNick(p Preparer) (*sql.Stmt, error) {
-	return p.Prepare("INSERT INTO paramsNick (msgid, session, nick) VALUES (?, ?, ?)")
+	return p.Prepare("INSERT INTO paramsNick (msgid, session, target_session, nick) VALUES (?, ?, ?, ?)")
 }
 
 func prepareViewsNick(tx *sql.Tx, compactionEnd time.Time) error {
@@ -351,12 +351,15 @@ SELECT
     a.msgid AS msgid,
     a.nick AS nick,
     a.session AS session,
+	a.target_session AS target_session,
     MIN(b.msgid) AS superseding_msgid
 FROM
     paramsNickWin AS a
     INNER JOIN paramsNickWin AS b
     ON (
-        a.session = b.session AND
+        (a.session = b.session OR
+		 a.session = b.target_session OR
+		 a.target_session = b.session) AND
         b.msgid > a.msgid
     )
     GROUP BY a.msgid;
@@ -365,8 +368,8 @@ DELETE FROM candidates WHERE msgid IN (
     SELECT
         MIN(msgid)
     FROM
-        paramsNickWin
-    GROUP BY session
+        paramsNick
+    GROUP BY (target_session OR session)
 );
 DELETE FROM candidates WHERE msgid IN (
     SELECT
@@ -375,7 +378,8 @@ DELETE FROM candidates WHERE msgid IN (
         candidates AS c
         INNER JOIN paramsTopicWin AS t
         ON (
-            c.session = t.session AND
+            (c.session = t.session OR
+			 c.target_session = t.session) AND
             t.msgid > c.msgid AND
             t.msgid < c.superseding_msgid
         )
@@ -387,7 +391,8 @@ DELETE FROM candidates WHERE msgid IN (
         candidates AS c
         INNER JOIN paramsModeWin AS t
         ON (
-            c.session = t.session AND
+            (c.session = t.session OR
+			 c.target_session = t.session) AND
             c.nick = t.channel AND
             t.msgid > c.msgid AND
             t.msgid < c.superseding_msgid
@@ -481,7 +486,7 @@ func (i *IRCServer) cmdNick(s *Session, reply *Replyctx, msg *irc.Message) {
 	}
 	s.updateIrcPrefix()
 
-	i.CompactionDatabase.ExecStmt("NICK", reply.msgid, s.Id.Id, nick)
+	i.CompactionDatabase.ExecStmt("NICK", reply.msgid, s.Id.Id, sql.NullInt64{Valid: false}, nick)
 
 	if oldNick != "" {
 		i.sendServices(reply,
