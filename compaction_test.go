@@ -1353,6 +1353,57 @@ func TestCompactServerDeleteSvsmode(t *testing.T) {
 	mustMatchStrings(t, input, output, want)
 }
 
+func TestCompactServerSvshold(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+	ircServer.Config.Services = append(ircServer.Config.Services, config.Service{
+		Password: "mypass",
+	})
+	input := []string{
+		`{"Id": {"Id": 4}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net PASS :services=mypass"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net SERVER services.robustirc.net 0 :Services for IRC Networks"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net NICK NickServ 1 1431356084 services services.robustirc.net services.robustirc.net 0 :Nickname Registration Service"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 4}, "Type": 2, "Data": ":NickServ SVSHOLD Merovius 60 :Being held for registered user"}`,
+		`{"Id": {"Id": 81}, "Session": {"Id": 4}, "Type": 2, "Data": ":NickServ JOIN #test"}`,
+	}
+
+	want := []string{
+		`{"Id": {"Id": 4}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net PASS :services=mypass"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net SERVER services.robustirc.net 0 :Services for IRC Networks"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net NICK NickServ 1 1431356084 services services.robustirc.net services.robustirc.net 0 :Nickname Registration Service"}`,
+		`{"Id": {"Id": 81}, "Session": {"Id": 4}, "Type": 2, "Data": ":NickServ JOIN #test"}`,
+	}
+
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
+func TestKeepServerSvshold(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+	ircServer.Config.Services = append(ircServer.Config.Services, config.Service{
+		Password: "mypass",
+	})
+	input := []string{
+		`{"Id": {"Id": 4}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net PASS :services=mypass"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net SERVER services.robustirc.net 0 :Services for IRC Networks"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net NICK NickServ 1 1431356084 services services.robustirc.net services.robustirc.net 0 :Nickname Registration Service"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 4}, "Type": 2, "Data": ":NickServ SVSHOLD Merovius 60 :Being held for registered user"}`,
+	}
+
+	want := []string{
+		`{"Id": {"Id": 4}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net PASS :services=mypass"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net SERVER services.robustirc.net 0 :Services for IRC Networks"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net NICK NickServ 1 1431356084 services services.robustirc.net services.robustirc.net 0 :Nickname Registration Service"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 4}, "Type": 2, "Data": ":NickServ SVSHOLD Merovius 60 :Being held for registered user"}`,
+	}
+
+	output := applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
 func TestCompactModeCancellation(t *testing.T) {
 	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
 	ircServer.Config.Services = append(ircServer.Config.Services, config.Service{

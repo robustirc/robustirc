@@ -79,7 +79,15 @@ func init() {
 		MinParams: 2,
 		// Compaction is handled by Commands["MODE"]
 	}
-	Commands["server_SVSHOLD"] = &ircCommand{Func: (*IRCServer).cmdServerSvshold, MinParams: 1}
+	Commands["server_SVSHOLD"] = &ircCommand{
+		Func:                   (*IRCServer).cmdServerSvshold,
+		MinParams:              1,
+		CompactionCreate:       createServerSvshold,
+		CompactionPrepareStmt:  prepareStmtServerSvshold,
+		CompactionPrepareViews: prepareViewsServerSvshold,
+		CompactionDropViews:    dropViewsServerSvshold,
+		Compact:                compactServerSvshold,
+	}
 	Commands["server_SVSJOIN"] = &ircCommand{
 		Func:      (*IRCServer).cmdServerSvsjoin,
 		MinParams: 2,
@@ -433,6 +441,51 @@ func (i *IRCServer) cmdServer(s *Session, reply *Replyctx, msg *irc.Message) {
 	}
 }
 
+func createServerSvshold(db *sql.DB) error {
+	_, err := db.Exec("CREATE TABLE paramsServerSvshold (msgid integer not null unique primary key, session integer not null, duration integer not null);")
+	return err
+}
+
+func prepareStmtServerSvshold(p Preparer) (*sql.Stmt, error) {
+	return p.Prepare("INSERT INTO paramsServerSvshold (msgid, session, duration) VALUES (?, ?, ?)")
+}
+
+func prepareViewsServerSvshold(tx *sql.Tx, compactionEnd time.Time) error {
+	_, err := tx.Exec(
+		fmt.Sprintf("CREATE VIEW paramsServerSvsholdWin AS SELECT * FROM paramsServerSvshold WHERE msgid < %d",
+			compactionEnd.UnixNano()))
+	return err
+}
+
+func dropViewsServerSvshold(tx *sql.Tx) error {
+	_, err := tx.Exec("DROP VIEW paramsServerSvsholdWin")
+	return err
+}
+
+func compactServerSvshold(tx *sql.Tx) error {
+	const query = `
+CREATE TABLE deleteIds AS
+SELECT
+	s.msgid AS msgid
+FROM
+	paramsServerSvsholdWin AS s
+	LEFT JOIN (
+		SELECT
+			MAX(msgid) AS max
+		FROM
+			allMessagesWin
+	) AS m
+	ON (m.max > (s.msgid+s.duration))
+WHERE
+	m.max IS NOT NULL;
+
+DELETE FROM paramsServerSvshold WHERE msgid IN (SELECT msgid FROM deleteIds)
+`
+
+	_, err := tx.Exec(query)
+	return err
+}
+
 func (i *IRCServer) cmdServerSvshold(s *Session, reply *Replyctx, msg *irc.Message) {
 	// SVSHOLD <nick> [<expirationtimerelative> :<reason>]
 	nick := NickToLower(msg.Params[0])
@@ -452,6 +505,7 @@ func (i *IRCServer) cmdServerSvshold(s *Session, reply *Replyctx, msg *irc.Messa
 			duration: duration,
 			reason:   msg.Trailing,
 		}
+		i.CompactionDatabase.ExecStmt("server_SVSHOLD", reply.msgid, s.Id.Id, duration.Seconds())
 	} else {
 		delete(i.svsholds, nick)
 	}
