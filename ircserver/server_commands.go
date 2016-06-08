@@ -58,7 +58,11 @@ func init() {
 		Func: (*IRCServer).cmdServerPrivmsg,
 		ImmediatelyCompactable: true,
 	}
-	Commands["server_TOPIC"] = &ircCommand{Func: (*IRCServer).cmdServerTopic, MinParams: 3}
+	Commands["server_TOPIC"] = &ircCommand{
+		Func:      (*IRCServer).cmdServerTopic,
+		MinParams: 3,
+		// Compaction is handled by Commands["TOPIC"]
+	}
 	Commands["server_SVSNICK"] = &ircCommand{Func: (*IRCServer).cmdServerSvsnick, MinParams: 2}
 	Commands["server_SVSMODE"] = &ircCommand{Func: (*IRCServer).cmdServerSvsmode, MinParams: 2}
 	Commands["server_SVSHOLD"] = &ircCommand{Func: (*IRCServer).cmdServerSvshold, MinParams: 1}
@@ -744,24 +748,6 @@ FROM
 		j.next_msgid = d.msgid
 	);
 
--- TODO: re-add once server_TOPIC is compacted
---DELETE FROM
---    candidates
---WHERE
---    join_msgid IN (
---        SELECT
---            join_msgid
---        FROM
---            candidates AS c
---            INNER join paramsServerTopicWin AS t
---            ON (
---                t.msgid > c.join_msgid AND
---                t.msgid < c.part_msgid AND
---                t.channel = c.channel AND
---                t.session = c.session
---            )
---    );
-
 -- Retain JOIN messages for multiple channels of which not all have been left.
 DELETE FROM
     candidates
@@ -962,6 +948,10 @@ func (i *IRCServer) cmdServerTopic(s *Session, reply *Replyctx, msg *irc.Message
 			Trailing:      msg.Trailing,
 			EmptyTrailing: true,
 		})
+		i.CompactionDatabase.ExecStmt("TOPIC", reply.msgid, s.Id.Id, channel,
+			sql.NullString{
+				String: msg.Trailing,
+				Valid:  msg.Trailing != "" || msg.EmptyTrailing})
 		return
 	}
 
@@ -987,6 +977,10 @@ func (i *IRCServer) cmdServerTopic(s *Session, reply *Replyctx, msg *irc.Message
 		Trailing:      msg.Trailing,
 		EmptyTrailing: true,
 	})
+	i.CompactionDatabase.ExecStmt("TOPIC", reply.msgid, s.Id.Id, channel,
+		sql.NullString{
+			String: msg.Trailing,
+			Valid:  msg.Trailing != "" || msg.EmptyTrailing})
 }
 
 // The only difference is that we re-use (and augment) the msg.Prefix instead of setting s.Prefix.
