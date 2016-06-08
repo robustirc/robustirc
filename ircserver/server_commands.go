@@ -72,7 +72,11 @@ func init() {
 		MinParams: 2,
 		// Compaction is handled by Commands["PART"]
 	}
-	Commands["server_KILL"] = &ircCommand{Func: (*IRCServer).cmdServerKill, MinParams: 1}
+	Commands["server_KILL"] = &ircCommand{
+		Func:      (*IRCServer).cmdServerKill,
+		MinParams: 1,
+		// Compaction is handled by Commands["KILL"]
+	}
 	Commands["server_KICK"] = &ircCommand{Func: (*IRCServer).cmdServerKick, MinParams: 2}
 	Commands["server_INVITE"] = &ircCommand{
 		Func:      (*IRCServer).cmdServerInvite,
@@ -180,6 +184,7 @@ func (i *IRCServer) cmdServerKill(s *Session, reply *Replyctx, msg *irc.Message)
 			Trailing: "Killed: " + msg.Trailing,
 		}))
 	i.DeleteSession(session)
+	i.CompactionDatabase.ExecStmt("KILL", reply.msgid, s.Id.Id, session.Id.Id)
 }
 
 func (i *IRCServer) cmdServerQuit(s *Session, reply *Replyctx, msg *irc.Message) {
