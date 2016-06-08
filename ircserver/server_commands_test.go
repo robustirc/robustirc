@@ -255,7 +255,7 @@ func TestServerModeTopic(t *testing.T) {
 
 	mustMatchMsg(t,
 		i.ProcessMessage(types.RobustId{}, ids["services"], irc.ParseMessage(":ChanServ MODE #test -r+o secure")),
-		":ChanServ!services@services MODE #test -r+o secure")
+		":ChanServ!services@services MODE #test +o-r secure")
 
 	mustMatchMsg(t,
 		i.ProcessMessage(types.RobustId{}, ids["services"], irc.ParseMessage(":ChanServ MODE #test -o secure")),

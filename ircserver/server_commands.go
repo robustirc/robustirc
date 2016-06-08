@@ -271,48 +271,39 @@ func (i *IRCServer) cmdServerMode(s *Session, reply *Replyctx, msg *irc.Message)
 	}
 
 	// TODO(secure): possibly refactor this with cmdMode()
-	var modestr string
-	if len(msg.Params) > 1 {
-		modestr = msg.Params[1]
-	}
-	if !strings.HasPrefix(modestr, "+") && !strings.HasPrefix(modestr, "-") {
-		i.sendServices(reply, &irc.Message{
-			Prefix:   i.ServerPrefix,
-			Command:  irc.ERR_UNKNOWNMODE,
-			Params:   []string{msg.Prefix.Name, modestr},
-			Trailing: "is unknown mode char to me",
-		})
-		return
-	}
-	// true for adding a mode, false for removing it
-	newvalue := strings.HasPrefix(modestr, "+")
-	modearg := 2
-	for _, char := range modestr[1:] {
+	modes := normalizeModes(msg)
+	for _, mode := range modes {
+		char := mode.Mode[1]
+		newvalue := (mode.Mode[0] == '+')
+
 		switch char {
-		case '+', '-':
-			newvalue = (char == '+')
 		case 't', 's', 'r', 'i':
 			c.modes[char] = newvalue
+			i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, channelname, mode.Mode,
+				sql.NullString{
+					String: mode.Param,
+					Valid:  mode.Param != ""})
 		case 'o':
-			if len(msg.Params) > modearg {
-				nick := msg.Params[modearg]
-				perms, ok := c.nicks[NickToLower(nick)]
-				if !ok {
-					i.sendServices(reply, &irc.Message{
-						Prefix:   i.ServerPrefix,
-						Command:  irc.ERR_USERNOTINCHANNEL,
-						Params:   []string{msg.Prefix.Name, nick, channelname},
-						Trailing: "They aren't on that channel",
-					})
-				} else {
-					// If the user already is a chanop, silently do
-					// nothing (like UnrealIRCd).
-					if perms[chanop] != newvalue {
-						c.nicks[NickToLower(nick)][chanop] = newvalue
-					}
+			nick := mode.Param
+			perms, ok := c.nicks[NickToLower(nick)]
+			if !ok {
+				i.sendServices(reply, &irc.Message{
+					Prefix:   i.ServerPrefix,
+					Command:  irc.ERR_USERNOTINCHANNEL,
+					Params:   []string{msg.Prefix.Name, nick, channelname},
+					Trailing: "They aren't on that channel",
+				})
+			} else {
+				// If the user already is a chanop, silently do
+				// nothing (like UnrealIRCd).
+				if perms[chanop] != newvalue {
+					c.nicks[NickToLower(nick)][chanop] = newvalue
+					i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, channelname, mode.Mode,
+						sql.NullString{
+							String: mode.Param,
+							Valid:  mode.Param != ""})
 				}
 			}
-			modearg++
 		default:
 			i.sendServices(reply, &irc.Message{
 				Prefix:   i.ServerPrefix,
@@ -328,7 +319,7 @@ func (i *IRCServer) cmdServerMode(s *Session, reply *Replyctx, msg *irc.Message)
 	i.sendChannel(c, reply, &irc.Message{
 		Prefix:  servicesPrefix(msg.Prefix),
 		Command: irc.MODE,
-		Params:  msg.Params[:modearg],
+		Params:  append([]string{channelname}, modeCmds(modes).IRCParams()...),
 	})
 }
 
