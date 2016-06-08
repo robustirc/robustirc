@@ -131,8 +131,12 @@ func init() {
 	}
 	Commands["OPER"] = &ircCommand{Func: (*IRCServer).cmdOper, MinParams: 2}
 	Commands["KILL"] = &ircCommand{
-		Func:      (*IRCServer).cmdKill,
-		MinParams: 1,
+		Func:                   (*IRCServer).cmdKill,
+		MinParams:              1,
+		CompactionCreate:       createKill,
+		CompactionPrepareStmt:  prepareStmtKill,
+		CompactionPrepareViews: prepareViewsKill,
+		CompactionDropViews:    dropViewsKill,
 	}
 	Commands["AWAY"] = &ircCommand{
 		Func:                   (*IRCServer).cmdAway,
@@ -1558,6 +1562,27 @@ func (i *IRCServer) cmdOper(s *Session, reply *Replyctx, msg *irc.Message) {
 		}))
 }
 
+func createKill(db *sql.DB) error {
+	_, err := db.Exec("CREATE TABLE paramsKill (msgid integer not null unique primary key, session integer not null, target_session integer not null)")
+	return err
+}
+
+func prepareStmtKill(p Preparer) (*sql.Stmt, error) {
+	return p.Prepare("INSERT INTO paramsKill (msgid, session, target_session) VALUES (?, ?, ?)")
+}
+
+func prepareViewsKill(tx *sql.Tx, compactionEnd time.Time) error {
+	_, err := tx.Exec(
+		fmt.Sprintf("CREATE VIEW paramsKillWin AS SELECT * FROM paramsKill WHERE msgid < %d",
+			compactionEnd.UnixNano()))
+	return err
+}
+
+func dropViewsKill(tx *sql.Tx) error {
+	_, err := tx.Exec("DROP VIEW paramsKillWin")
+	return err
+}
+
 func (i *IRCServer) cmdKill(s *Session, reply *Replyctx, msg *irc.Message) {
 	if strings.TrimSpace(msg.Trailing) == "" {
 		i.sendUser(s, reply, &irc.Message{
@@ -1591,6 +1616,7 @@ func (i *IRCServer) cmdKill(s *Session, reply *Replyctx, msg *irc.Message) {
 	}
 
 	i.DeleteSession(session)
+	i.CompactionDatabase.ExecStmt("KILL", reply.msgid, s.Id.Id, session.Id.Id)
 
 	i.sendServices(reply,
 		i.sendCommonChannels(session, reply, &irc.Message{

@@ -345,7 +345,8 @@ FROM
             MAX(a.msgid) AS next_msgid
         FROM
             (SELECT msgid, session FROM deleteSessionWin
-             UNION SELECT msgid, session FROM paramsQuitWin) AS d
+             UNION SELECT msgid, session FROM paramsQuitWin
+			 UNION SELECT msgid, target_session AS session FROM paramsKillWin) AS d
             INNER JOIN allMessagesWin AS a
             ON (
                 (d.session = a.session OR
@@ -354,6 +355,7 @@ FROM
                  (a.irccommand != 'NICK' AND
                   a.irccommand != 'USER' AND
                   a.irccommand != 'PASS' AND
+                  a.irccommand != 'OPER' AND
                   a.irccommand != 'SERVER' AND
                   a.irccommand != 'server_NICK' AND
                   a.irccommand != 'QUIT')) AND
