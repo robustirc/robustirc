@@ -31,7 +31,14 @@ func init() {
 	// http://golang.org/ref/spec#Package_initialization.
 	Commands["server_PING"] = Commands["PING"]
 
-	Commands["server_QUIT"] = &ircCommand{Func: (*IRCServer).cmdServerQuit}
+	Commands["server_QUIT"] = &ircCommand{
+		Func:                   (*IRCServer).cmdServerQuit,
+		CompactionCreate:       createServerQuit,
+		CompactionPrepareStmt:  prepareStmtServerQuit,
+		CompactionPrepareViews: prepareViewsServerQuit,
+		CompactionDropViews:    dropViewsServerQuit,
+		Compact:                compactServerQuit,
+	}
 	Commands["server_NICK"] = &ircCommand{
 		Func: (*IRCServer).cmdServerNick,
 		// Compaction is handled by Commands["NICK"]
@@ -218,6 +225,62 @@ func (i *IRCServer) cmdServerKill(s *Session, reply *Replyctx, msg *irc.Message)
 	i.CompactionDatabase.ExecStmt("KILL", reply.msgid, s.Id.Id, session.Id.Id)
 }
 
+func createServerQuit(db *sql.DB) error {
+	_, err := db.Exec("CREATE TABLE paramsServerQuit (msgid integer not null unique primary key, session integer not null)")
+	return err
+}
+
+func prepareStmtServerQuit(p Preparer) (*sql.Stmt, error) {
+	return p.Prepare("INSERT INTO paramsServerQuit (msgid, session) VALUES (?, ?)")
+}
+
+func prepareViewsServerQuit(tx *sql.Tx, compactionEnd time.Time) error {
+	_, err := tx.Exec(
+		fmt.Sprintf("CREATE VIEW paramsServerQuitWin AS SELECT * FROM paramsServerQuit WHERE msgid < %d",
+			compactionEnd.UnixNano()))
+	return err
+}
+
+func dropViewsServerQuit(tx *sql.Tx) error {
+	_, err := tx.Exec("DROP VIEW paramsServerQuitWin")
+	return err
+}
+
+func compactServerQuit(tx *sql.Tx) error {
+	const query = `
+-- Delete all QUIT messages which are directly followed by a deleteSession message.
+CREATE TABLE deleteIds AS
+SELECT
+    a.msgid AS msgid
+FROM
+    (
+        SELECT
+            q.msgid AS msgid,
+            q.session AS session,
+            MIN(a.msgid) AS next_msgid
+        FROM
+            paramsServerQuitWin AS q
+            INNER JOIN allMessagesWin AS a
+            ON (
+                q.session = a.session AND
+				(a.irccommand IS NULL OR
+				 a.irccommand != 'server_QUIT') AND
+                a.msgid > q.msgid
+            )
+        GROUP BY q.msgid
+    ) AS a
+    INNER JOIN deleteSessionWin AS d
+    ON (
+        a.session = d.session AND
+        a.next_msgid = d.msgid
+    );
+DELETE FROM paramsServerQuit WHERE msgid IN (SELECT msgid FROM deleteIds);
+`
+
+	_, err := tx.Exec(query)
+	return err
+}
+
 func (i *IRCServer) cmdServerQuit(s *Session, reply *Replyctx, msg *irc.Message) {
 	// No prefix means the server quits the entire session.
 	if msg.Prefix == nil {
@@ -236,6 +299,7 @@ func (i *IRCServer) cmdServerQuit(s *Session, reply *Replyctx, msg *irc.Message)
 			})
 			i.DeleteSession(session)
 		}
+		i.CompactionDatabase.ExecStmt("server_QUIT", reply.msgid, s.Id.Id)
 		return
 	}
 
@@ -252,6 +316,7 @@ func (i *IRCServer) cmdServerQuit(s *Session, reply *Replyctx, msg *irc.Message)
 			EmptyTrailing: true,
 		})
 		i.DeleteSession(session)
+		i.CompactionDatabase.ExecStmt("server_QUIT", reply.msgid, s.Id.Id)
 		return
 	}
 }
