@@ -640,19 +640,28 @@ FROM
 			paramsJoinWin AS js
 			INNER JOIN allMessagesWin AS a
 			ON (
-				((js.target_session = a.session) OR
-				 (js.target_session IS NULL AND js.session = a.session)) AND
-				(a.irccommand IS NULL OR
-				 (a.irccommand != 'JOIN' AND
-				  a.irccommand != 'OPER' AND
-				  a.irccommand != 'PASS' AND
-				  a.irccommand != 'NICK' AND
-				  a.irccommand != 'PART')) AND
+			    ((((js.target_session IS NULL AND js.session = a.session) OR
+				   (js.target_session = a.session)) AND
+				  (a.irccommand IS NULL OR
+				   (a.irccommand != 'NICK' AND
+				    a.irccommand != 'PASS' AND
+				    a.irccommand != 'OPER' AND
+				    a.irccommand != 'JOIN' AND
+				    a.irccommand != 'PART'))) OR
+				 (((js.target_session IS NULL AND a.target_session = js.session) OR
+				   (js.target_session = a.target_session)) AND
+				  (a.irccommand IS NULL OR
+				   (a.irccommand != 'server_SVSMODE' AND
+				    a.irccommand != 'server_SVSNICK')))) AND
 				a.msgid > js.msgid
 			)
 		GROUP BY js.msgid, js.channel
 	) AS j
-	INNER JOIN deleteSessionWin AS d
+	INNER JOIN (
+		SELECT msgid, session FROM deleteSessionWin
+		UNION SELECT msgid, session FROM paramsQuitWin
+		UNION SELECT msgid, target_session AS session FROM paramsKillWin
+	) AS d
 	ON (
 		(j.session = d.session OR
 		 j.target_session = d.session) AND
@@ -1625,6 +1634,7 @@ func (i *IRCServer) cmdKill(s *Session, reply *Replyctx, msg *irc.Message) {
 
 	i.DeleteSession(session, reply.msgid)
 	i.CompactionDatabase.ExecStmt("KILL", reply.msgid, s.Id.Id, session.Id.Id)
+	i.CompactionDatabase.ExecStmt("_all_target", session.Id.Id, reply.msgid)
 
 	i.sendServices(reply,
 		i.sendCommonChannels(session, reply, &irc.Message{

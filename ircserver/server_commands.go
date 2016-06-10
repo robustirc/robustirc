@@ -223,6 +223,7 @@ func (i *IRCServer) cmdServerKill(s *Session, reply *Replyctx, msg *irc.Message)
 		}))
 	i.DeleteSession(session, reply.msgid)
 	i.CompactionDatabase.ExecStmt("KILL", reply.msgid, s.Id.Id, session.Id.Id)
+	i.CompactionDatabase.ExecStmt("_all_target", session.Id.Id, reply.msgid)
 }
 
 func createServerQuit(db *sql.DB) error {
