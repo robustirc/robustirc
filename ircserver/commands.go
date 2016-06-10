@@ -644,6 +644,9 @@ FROM
 				 js.target_session = a.session) AND
 				(a.irccommand IS NULL OR
 				 (a.irccommand != 'JOIN' AND
+				  a.irccommand != 'OPER' AND
+				  a.irccommand != 'PASS' AND
+				  a.irccommand != 'NICK' AND
 				  a.irccommand != 'PART')) AND
 				a.msgid > js.msgid
 			)
