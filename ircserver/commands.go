@@ -646,6 +646,7 @@ FROM
 				   (a.irccommand != 'NICK' AND
 				    a.irccommand != 'PASS' AND
 				    a.irccommand != 'OPER' AND
+				    a.irccommand != 'AWAY' AND
 				    a.irccommand != 'JOIN' AND
 				    a.irccommand != 'PART'))) OR
 				 (((js.target_session IS NULL AND a.target_session = js.session) OR
@@ -1067,7 +1068,10 @@ FROM
             )
         GROUP BY q.msgid
     ) AS a
-    INNER JOIN deleteSessionWin AS d
+	INNER JOIN (
+		SELECT msgid, session FROM deleteSessionWin
+		UNION SELECT msgid, target_session AS session FROM paramsKillWin
+	) AS d
     ON (
         a.session = d.session AND
         a.next_msgid = d.msgid
@@ -1716,7 +1720,11 @@ FROM
 			)
 		GROUP BY aw.msgid
 	) AS a
-	INNER JOIN deleteSessionWin AS d
+	INNER JOIN (
+		SELECT msgid, session FROM deleteSessionWin
+		UNION SELECT msgid, session FROM paramsQuitWin
+		UNION SELECT msgid, target_session AS session FROM paramsKillWin
+	) AS d
 	ON (
 		a.session = d.session AND
 		a.next_msgid = d.msgid
