@@ -357,7 +357,7 @@ FROM
     paramsNickWin AS a
     INNER JOIN paramsNickWin AS b
     ON (
-        (a.session = b.session OR
+        ((a.target_session IS NULL AND a.session = b.session) OR
 		 a.session = b.target_session OR
 		 a.target_session = b.session) AND
         b.msgid > a.msgid
@@ -603,7 +603,7 @@ FROM
     paramsJoinWin AS j
     LEFT JOIN paramsPartWin AS p
     ON (
-        (j.session = p.session OR
+        ((j.target_session IS NULL AND j.session = p.session) OR
 		 j.target_session = p.session OR
 		 j.target_session = p.target_session) AND
         j.msgid < p.msgid AND
@@ -640,8 +640,8 @@ FROM
 			paramsJoinWin AS js
 			INNER JOIN allMessagesWin AS a
 			ON (
-				(js.session = a.session OR
-				 js.target_session = a.session) AND
+				((js.target_session = a.session) OR
+				 (js.target_session IS NULL AND js.session = a.session)) AND
 				(a.irccommand IS NULL OR
 				 (a.irccommand != 'JOIN' AND
 				  a.irccommand != 'OPER' AND
@@ -935,7 +935,7 @@ FROM
     paramsPartWin AS p
     LEFT JOIN paramsJoinWin AS j
     ON (
-        (p.session = j.session OR
+        ((p.target_session IS NULL AND p.session = j.session) OR
 		 p.session = j.target_session OR
 		 p.target_session = j.target_session) AND
         p.msgid > j.msgid AND

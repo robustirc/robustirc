@@ -1132,11 +1132,29 @@ func TestCompactServerDeleteSvsjoin(t *testing.T) {
 		`{"Id": {"Id": 5}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net PASS :services=mypass"}`,
 		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net SERVER services.robustirc.net 0 :Services for IRC Networks"}`,
 		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net NICK ChanServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Nick Server"}`,
-		`{"Id": {"Id": 8}, "Session": {"Id": 4}, "Type": 2, "Data": "SVSJOIN secure #test"}`,
-		`{"Id": {"Id": 9}, "Session": {"Id": 4}, "Type": 1, "Data": "bye"}`,
-		`{"Id": {"Id": 10}, "Session": {"Id": 1}, "Type": 1, "Data": "bye"}`,
+		`{"Id": {"Id": 8}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 9}, "Session": {"Id": 8}, "Type": 2, "Data": "NICK mero"}`,
+		`{"Id": {"Id": 10}, "Session": {"Id": 8}, "Type": 2, "Data": "USER blah 0 * :Axel Wagner"}`,
+		`{"Id": {"Id": 11}, "Session": {"Id": 8}, "Type": 2, "Data": "JOIN #test"}`,
+		`{"Id": {"Id": 12}, "Session": {"Id": 4}, "Type": 2, "Data": "SVSMODE secure +d 1"}`,
+		`{"Id": {"Id": 13}, "Session": {"Id": 4}, "Type": 2, "Data": "SVSMODE secure +r"}`,
+		`{"Id": {"Id": 14}, "Session": {"Id": 4}, "Type": 2, "Data": "SVSJOIN secure #test"}`,
+		`{"Id": {"Id": 15}, "Session": {"Id": 4}, "Type": 2, "Data": "SVSMODE mero +d 1"}`,
+		`{"Id": {"Id": 16}, "Session": {"Id": 4}, "Type": 2, "Data": "SVSMODE mero +r"}`,
+		`{"Id": {"Id": 17}, "Session": {"Id": 1}, "Type": 1, "Data": "bye"}`,
 	}
-	want := []string{}
+	want := []string{
+		`{"Id": {"Id": 4}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net PASS :services=mypass"}`,
+		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net SERVER services.robustirc.net 0 :Services for IRC Networks"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": ":services.robustirc.net NICK ChanServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Nick Server"}`,
+		`{"Id": {"Id": 8}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 9}, "Session": {"Id": 8}, "Type": 2, "Data": "NICK mero"}`,
+		`{"Id": {"Id": 10}, "Session": {"Id": 8}, "Type": 2, "Data": "USER blah 0 * :Axel Wagner"}`,
+		`{"Id": {"Id": 11}, "Session": {"Id": 8}, "Type": 2, "Data": "JOIN #test"}`,
+		`{"Id": {"Id": 15}, "Session": {"Id": 4}, "Type": 2, "Data": "SVSMODE mero +d 1"}`,
+		`{"Id": {"Id": 16}, "Session": {"Id": 4}, "Type": 2, "Data": "SVSMODE mero +r"}`,
+	}
 	output := applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
 }
