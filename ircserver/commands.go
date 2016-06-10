@@ -369,7 +369,7 @@ DELETE FROM candidates WHERE msgid IN (
         MIN(msgid)
     FROM
         paramsNick
-    GROUP BY (target_session OR session)
+    GROUP BY IFNULL(target_session, session)
 );
 DELETE FROM candidates WHERE msgid IN (
     SELECT
