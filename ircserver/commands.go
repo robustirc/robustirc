@@ -893,7 +893,7 @@ func (i *IRCServer) cmdKick(s *Session, reply *Replyctx, msg *irc.Message) {
 
 	// TODO(secure): reduce code duplication with cmdPart()
 	delete(c.nicks, NickToLower(msg.Params[1]))
-	i.maybeDeleteChannel(c)
+	i.maybeDeleteChannel(c, reply.msgid)
 	delete(session.Channels, ChanToLower(channelname))
 	i.CompactionDatabase.ExecStmt("KICK", reply.msgid, s.Id.Id, session.Id.Id, channelname)
 }
@@ -982,7 +982,7 @@ func (i *IRCServer) cmdPart(s *Session, reply *Replyctx, msg *irc.Message) {
 			}))
 
 		delete(c.nicks, NickToLower(s.Nick))
-		i.maybeDeleteChannel(c)
+		i.maybeDeleteChannel(c, reply.msgid)
 		delete(s.Channels, ChanToLower(channelname))
 
 		i.CompactionDatabase.ExecStmt("PART", reply.msgid, s.Id.Id, sql.NullInt64{Valid: false}, channelname)
@@ -1071,7 +1071,7 @@ DELETE FROM paramsQuit WHERE msgid IN (SELECT msgid FROM deleteIds);
 }
 
 func (i *IRCServer) cmdQuit(s *Session, reply *Replyctx, msg *irc.Message) {
-	i.DeleteSession(s)
+	i.DeleteSession(s, reply.msgid)
 	if s.loggedIn() {
 		i.sendServices(reply,
 			i.sendCommonChannels(s, reply, &irc.Message{
@@ -1623,7 +1623,7 @@ func (i *IRCServer) cmdKill(s *Session, reply *Replyctx, msg *irc.Message) {
 		return
 	}
 
-	i.DeleteSession(session)
+	i.DeleteSession(session, reply.msgid)
 	i.CompactionDatabase.ExecStmt("KILL", reply.msgid, s.Id.Id, session.Id.Id)
 
 	i.sendServices(reply,

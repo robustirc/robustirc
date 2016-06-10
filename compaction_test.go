@@ -382,9 +382,13 @@ func TestJoinTopic(t *testing.T) {
 		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
 		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
 		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
-		`{"Id": {"Id": 6}, "Session": {"Id": 1}, "Type": 2, "Data": "PRIVMSG #chaos-hd :blah"}`,
-		`{"Id": {"Id": 7}, "Session": {"Id": 1}, "Type": 2, "Data": "TOPIC #chaos-hd :foo"}`,
-		`{"Id": {"Id": 8}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #chaos-hd"}`,
+		`{"Id": {"Id": 6}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 6}, "Type": 2, "Data": "NICK mero"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 6}, "Type": 2, "Data": "USER blah 0 * :Axel Wagner"}`,
+		`{"Id": {"Id": 9}, "Session": {"Id": 6}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
+		`{"Id": {"Id": 10}, "Session": {"Id": 1}, "Type": 2, "Data": "PRIVMSG #chaos-hd :blah"}`,
+		`{"Id": {"Id": 11}, "Session": {"Id": 1}, "Type": 2, "Data": "TOPIC #chaos-hd :foo"}`,
+		`{"Id": {"Id": 12}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #chaos-hd"}`,
 	}
 
 	want := []string{
@@ -393,8 +397,12 @@ func TestJoinTopic(t *testing.T) {
 		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
 		// The JOIN must be retained, otherwise TOPIC cannot succeed.
 		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
-		`{"Id": {"Id": 7}, "Session": {"Id": 1}, "Type": 2, "Data": "TOPIC #chaos-hd :foo"}`,
-		`{"Id": {"Id": 8}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #chaos-hd"}`,
+		`{"Id": {"Id": 6}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 6}, "Type": 2, "Data": "NICK mero"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 6}, "Type": 2, "Data": "USER blah 0 * :Axel Wagner"}`,
+		`{"Id": {"Id": 9}, "Session": {"Id": 6}, "Type": 2, "Data": "JOIN #chaos-hd"}`,
+		`{"Id": {"Id": 11}, "Session": {"Id": 1}, "Type": 2, "Data": "TOPIC #chaos-hd :foo"}`,
+		`{"Id": {"Id": 12}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #chaos-hd"}`,
 	}
 
 	output := applyAndCompact(t, input)
@@ -908,8 +916,8 @@ func TestCompactKeepInviteBoth(t *testing.T) {
 		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": "USER mero mero localhost :Axel Wagner"}`,
 		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": "JOIN #test_keep2"}`,
 		`{"Id": {"Id": 8}, "Session": {"Id": 4}, "Type": 2, "Data": "INVITE secure #test_keep2"}`,
-		`{"Id": {"Id": 9}, "Session": {"Id": 4}, "Type": 1, "Data": "bye"}`,
-		`{"Id": {"Id": 10}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test_keep2"}`,
+		`{"Id": {"Id": 9}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test_keep2"}`,
+		`{"Id": {"Id": 10}, "Session": {"Id": 4}, "Type": 1, "Data": "bye"}`,
 	}
 	want := []string{
 		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
@@ -920,8 +928,8 @@ func TestCompactKeepInviteBoth(t *testing.T) {
 		`{"Id": {"Id": 6}, "Session": {"Id": 4}, "Type": 2, "Data": "USER mero mero localhost :Axel Wagner"}`,
 		`{"Id": {"Id": 7}, "Session": {"Id": 4}, "Type": 2, "Data": "JOIN #test_keep2"}`,
 		`{"Id": {"Id": 8}, "Session": {"Id": 4}, "Type": 2, "Data": "INVITE secure #test_keep2"}`,
-		`{"Id": {"Id": 9}, "Session": {"Id": 4}, "Type": 1, "Data": "bye"}`,
-		`{"Id": {"Id": 10}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test_keep2"}`,
+		`{"Id": {"Id": 9}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test_keep2"}`,
+		`{"Id": {"Id": 10}, "Session": {"Id": 4}, "Type": 1, "Data": "bye"}`,
 	}
 
 	output := applyAndCompact(t, input)
@@ -1806,6 +1814,36 @@ func TestCompactAway(t *testing.T) {
 		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
 	}
 	output = applyAndCompact(t, input)
+	mustMatchStrings(t, input, output, want)
+}
+
+func TestCompactChannelLeave(t *testing.T) {
+	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+	ircServer.Config.Services = append(ircServer.Config.Services, config.Service{
+		Password: "mypass",
+	})
+	input := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 4}, "Session": {"Id": 1}, "Type": 2, "Data": "JOIN #test"}`,
+		`{"Id": {"Id": 5}, "Session": {"Id": 1}, "Type": 2, "Data": "MODE #test +t"}`,
+		`{"Id": {"Id": 6}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 6}, "Type": 2, "Data": "NICK mero"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 6}, "Type": 2, "Data": "USER blah 0 * :Axel Wagner"}`,
+		`{"Id": {"Id": 9}, "Session": {"Id": 1}, "Type": 2, "Data": "TOPIC #test :bleh"}`,
+		`{"Id": {"Id": 10}, "Session": {"Id": 1}, "Type": 2, "Data": "INVITE mero #test"}`,
+		`{"Id": {"Id": 11}, "Session": {"Id": 1}, "Type": 2, "Data": "PART #test"}`,
+	}
+	want := []string{
+		`{"Id": {"Id": 1}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 2}, "Session": {"Id": 1}, "Type": 2, "Data": "NICK sECuRE"}`,
+		`{"Id": {"Id": 3}, "Session": {"Id": 1}, "Type": 2, "Data": "USER blah 0 * :Michael Stapelberg"}`,
+		`{"Id": {"Id": 6}, "Type": 0, "Data": "auth"}`,
+		`{"Id": {"Id": 7}, "Session": {"Id": 6}, "Type": 2, "Data": "NICK mero"}`,
+		`{"Id": {"Id": 8}, "Session": {"Id": 6}, "Type": 2, "Data": "USER blah 0 * :Axel Wagner"}`,
+	}
+	output := applyAndCompact(t, input)
 	mustMatchStrings(t, input, output, want)
 }
 

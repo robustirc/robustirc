@@ -95,6 +95,11 @@ func (c *compactionDatabase) PrepareStatements(p Preparer) error {
 		return err
 	}
 
+	c.Statements["_delete_channel"], err = p.Prepare("INSERT INTO deleteChannel (msgid, channel) VALUES (?, ?)")
+	if err != nil {
+		return err
+	}
+
 	// Let each IRC command prepare their statements.
 	for name, cmd := range Commands {
 		if cmd.CompactionPrepareStmt == nil {
@@ -138,6 +143,10 @@ CREATE TABLE createSession (msgid integer not null unique primary key, session i
 CREATE TABLE deleteSession (msgid integer not null unique primary key, session integer not null);
 CREATE TABLE allMessages (msgid integer not null unique primary key, session integer not null, target_session integer null, irccommand string null);
 CREATE INDEX allMessagesSessionIdx ON allMessages (session);
+-- msgid cannot be unique because a single message (e.g. PART) can destroy
+-- multiple channels.
+CREATE TABLE deleteChannel (msgid integer not null, channel text not null collate nocase);
+CREATE INDEX deleteChannelIdx ON deleteChannel (msgid);
 `
 	if _, err := tx.Exec(nonIrcCommandStmt); err != nil {
 		return nil, err

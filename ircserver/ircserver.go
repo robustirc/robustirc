@@ -294,25 +294,14 @@ func (i *IRCServer) CreateSession(id types.RobustId, auth string) {
 	}
 }
 
-// DeleteSessionById calls DeleteSession, but must be used when calling from
-// outside the IRC Server (it acquires a lock for you).
-func (i *IRCServer) DeleteSessionById(sessionid types.RobustId) {
-	i.sessionsMu.Lock()
-	defer i.sessionsMu.Unlock()
-	session, ok := i.sessions[sessionid]
-	if ok {
-		i.DeleteSession(session)
-	}
-}
-
 // DeleteSession deletes the specified session. Called from the IRC server
 // itself (when processing QUIT or KILL) or from the API (DELETE request coming
 // from the bridge).
-func (i *IRCServer) DeleteSession(s *Session) {
+func (i *IRCServer) DeleteSession(s *Session, msgid int64) {
 	for _, c := range i.channels {
 		delete(c.nicks, NickToLower(s.Nick))
 
-		i.maybeDeleteChannel(c)
+		i.maybeDeleteChannel(c, msgid)
 	}
 	delete(i.nicks, NickToLower(s.Nick))
 	// Instead of deleting the session here, we defer that to SendMessages, as
@@ -399,10 +388,11 @@ func extractPassword(password, prefix string) string {
 	return extracted
 }
 
-func (i *IRCServer) maybeDeleteChannel(c *channel) {
+func (i *IRCServer) maybeDeleteChannel(c *channel, msgid int64) {
 	if len(c.nicks) > 0 {
 		return
 	}
+	i.CompactionDatabase.ExecStmt("_delete_channel", msgid, c.name)
 	lc := ChanToLower(c.name)
 	delete(i.channels, lc)
 	for _, s := range i.sessions {
@@ -452,7 +442,7 @@ func (i *IRCServer) ProcessMessage(id types.RobustId, session types.RobustId, me
 				Command:  irc.ERROR,
 				Trailing: "Closing Link: You have not registered within 10 minutes",
 			})
-			i.DeleteSession(s)
+			i.DeleteSession(s, reply.msgid)
 		}
 		return reply
 	}

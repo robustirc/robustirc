@@ -87,10 +87,12 @@ func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
 CREATE VIEW allMessagesWin AS SELECT * FROM allMessages WHERE msgid < %d;
 CREATE VIEW createSessionWin AS SELECT * FROM createSession WHERE msgid < %d;
 CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
+CREATE VIEW deleteChannelWin AS SELECT * FROM deleteChannel WHERE msgid < %d;
 `
 
 	if _, err := tx.Exec(
 		fmt.Sprintf(windows,
+			s.compactionEnd.UnixNano(),
 			s.compactionEnd.UnixNano(),
 			s.compactionEnd.UnixNano(),
 			s.compactionEnd.UnixNano())); err != nil {
@@ -188,6 +190,7 @@ CREATE VIEW deleteSessionWin AS SELECT * FROM deleteSession WHERE msgid < %d;
 		DROP VIEW allMessagesWin;
 		DROP VIEW createSessionWin;
 		DROP VIEW deleteSessionWin;
+		DROP VIEW deleteChannelWin;
 		`); err != nil {
 		return err
 	}
@@ -328,6 +331,60 @@ UNION SELECT msgid FROM allMessagesWin WHERE irccommand = 'AWAY' AND msgid NOT I
 	if err != nil {
 		return changed, err
 	}
+
+	changed = changed || c
+
+	const destroyedChannels = `
+	CREATE TABLE deleteIds AS
+	SELECT
+		m.msgid AS msgid
+	FROM
+		paramsModeWin AS m
+		LEFT JOIN deleteChannelWin AS d
+		ON (
+			d.channel = m.channel AND
+			d.msgid > m.msgid
+		)
+	WHERE
+		d.msgid IS NOT NULL
+	UNION SELECT
+		m.msgid AS msgid
+	FROM
+		paramsTopicWin AS m
+		LEFT JOIN deleteChannelWin AS d
+		ON (
+			d.channel = m.channel AND
+			d.msgid > m.msgid
+		)
+	WHERE
+		d.msgid IS NOT NULL
+	UNION SELECT
+		m.msgid AS msgid
+	FROM
+		paramsInviteWin AS m
+		LEFT JOIN deleteChannelWin AS d
+		ON (
+			d.channel = m.channel AND
+			d.msgid > m.msgid
+		)
+	WHERE
+		d.msgid IS NOT NULL;
+	DELETE FROM paramsMode WHERE msgid IN (SELECT msgid FROM deleteIds);
+	DELETE FROM paramsTopic WHERE msgid IN (SELECT msgid FROM deleteIds);
+	DELETE FROM paramsInvite WHERE msgid IN (SELECT msgid FROM deleteIds);
+	`
+	started = time.Now()
+	_, err = tx.Exec(destroyedChannels)
+	if err != nil {
+		return changed, err
+	}
+
+	c, err = s.markResultForCompaction(tx, "destroyed channels", started)
+	if err != nil {
+		return changed, err
+	}
+
+	changed = changed || c
 
 	const stmt = `
 -- Delete all deleteSession messages immediately preceded by a createSession

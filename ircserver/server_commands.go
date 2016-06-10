@@ -170,7 +170,7 @@ func (i *IRCServer) cmdServerKick(s *Session, reply *Replyctx, msg *irc.Message)
 
 	// TODO(secure): reduce code duplication with cmdPart()
 	delete(c.nicks, NickToLower(msg.Params[1]))
-	i.maybeDeleteChannel(c)
+	i.maybeDeleteChannel(c, reply.msgid)
 	delete(session.Channels, ChanToLower(channelname))
 	i.CompactionDatabase.ExecStmt("KICK", reply.msgid, s.Id.Id, session.Id.Id, channelname)
 }
@@ -221,7 +221,7 @@ func (i *IRCServer) cmdServerKill(s *Session, reply *Replyctx, msg *irc.Message)
 			Command:  irc.QUIT,
 			Trailing: "Killed: " + msg.Trailing,
 		}))
-	i.DeleteSession(session)
+	i.DeleteSession(session, reply.msgid)
 	i.CompactionDatabase.ExecStmt("KILL", reply.msgid, s.Id.Id, session.Id.Id)
 }
 
@@ -284,7 +284,7 @@ DELETE FROM paramsServerQuit WHERE msgid IN (SELECT msgid FROM deleteIds);
 func (i *IRCServer) cmdServerQuit(s *Session, reply *Replyctx, msg *irc.Message) {
 	// No prefix means the server quits the entire session.
 	if msg.Prefix == nil {
-		i.DeleteSession(s)
+		i.DeleteSession(s, reply.msgid)
 		// For services, we also need to delete all sessions that share the
 		// same .Id, but have a different .Reply.
 		for id, session := range i.sessions {
@@ -297,7 +297,7 @@ func (i *IRCServer) cmdServerQuit(s *Session, reply *Replyctx, msg *irc.Message)
 				Trailing:      msg.Trailing,
 				EmptyTrailing: true,
 			})
-			i.DeleteSession(session)
+			i.DeleteSession(session, reply.msgid)
 		}
 		i.CompactionDatabase.ExecStmt("server_QUIT", reply.msgid, s.Id.Id)
 		return
@@ -315,7 +315,7 @@ func (i *IRCServer) cmdServerQuit(s *Session, reply *Replyctx, msg *irc.Message)
 			Trailing:      msg.Trailing,
 			EmptyTrailing: true,
 		})
-		i.DeleteSession(session)
+		i.DeleteSession(session, reply.msgid)
 		i.CompactionDatabase.ExecStmt("server_QUIT", reply.msgid, s.Id.Id)
 		return
 	}
@@ -687,7 +687,7 @@ func (i *IRCServer) cmdServerSvspart(s *Session, reply *Replyctx, msg *irc.Messa
 	}))
 
 	delete(c.nicks, nick)
-	i.maybeDeleteChannel(c)
+	i.maybeDeleteChannel(c, reply.msgid)
 	delete(session.Channels, ChanToLower(channelname))
 
 	i.CompactionDatabase.ExecStmt("PART", reply.msgid, s.Id.Id, session.Id.Id, channelname)
@@ -1056,7 +1056,7 @@ func (i *IRCServer) cmdServerPart(s *Session, reply *Replyctx, msg *irc.Message)
 
 		// TODO(secure): reduce code duplication with cmdPart()
 		delete(c.nicks, NickToLower(msg.Prefix.Name))
-		i.maybeDeleteChannel(c)
+		i.maybeDeleteChannel(c, reply.msgid)
 		delete(session.Channels, ChanToLower(channelname))
 
 		i.CompactionDatabase.ExecStmt("server_PART", reply.msgid, session.Id.Id, session.Id.Reply, channelname)
