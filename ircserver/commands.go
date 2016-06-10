@@ -619,56 +619,6 @@ WHERE
     p.msgid NOT NULL OR
 	k.msgid NOT NULL;
 
--- Delete all (sequences of) JOIN messages which are directly followed by a deleteSession message.
-INSERT INTO candidates
-SELECT
-   j.msgid AS join_msgid,
-   j.session AS session,
-   j.target_session AS target_session,
-   j.channel AS channel,
-   d.msgid AS part_msgid,
-   NULL AS kick_msgid
-FROM
-   (
-		SELECT
-			js.msgid AS msgid,
-			js.session AS session,
-			js.target_session AS target_session,
-			js.channel AS channel,
-			MIN(a.msgid) AS next_msgid
-		FROM
-			paramsJoinWin AS js
-			INNER JOIN allMessagesWin AS a
-			ON (
-			    ((((js.target_session IS NULL AND js.session = a.session) OR
-				   (js.target_session = a.session)) AND
-				  (a.irccommand IS NULL OR
-				   (a.irccommand != 'NICK' AND
-				    a.irccommand != 'PASS' AND
-				    a.irccommand != 'OPER' AND
-				    a.irccommand != 'AWAY' AND
-				    a.irccommand != 'JOIN' AND
-				    a.irccommand != 'PART'))) OR
-				 (((js.target_session IS NULL AND a.target_session = js.session) OR
-				   (js.target_session = a.target_session)) AND
-				  (a.irccommand IS NULL OR
-				   (a.irccommand != 'server_SVSMODE' AND
-				    a.irccommand != 'server_SVSNICK')))) AND
-				a.msgid > js.msgid
-			)
-		GROUP BY js.msgid, js.channel
-	) AS j
-	INNER JOIN (
-		SELECT msgid, session FROM deleteSessionWin
-		UNION SELECT msgid, session FROM paramsQuitWin
-		UNION SELECT msgid, target_session AS session FROM paramsKillWin
-	) AS d
-	ON (
-		(j.session = d.session OR
-		 j.target_session = d.session) AND
-		j.next_msgid = d.msgid
-	);
-
 DELETE FROM
     candidates
 WHERE

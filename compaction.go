@@ -413,11 +413,15 @@ FROM
                     a.irccommand != 'PASS' AND
                     a.irccommand != 'OPER' AND
                     a.irccommand != 'SERVER' AND
+                    a.irccommand != 'JOIN' AND
+                    a.irccommand != 'PART' AND
+                    a.irccommand != 'AWAY' AND
                     a.irccommand != 'server_NICK' AND
                     a.irccommand != 'QUIT'))) OR
 				 (d.session = a.target_session AND
 				  (a.irccommand IS NULL OR
 				   (a.irccommand != 'server_SVSMODE' AND
+				    a.irccommand != 'server_SVSJOIN' AND
 				    a.irccommand != 'server_SVSNICK')))) AND
                 a.msgid < d.msgid
             )
