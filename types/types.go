@@ -29,6 +29,7 @@ const (
 	RobustPing
 	RobustMessageOfDeath
 	RobustConfig
+	RobustState
 	RobustAny
 )
 
@@ -48,6 +49,8 @@ func (t RobustType) String() string {
 		return "message_of_death"
 	case RobustConfig:
 		return "config"
+	case RobustState:
+		return "state"
 	case RobustAny:
 		return "any"
 	default:

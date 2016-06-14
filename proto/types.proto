@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package proto;
+
+message RobustId {
+	sfixed64 id = 1;
+	sfixed64 reply = 2;
+}
+
+message RobustMessage {
+	RobustId id = 1;
+	RobustId session = 2;
+	enum RobustType {
+		CREATE_SESSION = 0;
+		DELETE_SESSION = 1;
+		IRC_FROM_CLIENT = 2;
+		IRC_TO_CLIENT = 3;
+		PING = 4;
+		MESSAGE_OF_DEATH = 5;
+		CONFIG = 6;
+		ANY = 7; // TODO: what is this used for?
+	}
+	RobustType type = 3;
+	string data = 4;
+
+	// TODO: use oneof for the following to save space?
+	repeated string servers = 5;
+	string current_master = 6;
+	uint64 client_message_id = 7;
+	uint64 revision = 8;
+}
+
+message SnapshotLog {
+        fixed64 index = 1;
+        fixed64 term = 2;
+        RobustMessage msg = 3;
+}
+

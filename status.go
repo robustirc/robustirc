@@ -2,16 +2,20 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/golang/protobuf/proto"
+	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/util"
 
-	"github.com/hashicorp/raft"
+	pb "github.com/robustirc/robustirc/proto"
 )
 
 //go:generate go run gentmpl.go status irclog
@@ -115,6 +119,21 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		prevOffset = 1
 	}
 
+	textState := "state serialization failed"
+	state, err := ircServer.Marshal(0)
+	if err != nil {
+		textState = fmt.Sprintf("state serialization failed: %v", err)
+	} else {
+		var snapshot pb.Snapshot
+		if err := proto.Unmarshal(state, &snapshot); err != nil {
+			textState = fmt.Sprintf("unmarshaling state failed: %v", err)
+		} else {
+			snapshot = util.PrivacyFilterSnapshot(snapshot)
+			var marshaler proto.TextMarshaler
+			textState = marshaler.Text(&snapshot)
+		}
+	}
+
 	args := struct {
 		Addr               string
 		State              raft.RaftState
@@ -129,6 +148,7 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		PrevOffset         int64
 		NextOffset         uint64
 		NetConfig          config.Network
+		ServerState        string
 	}{
 		*peerAddr,
 		node.State(),
@@ -142,7 +162,8 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		GetMessageRequests,
 		prevOffset,
 		lo + 50,
-		netConfig,
+		ircServer.Config,
+		textState,
 	}
 
 	statusTpl.Execute(res, args)

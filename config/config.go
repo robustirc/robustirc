@@ -6,18 +6,22 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-type duration time.Duration
+type Duration time.Duration
 
-func (d *duration) UnmarshalText(text []byte) error {
+func (d *Duration) UnmarshalText(text []byte) error {
 	parsed, err := time.ParseDuration(string(text))
 	if err == nil {
-		*d = duration(parsed)
+		*d = Duration(parsed)
 	}
 	return err
 }
 
-func (d duration) MarshalText() ([]byte, error) {
+func (d Duration) MarshalText() ([]byte, error) {
 	return []byte(time.Duration(d).String()), nil
+}
+
+func (d Duration) String() string {
+	return time.Duration(d).String()
 }
 
 type IRCOp struct {
@@ -43,15 +47,15 @@ type Network struct {
 
 	// Time interval after which a session without any activity is terminated
 	// by the server. The client should send a PING every minute.
-	SessionExpiration duration
+	SessionExpiration Duration
 
 	// Enforced cooloff between two messages sent by a user. Set to 0 to disable throttling.
-	PostMessageCooloff duration
+	PostMessageCooloff Duration
 }
 
 var DefaultConfig = Network{
-	SessionExpiration:  duration(30 * time.Minute),
-	PostMessageCooloff: duration(500 * time.Millisecond),
+	SessionExpiration:  Duration(30 * time.Minute),
+	PostMessageCooloff: Duration(500 * time.Millisecond),
 }
 
 func FromString(input string) (Network, error) {

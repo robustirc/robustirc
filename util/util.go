@@ -11,10 +11,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/types"
 	"github.com/sorcix/irc"
 	"github.com/stapelberg/glog"
+
+	pb "github.com/robustirc/robustirc/proto"
 )
 
 type ServerStatus struct {
@@ -154,6 +157,14 @@ func ResolveNetwork(network string) []string {
 	}
 
 	return servers
+}
+
+func PrivacyFilterSnapshot(snapshot pb.Snapshot) pb.Snapshot {
+	result := proto.Clone(&snapshot).(*pb.Snapshot)
+	for _, session := range result.Sessions {
+		session.Pass = "<privacy filtered>"
+	}
+	return *result
 }
 
 func PrivacyFilterIrcmsg(message *irc.Message) *irc.Message {

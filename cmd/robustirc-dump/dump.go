@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"flag"
@@ -16,12 +17,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/types"
 	"github.com/robustirc/robustirc/util"
 	"github.com/syndtr/goleveldb/leveldb"
 	leveldb_errors "github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/opt"
+
+	pb "github.com/robustirc/robustirc/proto"
 )
 
 var (
@@ -29,6 +33,8 @@ var (
 		"",
 		"Path to the database directory to dump.")
 
+	// XXX(1.0): delete this flag/functionality, it’s useless since
+	// snapshots replaced compaction.
 	onlyCompacted = flag.Bool("only_compacted",
 		false,
 		"Display only messages which (should have) undergone at least one compaction cycle because of their age.")
@@ -51,6 +57,21 @@ func dumpLog(key uint64, rlog *raft.Log) {
 	rmsg := &unfilteredMsg
 	if rmsg.Type == types.RobustIRCFromClient {
 		rmsg = util.PrivacyFilterMsg(rmsg)
+	} else if rmsg.Type == types.RobustState {
+		state, err := base64.StdEncoding.DecodeString(rmsg.Data)
+		if err != nil {
+			log.Printf("Could not decode robuststate: %v", err)
+			return
+		}
+
+		var snapshot pb.Snapshot
+		if err := proto.Unmarshal(state, &snapshot); err != nil {
+			log.Printf("Could not unmarshal proto: %v", err)
+			return
+		}
+		snapshot = util.PrivacyFilterSnapshot(snapshot)
+		var marshaler proto.TextMarshaler
+		rmsg.Data = marshaler.Text(&snapshot)
 	}
 	msgtime := time.Unix(0, rmsg.Id.Id)
 	timepassed := lastModified.Sub(msgtime)

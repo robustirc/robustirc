@@ -12,22 +12,14 @@ import (
 	"github.com/sorcix/irc"
 )
 
-func nonCompactingIRCServer() *IRCServer {
-	i := NewIRCServer("", "robustirc.net", time.Now())
-	// Skip inserting data into the compaction SQLite database.
-	// This not only makes the tests slightly faster, but also allows us to not
-	// pay attention to having unique message IDs.
-	i.CompactionDatabase.Close()
-	i.CompactionDatabase = nil
-	return i
-}
-
 func stdIRCServer() (*IRCServer, map[string]types.RobustId) {
-	i := nonCompactingIRCServer()
-	i.Config = config.IRC{
-		Operators: []config.IRCOp{
-			{Name: "mero", Password: "foo"},
-			{Name: "xeen", Password: "foo"},
+	i := NewIRCServer("", "robustirc.net", time.Now())
+	i.Config = config.Network{
+		IRC: config.IRC{
+			Operators: []config.IRCOp{
+				{Name: "mero", Password: "foo"},
+				{Name: "xeen", Password: "foo"},
+			},
 		},
 	}
 
@@ -89,7 +81,7 @@ func mustMatchMsg(t *testing.T, got *Replyctx, want string) {
 }
 
 func TestSessionInitialization(t *testing.T) {
-	i := nonCompactingIRCServer()
+	i := NewIRCServer("", "robustirc.net", time.Now())
 
 	id := types.RobustId{Id: time.Now().UnixNano()}
 	i.CreateSession(id, "authbytes")
@@ -169,10 +161,12 @@ func TestSessionInitialization(t *testing.T) {
 }
 
 func welcomeMustContain(t *testing.T, passMsg, privMsg string) {
-	i := nonCompactingIRCServer()
-	i.Config = config.IRC{
-		Operators: []config.IRCOp{
-			{Name: "mero", Password: "foo"},
+	i := NewIRCServer("", "robustirc.net", time.Now())
+	i.Config = config.Network{
+		IRC: config.IRC{
+			Operators: []config.IRCOp{
+				{Name: "mero", Password: "foo"},
+			},
 		},
 	}
 

@@ -157,6 +157,15 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 					</tbody>
                 </table>
 			</div>
+
+			<div class="row">
+			  <a name="state"></a>
+			  <h2>Server State</h2>
+
+			  <pre>
+			    {{ .ServerState }}
+			  </pre>
+			</div>
 		</div>
 	</body>
 </html>

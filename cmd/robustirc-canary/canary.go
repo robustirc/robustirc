@@ -97,6 +97,7 @@ func openOrDump(executable, statePath, heapPath string, compactionStart time.Tim
 		fmt.Sprintf("-dump_canary_state=%s", statePath),
 		fmt.Sprintf("-dump_heap_profile=%s", heapPath),
 		fmt.Sprintf("-canary_compaction_start=%d", compactionStart.UnixNano()))
+	cmd.Stderr = os.Stderr
 	log.Printf("Dumping canary state: %v\n", cmd.Args)
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("Could not dump canary state: %v", err)

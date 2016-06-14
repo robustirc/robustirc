@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"strings"
 	"time"
 
 	"golang.org/x/net/http2"
@@ -28,7 +29,6 @@ import (
 	"github.com/kardianos/osext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robustirc/rafthttp"
-	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/outputstream"
 	"github.com/robustirc/robustirc/raft_store"
@@ -97,8 +97,6 @@ var (
 	peerStore *raft.JSONPeers
 	ircStore  *raft_store.LevelDBStore
 	ircServer *ircserver.IRCServer
-
-	netConfig = config.DefaultConfig
 
 	executablehash = executableHash()
 
@@ -217,6 +215,27 @@ func executableHash() string {
 	}
 
 	return fmt.Sprintf("%.16x", h.Sum(nil))
+}
+
+// XXX(1.0): delete this function as users are expected to have upgraded.
+func deleteOldCompactionDatabases(tmpdir string) error {
+	dir, err := os.Open(tmpdir)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	names, err := dir.Readdirnames(-1)
+	if err != nil {
+		return err
+	}
+	for _, name := range names {
+		if strings.HasPrefix(name, "permanent-compaction.sqlite3") {
+			if err := os.Remove(filepath.Join(tmpdir, name)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Copied from src/net/http/server.go
@@ -347,8 +366,8 @@ func main() {
 		log.Fatalf("Could not delete old outputstream databases: %v\n", err)
 	}
 
-	if err := ircserver.DeleteOldDatabases(*raftDir); err != nil {
-		log.Fatalf("Could not delete old compaction databases: %v\n", err)
+	if err := deleteOldCompactionDatabases(*raftDir); err != nil {
+		glog.Errorf("Could not delete old compaction databases: %v (ignoring)\n", err)
 	}
 
 	log.Printf("Initializing RobustIRC…\n")
@@ -455,7 +474,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fsm := &FSM{logStore, ircStore}
+	fsm := &FSM{
+		store:             logStore,
+		ircstore:          ircStore,
+		lastSnapshotState: make(map[uint64][]byte),
+	}
 	logcache, err := raft.NewLogCache(config.MaxAppendEntries, logStore)
 	if err != nil {
 		log.Fatal(err)
@@ -582,7 +605,7 @@ func main() {
 			}
 
 			applyMu.Lock()
-			for _, msg := range ircServer.ExpireSessions(time.Duration(netConfig.SessionExpiration)) {
+			for _, msg := range ircServer.ExpireSessions() {
 				// Cannot fail, no user input.
 				msgbytes, _ := json.Marshal(msg)
 				f := node.Apply(msgbytes, 10*time.Second)

@@ -11,7 +11,7 @@ import (
 
 func stdIRCServerWithServices() (*IRCServer, map[string]types.RobustId) {
 	i, ids := stdIRCServer()
-	i.Config.Services = append(i.Config.Services, config.Service{
+	i.Config.IRC.Services = append(i.Config.IRC.Services, config.Service{
 		Password: "mypass",
 	})
 	ids["services"] = types.RobustId{Id: 0x13c6cdee3e749faf}
@@ -23,7 +23,7 @@ func stdIRCServerWithServices() (*IRCServer, map[string]types.RobustId) {
 
 func TestServerHandshake(t *testing.T) {
 	i, ids := stdIRCServer()
-	i.Config.Services = append(i.Config.Services, config.Service{
+	i.Config.IRC.Services = append(i.Config.IRC.Services, config.Service{
 		Password: "mypass",
 	})
 

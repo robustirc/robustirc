@@ -46,6 +46,8 @@ func canary(fsm raft.FSM, statePath string) {
 	// just compacted).
 	log.Printf("Compacting before dumping state\n")
 
+	fsm.(*FSM).skipDeletionForCanary = true
+
 	snapshot, err := fsm.Snapshot()
 	if err != nil {
 		log.Fatalf("fsm.Snapshot(): %v\n", err)
@@ -56,8 +58,6 @@ func canary(fsm raft.FSM, statePath string) {
 		log.Fatalf("snapshot is not a robustSnapshot")
 	}
 
-	rs.skipDeletionForCanary = true
-
 	sink, err := raft.NewDiscardSnapshotStore().Create(rs.lastIndex, 1, []byte{})
 	if err != nil {
 		log.Fatalf("DiscardSnapshotStore.Create(): %v\n", err)
@@ -66,6 +66,8 @@ func canary(fsm raft.FSM, statePath string) {
 	if err := snapshot.Persist(sink); err != nil {
 		log.Fatalf("snapshot.Persist(): %v\n", err)
 	}
+
+	sink.Close()
 
 	// Dump the in-memory state into a file, to be read by robustirc-canary.
 	f, err := os.Create(statePath)
@@ -102,8 +104,8 @@ func canary(fsm raft.FSM, statePath string) {
 		}
 
 		nmsg := types.NewRobustMessageFromBytes(nlog.Data)
-		if time.Unix(0, nmsg.Id.Id).After(rs.compactionEnd) {
-			break
+		if time.Unix(0, nmsg.Id.Id).Before(rs.compactionEnd) {
+			continue
 		}
 
 		// TODO: come up with pseudo-values for createsession/deletesession
@@ -115,13 +117,12 @@ func canary(fsm raft.FSM, statePath string) {
 			continue
 		}
 		vmsgs, _ := ircServer.Get(nmsg.Id)
-		_, compacted := rs.del[idx]
 		cm := canaryMessageState{
 			Id:        idx,
 			Session:   nmsg.Session.Id,
 			Input:     util.PrivacyFilterIrcmsg(ircmsg).String(),
 			Output:    make([]canaryMessageOutput, len(vmsgs)),
-			Compacted: compacted,
+			Compacted: false,
 		}
 		for idx, vmsg := range vmsgs {
 			ifc := make(map[string]bool)

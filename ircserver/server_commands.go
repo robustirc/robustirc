@@ -1,7 +1,6 @@
 package ircserver
 
 import (
-	"database/sql"
 	"fmt"
 	"hash/fnv"
 	"sort"
@@ -32,93 +31,61 @@ func init() {
 	Commands["server_PING"] = Commands["PING"]
 
 	Commands["server_QUIT"] = &ircCommand{
-		Func:                   (*IRCServer).cmdServerQuit,
-		CompactionCreate:       createServerQuit,
-		CompactionPrepareStmt:  prepareStmtServerQuit,
-		CompactionPrepareViews: prepareViewsServerQuit,
-		CompactionDropViews:    dropViewsServerQuit,
-		Compact:                compactServerQuit,
+		Func: (*IRCServer).cmdServerQuit,
 	}
 	Commands["server_NICK"] = &ircCommand{
 		Func: (*IRCServer).cmdServerNick,
-		// Compaction is handled by Commands["NICK"]
 	}
 	Commands["server_MODE"] = &ircCommand{
 		Func: (*IRCServer).cmdServerMode,
-		// Compaction is handled by Commands["MODE"]
 	}
 	Commands["server_JOIN"] = &ircCommand{
-		Func:                   (*IRCServer).cmdServerJoin,
-		CompactionCreate:       createServerJoin,
-		CompactionPrepareStmt:  prepareStmtServerJoin,
-		CompactionPrepareViews: prepareViewsServerJoin,
-		CompactionDropViews:    dropViewsServerJoin,
-		Compact:                compactServerJoin,
+		Func: (*IRCServer).cmdServerJoin,
 	}
 	Commands["server_PART"] = &ircCommand{
-		CompactionCreate:       createServerPart,
-		CompactionPrepareStmt:  prepareStmtServerPart,
-		CompactionPrepareViews: prepareViewsServerPart,
-		CompactionDropViews:    dropViewsServerPart,
-		Compact:                compactServerPart,
-		Func:                   (*IRCServer).cmdServerPart,
+		Func: (*IRCServer).cmdServerPart,
 	}
 	Commands["server_PRIVMSG"] = &ircCommand{
 		Func: (*IRCServer).cmdServerPrivmsg,
-		ImmediatelyCompactable: true,
 	}
 	Commands["server_NOTICE"] = &ircCommand{
 		Func: (*IRCServer).cmdServerPrivmsg,
-		ImmediatelyCompactable: true,
 	}
 	Commands["server_TOPIC"] = &ircCommand{
 		Func:      (*IRCServer).cmdServerTopic,
 		MinParams: 3,
-		// Compaction is handled by Commands["TOPIC"]
 	}
 	Commands["server_SVSNICK"] = &ircCommand{
 		Func:      (*IRCServer).cmdServerSvsnick,
 		MinParams: 2,
-		// Compaction is handled by Commands["NICK"]
 	}
 	Commands["server_SVSMODE"] = &ircCommand{
 		Func:      (*IRCServer).cmdServerSvsmode,
 		MinParams: 2,
-		// Compaction is handled by Commands["MODE"]
 	}
 	Commands["server_SVSHOLD"] = &ircCommand{
-		Func:                   (*IRCServer).cmdServerSvshold,
-		MinParams:              1,
-		CompactionCreate:       createServerSvshold,
-		CompactionPrepareStmt:  prepareStmtServerSvshold,
-		CompactionPrepareViews: prepareViewsServerSvshold,
-		CompactionDropViews:    dropViewsServerSvshold,
-		Compact:                compactServerSvshold,
+		Func:      (*IRCServer).cmdServerSvshold,
+		MinParams: 1,
 	}
 	Commands["server_SVSJOIN"] = &ircCommand{
 		Func:      (*IRCServer).cmdServerSvsjoin,
 		MinParams: 2,
-		// Compaction is handled by Commands["JOIN"]
 	}
 	Commands["server_SVSPART"] = &ircCommand{
 		Func:      (*IRCServer).cmdServerSvspart,
 		MinParams: 2,
-		// Compaction is handled by Commands["PART"]
 	}
 	Commands["server_KILL"] = &ircCommand{
 		Func:      (*IRCServer).cmdServerKill,
 		MinParams: 1,
-		// Compaction is handled by Commands["KILL"]
 	}
 	Commands["server_KICK"] = &ircCommand{
 		Func:      (*IRCServer).cmdServerKick,
 		MinParams: 2,
-		// Compaction is handled by Commands["KICK"]
 	}
 	Commands["server_INVITE"] = &ircCommand{
 		Func:      (*IRCServer).cmdServerInvite,
 		MinParams: 2,
-		// Compaction is handled by Commands["INVITE"]
 	}
 }
 
@@ -170,9 +137,8 @@ func (i *IRCServer) cmdServerKick(s *Session, reply *Replyctx, msg *irc.Message)
 
 	// TODO(secure): reduce code duplication with cmdPart()
 	delete(c.nicks, NickToLower(msg.Params[1]))
-	i.maybeDeleteChannel(c, reply.msgid)
+	i.maybeDeleteChannel(c)
 	delete(session.Channels, ChanToLower(channelname))
-	i.CompactionDatabase.ExecStmt("KICK", reply.msgid, s.Id.Id, session.Id.Id, channelname)
 }
 
 func (i *IRCServer) cmdServerKill(s *Session, reply *Replyctx, msg *irc.Message) {
@@ -222,64 +188,6 @@ func (i *IRCServer) cmdServerKill(s *Session, reply *Replyctx, msg *irc.Message)
 			Trailing: "Killed: " + msg.Trailing,
 		}))
 	i.DeleteSession(session, reply.msgid)
-	i.CompactionDatabase.ExecStmt("KILL", reply.msgid, s.Id.Id, session.Id.Id)
-	i.CompactionDatabase.ExecStmt("_all_target", session.Id.Id, reply.msgid)
-}
-
-func createServerQuit(db *sql.DB) error {
-	_, err := db.Exec("CREATE TABLE paramsServerQuit (msgid integer not null unique primary key, session integer not null)")
-	return err
-}
-
-func prepareStmtServerQuit(p Preparer) (*sql.Stmt, error) {
-	return p.Prepare("INSERT INTO paramsServerQuit (msgid, session) VALUES (?, ?)")
-}
-
-func prepareViewsServerQuit(tx *sql.Tx, compactionEnd time.Time) error {
-	_, err := tx.Exec(
-		fmt.Sprintf("CREATE VIEW paramsServerQuitWin AS SELECT * FROM paramsServerQuit WHERE msgid < %d",
-			compactionEnd.UnixNano()))
-	return err
-}
-
-func dropViewsServerQuit(tx *sql.Tx) error {
-	_, err := tx.Exec("DROP VIEW paramsServerQuitWin")
-	return err
-}
-
-func compactServerQuit(tx *sql.Tx) error {
-	const query = `
--- Delete all QUIT messages which are directly followed by a deleteSession message.
-CREATE TABLE deleteIds AS
-SELECT
-    a.msgid AS msgid
-FROM
-    (
-        SELECT
-            q.msgid AS msgid,
-            q.session AS session,
-            MIN(a.msgid) AS next_msgid
-        FROM
-            paramsServerQuitWin AS q
-            INNER JOIN allMessagesWin AS a
-            ON (
-                q.session = a.session AND
-				(a.irccommand IS NULL OR
-				 a.irccommand != 'server_QUIT') AND
-                a.msgid > q.msgid
-            )
-        GROUP BY q.msgid
-    ) AS a
-    INNER JOIN deleteSessionWin AS d
-    ON (
-        a.session = d.session AND
-        a.next_msgid = d.msgid
-    );
-DELETE FROM paramsServerQuit WHERE msgid IN (SELECT msgid FROM deleteIds);
-`
-
-	_, err := tx.Exec(query)
-	return err
 }
 
 func (i *IRCServer) cmdServerQuit(s *Session, reply *Replyctx, msg *irc.Message) {
@@ -300,7 +208,6 @@ func (i *IRCServer) cmdServerQuit(s *Session, reply *Replyctx, msg *irc.Message)
 			})
 			i.DeleteSession(session, reply.msgid)
 		}
-		i.CompactionDatabase.ExecStmt("server_QUIT", reply.msgid, s.Id.Id)
 		return
 	}
 
@@ -317,7 +224,6 @@ func (i *IRCServer) cmdServerQuit(s *Session, reply *Replyctx, msg *irc.Message)
 			EmptyTrailing: true,
 		})
 		i.DeleteSession(session, reply.msgid)
-		i.CompactionDatabase.ExecStmt("server_QUIT", reply.msgid, s.Id.Id)
 		return
 	}
 }
@@ -350,7 +256,7 @@ func (i *IRCServer) cmdServerNick(s *Session, reply *Replyctx, msg *irc.Message)
 	}
 
 	i.CreateSession(id, "")
-	ss, _ := i.GetSession(id)
+	ss := i.sessions[id]
 	ss.Nick = msg.Params[0]
 	i.nicks[NickToLower(ss.Nick)] = ss
 	ss.Username = msg.Params[3]
@@ -381,10 +287,6 @@ func (i *IRCServer) cmdServerMode(s *Session, reply *Replyctx, msg *irc.Message)
 		switch char {
 		case 't', 's', 'r', 'i':
 			c.modes[char] = newvalue
-			i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, sql.NullInt64{Valid: false}, channelname, mode.Mode,
-				sql.NullString{
-					String: mode.Param,
-					Valid:  mode.Param != ""})
 		case 'o':
 			nick := mode.Param
 			perms, ok := c.nicks[NickToLower(nick)]
@@ -400,10 +302,6 @@ func (i *IRCServer) cmdServerMode(s *Session, reply *Replyctx, msg *irc.Message)
 				// nothing (like UnrealIRCd).
 				if perms[chanop] != newvalue {
 					c.nicks[NickToLower(nick)][chanop] = newvalue
-					i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, sql.NullInt64{Valid: false}, channelname, mode.Mode,
-						sql.NullString{
-							String: mode.Param,
-							Valid:  mode.Param != ""})
 				}
 			}
 		default:
@@ -427,7 +325,7 @@ func (i *IRCServer) cmdServerMode(s *Session, reply *Replyctx, msg *irc.Message)
 
 func (i *IRCServer) cmdServer(s *Session, reply *Replyctx, msg *irc.Message) {
 	authenticated := false
-	for _, service := range i.Config.Services {
+	for _, service := range i.Config.IRC.Services {
 		if s.Pass == "services="+service.Password {
 			authenticated = true
 			break
@@ -507,51 +405,6 @@ func (i *IRCServer) cmdServer(s *Session, reply *Replyctx, msg *irc.Message) {
 	}
 }
 
-func createServerSvshold(db *sql.DB) error {
-	_, err := db.Exec("CREATE TABLE paramsServerSvshold (msgid integer not null unique primary key, session integer not null, duration integer not null);")
-	return err
-}
-
-func prepareStmtServerSvshold(p Preparer) (*sql.Stmt, error) {
-	return p.Prepare("INSERT INTO paramsServerSvshold (msgid, session, duration) VALUES (?, ?, ?)")
-}
-
-func prepareViewsServerSvshold(tx *sql.Tx, compactionEnd time.Time) error {
-	_, err := tx.Exec(
-		fmt.Sprintf("CREATE VIEW paramsServerSvsholdWin AS SELECT * FROM paramsServerSvshold WHERE msgid < %d",
-			compactionEnd.UnixNano()))
-	return err
-}
-
-func dropViewsServerSvshold(tx *sql.Tx) error {
-	_, err := tx.Exec("DROP VIEW paramsServerSvsholdWin")
-	return err
-}
-
-func compactServerSvshold(tx *sql.Tx) error {
-	const query = `
-CREATE TABLE deleteIds AS
-SELECT
-	s.msgid AS msgid
-FROM
-	paramsServerSvsholdWin AS s
-	LEFT JOIN (
-		SELECT
-			MAX(msgid) AS max
-		FROM
-			allMessagesWin
-	) AS m
-	ON (m.max > (s.msgid+s.duration))
-WHERE
-	m.max IS NOT NULL;
-
-DELETE FROM paramsServerSvshold WHERE msgid IN (SELECT msgid FROM deleteIds)
-`
-
-	_, err := tx.Exec(query)
-	return err
-}
-
 func (i *IRCServer) cmdServerSvshold(s *Session, reply *Replyctx, msg *irc.Message) {
 	// SVSHOLD <nick> [<expirationtimerelative> :<reason>]
 	nick := NickToLower(msg.Params[0])
@@ -571,7 +424,6 @@ func (i *IRCServer) cmdServerSvshold(s *Session, reply *Replyctx, msg *irc.Messa
 			duration: duration,
 			reason:   msg.Trailing,
 		}
-		i.CompactionDatabase.ExecStmt("server_SVSHOLD", reply.msgid, s.Id.Id, duration.Seconds())
 	} else {
 		delete(i.svsholds, nick)
 	}
@@ -639,9 +491,6 @@ func (i *IRCServer) cmdServerSvsjoin(s *Session, reply *Replyctx, msg *irc.Messa
 	// Integrate the topic response by simulating a TOPIC command.
 	i.cmdTopic(session, reply, &irc.Message{Command: irc.TOPIC, Params: []string{channelname}})
 	i.cmdNames(session, reply, &irc.Message{Command: irc.NAMES, Params: []string{channelname}})
-
-	i.CompactionDatabase.ExecStmt("JOIN", reply.msgid, s.Id.Id, session.Id.Id, channelname)
-	i.CompactionDatabase.ExecStmt("_all_target", session.Id.Id, reply.msgid)
 }
 
 func (i *IRCServer) cmdServerSvspart(s *Session, reply *Replyctx, msg *irc.Message) {
@@ -688,10 +537,8 @@ func (i *IRCServer) cmdServerSvspart(s *Session, reply *Replyctx, msg *irc.Messa
 	}))
 
 	delete(c.nicks, nick)
-	i.maybeDeleteChannel(c, reply.msgid)
+	i.maybeDeleteChannel(c)
 	delete(session.Channels, ChanToLower(channelname))
-
-	i.CompactionDatabase.ExecStmt("PART", reply.msgid, s.Id.Id, session.Id.Id, channelname)
 }
 
 func (i *IRCServer) cmdServerSvsmode(s *Session, reply *Replyctx, msg *irc.Message) {
@@ -724,19 +571,9 @@ func (i *IRCServer) cmdServerSvsmode(s *Session, reply *Replyctx, msg *irc.Messa
 		switch char {
 		case 'd':
 			session.svid = mode.Param
-			i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, session.Id.Id, session.Nick, mode.Mode,
-				sql.NullString{
-					String: mode.Param,
-					Valid:  mode.Param != ""})
-			i.CompactionDatabase.ExecStmt("_all_target", session.Id.Id, reply.msgid)
 		case 'r':
 			// Store registered flag
 			session.modes[char] = newvalue
-			i.CompactionDatabase.ExecStmt("MODE", reply.msgid, s.Id.Id, session.Id.Id, session.Nick, mode.Mode,
-				sql.NullString{
-					String: mode.Param,
-					Valid:  mode.Param != ""})
-			i.CompactionDatabase.ExecStmt("_all_target", session.Id.Id, reply.msgid)
 		default:
 			i.sendServices(reply, &irc.Message{
 				Prefix:   i.ServerPrefix,
@@ -803,120 +640,6 @@ func (i *IRCServer) cmdServerSvsnick(s *Session, reply *Replyctx, msg *irc.Messa
 				Command:  irc.NICK,
 				Trailing: session.Nick,
 			})))
-	i.CompactionDatabase.ExecStmt("NICK", reply.msgid, s.Id.Id, session.Id.Id, session.Nick)
-	i.CompactionDatabase.ExecStmt("_all_target", session.Id.Id, reply.msgid)
-}
-
-func createServerJoin(db *sql.DB) error {
-	// We cannot make msgid unique because one JOIN message may contain
-	// multiple channels.
-	const createStmt = `
-		CREATE TABLE paramsServerJoin (msgid integer not null, session integer not null, subsession integer not null, channel text not null collate nocase);
-		CREATE INDEX paramsServerJoinMsgid ON paramsServerJoin (msgid);
-		CREATE INDEX paramsServerJoinSession ON paramsServerJoin (session, subsession);
-		`
-	_, err := db.Exec(createStmt)
-	return err
-}
-
-func prepareStmtServerJoin(p Preparer) (*sql.Stmt, error) {
-	return p.Prepare("INSERT INTO paramsServerJoin (msgid, session, subsession, channel) VALUES (?, ?, ?, ?)")
-}
-
-func prepareViewsServerJoin(tx *sql.Tx, compactionEnd time.Time) error {
-	_, err := tx.Exec(
-		fmt.Sprintf("CREATE VIEW paramsServerJoinWin AS SELECT * FROM paramsServerJoin WHERE msgid < %d",
-			compactionEnd.UnixNano()))
-	return err
-}
-
-func dropViewsServerJoin(tx *sql.Tx) error {
-	_, err := tx.Exec("DROP VIEW paramsServerJoinWin")
-	return err
-}
-
-func compactServerJoin(tx *sql.Tx) error {
-	const query = `
-CREATE TABLE candidates AS
-SELECT
-    j.msgid AS join_msgid,
-    j.session AS session,
-	j.subsession AS subsession,
-    j.channel AS channel,
-    p.msgid AS part_msgid
-FROM
-    paramsServerJoinWin AS j
-    LEFT JOIN paramsServerPartWin AS p
-    ON (
-        j.session = p.session AND
-		j.subsession = p.subsession AND
-        j.msgid < p.msgid AND
-        j.channel = p.channel
-    )
-WHERE
-    p.msgid NOT NULL;
-
--- Delete all (sequences of) JOIN messages which are directly followed by a deleteSession message.
-INSERT INTO candidates
-SELECT
-   j.msgid AS join_msgid,
-   j.session AS session,
-   j.subsession AS subsession,
-   j.channel AS channel,
-   d.msgid AS part_msgid
-FROM
-   (
-		SELECT
-			js.msgid AS msgid,
-			js.session AS session,
-			js.subsession AS subsession,
-			js.channel AS channel,
-			MIN(a.msgid) AS next_msgid
-		FROM
-			paramsServerJoinWin AS js
-			INNER JOIN allMessagesWin AS a
-			ON (
-				js.session = a.session AND
-				(a.irccommand IS NULL OR
-				 (a.irccommand != 'JOIN' AND
-				  a.irccommand != 'PART')) AND
-				a.msgid > js.msgid
-			)
-		GROUP BY js.msgid, js.channel
-	) AS j
-	INNER JOIN deleteSessionWin AS d
-	ON (
-		j.session = d.session AND
-		j.next_msgid = d.msgid
-	);
-
--- Retain JOIN messages for multiple channels of which not all have been left.
-DELETE FROM
-    candidates
-WHERE
-    join_msgid IN (
-        SELECT
-            msgid
-        FROM
-            paramsServerJoinWin AS j
-            LEFT JOIN candidates AS c
-            ON (
-                j.msgid = c.join_msgid AND
-                j.channel = c.channel
-            )
-        WHERE
-            c.join_msgid is null
-    );
-
--- sqlite3 cannot drop columns in ALTER TABLE statements, so we need to copy.
-CREATE TABLE deleteIds AS SELECT join_msgid AS msgid FROM candidates;
-DROP TABLE candidates;
-
-DELETE FROM paramsServerJoin WHERE msgid IN (SELECT msgid FROM deleteIds)
-`
-
-	_, err := tx.Exec(query)
-	return err
 }
 
 func (i *IRCServer) cmdServerJoin(s *Session, reply *Replyctx, msg *irc.Message) {
@@ -967,61 +690,7 @@ func (i *IRCServer) cmdServerJoin(s *Session, reply *Replyctx, msg *irc.Message)
 			Command:  irc.JOIN,
 			Trailing: channelname,
 		})
-
-		i.CompactionDatabase.ExecStmt("server_JOIN", reply.msgid, session.Id.Id, session.Id.Reply, channelname)
 	}
-}
-
-func createServerPart(db *sql.DB) error {
-	// We cannot make msgid unique because one JOIN message may contain
-	// multiple channels.
-	const createStmt = `
-		CREATE TABLE paramsServerPart (msgid integer not null, session integer not null, subsession integer not null, channel text not null collate nocase);
-		CREATE INDEX paramsServerPartMsgid ON paramsServerPart (msgid);
-		CREATE INDEX paramsServerPartSession ON paramsServerPart (session, subsession);
-		`
-	_, err := db.Exec(createStmt)
-	return err
-}
-
-func prepareStmtServerPart(p Preparer) (*sql.Stmt, error) {
-	return p.Prepare("INSERT INTO paramsServerPart (msgid, session, subsession, channel) VALUES (?, ?, ?, ?)")
-}
-
-func prepareViewsServerPart(tx *sql.Tx, compactionEnd time.Time) error {
-	_, err := tx.Exec(
-		fmt.Sprintf("CREATE VIEW paramsServerPartWin AS SELECT * FROM paramsServerPart WHERE msgid < %d",
-			compactionEnd.UnixNano()))
-	return err
-}
-
-func dropViewsServerPart(tx *sql.Tx) error {
-	_, err := tx.Exec("DROP VIEW paramsServerPartWin")
-	return err
-}
-
-func compactServerPart(tx *sql.Tx) error {
-	const query = `
-CREATE TABLE deleteIds AS
-SELECT
-    p.msgid AS msgid
-FROM
-    paramsServerPartWin AS p
-    LEFT JOIN paramsServerJoinWin AS j
-    ON (
-        p.session = j.session AND
-        p.subsession = j.subsession AND
-        p.msgid > j.msgid AND
-        p.channel = j.channel
-    )
-GROUP BY p.msgid
-HAVING COUNT(j.msgid) = 0;
-
-DELETE FROM paramsServerPart WHERE msgid IN (SELECT msgid FROM deleteIds)
-`
-
-	_, err := tx.Exec(query)
-	return err
 }
 
 func (i *IRCServer) cmdServerPart(s *Session, reply *Replyctx, msg *irc.Message) {
@@ -1057,10 +726,8 @@ func (i *IRCServer) cmdServerPart(s *Session, reply *Replyctx, msg *irc.Message)
 
 		// TODO(secure): reduce code duplication with cmdPart()
 		delete(c.nicks, NickToLower(msg.Prefix.Name))
-		i.maybeDeleteChannel(c, reply.msgid)
+		i.maybeDeleteChannel(c)
 		delete(session.Channels, ChanToLower(channelname))
-
-		i.CompactionDatabase.ExecStmt("server_PART", reply.msgid, session.Id.Id, session.Id.Reply, channelname)
 	}
 }
 
@@ -1090,10 +757,6 @@ func (i *IRCServer) cmdServerTopic(s *Session, reply *Replyctx, msg *irc.Message
 			Trailing:      msg.Trailing,
 			EmptyTrailing: true,
 		})
-		i.CompactionDatabase.ExecStmt("TOPIC", reply.msgid, s.Id.Id, channel,
-			sql.NullString{
-				String: msg.Trailing,
-				Valid:  msg.Trailing != "" || msg.EmptyTrailing})
 		return
 	}
 
@@ -1119,10 +782,6 @@ func (i *IRCServer) cmdServerTopic(s *Session, reply *Replyctx, msg *irc.Message
 		Trailing:      msg.Trailing,
 		EmptyTrailing: true,
 	})
-	i.CompactionDatabase.ExecStmt("TOPIC", reply.msgid, s.Id.Id, channel,
-		sql.NullString{
-			String: msg.Trailing,
-			Valid:  msg.Trailing != "" || msg.EmptyTrailing})
 }
 
 // The only difference is that we re-use (and augment) the msg.Prefix instead of setting s.Prefix.
@@ -1227,8 +886,6 @@ func (i *IRCServer) cmdServerInvite(s *Session, reply *Replyctx, msg *irc.Messag
 	}
 
 	session.invitedTo[ChanToLower(channelname)] = true
-	i.CompactionDatabase.ExecStmt("INVITE", reply.msgid, s.Id.Id, session.Id.Id, channelname)
-	i.CompactionDatabase.ExecStmt("_all_target", session.Id.Id, reply.msgid)
 	i.sendServices(reply, &irc.Message{
 		Prefix:  i.ServerPrefix,
 		Command: irc.RPL_INVITING,

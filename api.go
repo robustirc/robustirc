@@ -36,8 +36,6 @@ var (
 	GetMessageRequests    = make(map[string]GetMessageStats)
 	getMessagesRequestsMu sync.Mutex
 
-	configMu sync.Mutex
-
 	// applyMu guards calls to raft.Apply(). We need to lock them because
 	// otherwise we cannot guarantee that multiple goroutines will write
 	// strictly monotonically increasing timestamps.
@@ -171,10 +169,8 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	}
 
 	// Don’t throttle server-to-server connections (services)
-	if netConfig.PostMessageCooloff > 0 {
-		until := ircServer.ThrottleUntil(session, time.Duration(netConfig.PostMessageCooloff))
-		time.Sleep(until.Sub(time.Now()))
-	}
+	until := ircServer.ThrottleUntil(session)
+	time.Sleep(until.Sub(time.Now()))
 
 	type postMessageRequest struct {
 		Data            string
@@ -624,13 +620,38 @@ func handleQuit(w http.ResponseWriter, r *http.Request) {
 
 func handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
-	w.Header().Set("X-RobustIRC-Config-Revision", strconv.Itoa(netConfig.Revision))
+	w.Header().Set("X-RobustIRC-Config-Revision", strconv.Itoa(ircServer.Config.Revision))
 
-	if err := toml.NewEncoder(w).Encode(&netConfig); err != nil {
+	ircServer.ConfigMu.RLock()
+	defer ircServer.ConfigMu.RUnlock()
+	if err := toml.NewEncoder(w).Encode(&ircServer.Config); err != nil {
 		log.Printf("Could not send TOML config: %v\n", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+func configRevision() int {
+	ircServer.ConfigMu.RLock()
+	defer ircServer.ConfigMu.RUnlock()
+	return ircServer.Config.Revision
+}
+
+func applyConfig(revision int, body string) error {
+	applyMu.Lock()
+	defer applyMu.Unlock()
+	if got, want := revision, configRevision(); got != want {
+		return fmt.Errorf("Revision mismatch (got %d, want %d). Try again.", got, want)
+	}
+
+	msg := ircServer.NewRobustMessage(types.RobustConfig, types.RobustId{}, body)
+	msg.Revision = int(revision) + 1
+	msgbytes, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("Could not store message, cannot encode it as JSON: %v", err)
+	}
+
+	return node.Apply(msgbytes, 10*time.Second).Error()
 }
 
 func handlePostConfig(w http.ResponseWriter, r *http.Request) {
@@ -640,17 +661,9 @@ func handlePostConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	configMu.Lock()
-
-	if got, want := int(revision), netConfig.Revision; got != want {
-		http.Error(w, fmt.Sprintf("Revision mismatch (got %d, want %d). Try again.", got, want), http.StatusBadRequest)
-		return
-	}
-
 	var unused config.Network
 	var body bytes.Buffer
 	if _, err := toml.DecodeReader(io.TeeReader(r.Body, &body), &unused); err != nil {
-		configMu.Unlock()
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -660,28 +673,13 @@ func handlePostConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	applyMu.Lock()
-	msg := ircServer.NewRobustMessage(types.RobustConfig, types.RobustId{}, body.String())
-	msg.Revision = int(revision) + 1
-	msgbytes, err := json.Marshal(msg)
-	if err != nil {
-		applyMu.Unlock()
-		configMu.Unlock()
-		http.Error(w, fmt.Sprintf("Could not store message, cannot encode it as JSON: %v", err),
-			http.StatusBadRequest)
-		return
-	}
-
-	f := node.Apply(msgbytes, 10*time.Second)
-	applyMu.Unlock()
-	err = f.Error()
-	configMu.Unlock()
-	if err != nil {
+	if err := applyConfig(int(revision), body.String()); err != nil {
 		if err == raft.ErrNotLeader {
 			maybeProxyToLeader(w, r, nopCloser{&body})
 			return
 		}
-		http.Error(w, fmt.Sprintf("Apply(): %v", err), http.StatusInternalServerError)
+
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 }

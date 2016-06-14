@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package proto;
+
+import "types.proto";  // for RobustId
+
+// Timestamp serializes a Go time.Time value with correct IsZero()
+// semantics. Merely serializing the UnixNano() value is not
+// sufficient, see https://play.golang.org/p/n3ZWGwZCKR
+message Timestamp {
+  int64 unix_nano = 1;
+  bool is_zero = 2;
+}
+
+// Snapshot contains the entire state of an IRCServer object, so that
+// a new IRCServer object can be created with exactly the same state.
+message Snapshot {
+  message IRCPrefix {
+    string name = 1;
+    string user = 2;
+    string host = 3;
+  }
+  message Session {
+    RobustId id = 1;
+    string auth = 2;
+    string nick = 3;
+    string username = 4;
+    string realname = 5;
+    repeated string channels = 6;
+    Timestamp last_activity = 7;
+    bool operator = 8;
+    string away_msg = 9;
+    int64 throttling_exponent = 10;
+    repeated string invited_to = 11;
+    repeated string modes = 12;
+    string svid = 13;
+    string pass = 14;
+    bool server = 15;
+    RobustId start_id = 16;
+    uint64 last_client_message_id = 17;
+    IRCPrefix irc_prefix = 18;
+  }
+  repeated Session sessions = 1;
+
+  message Channel {
+    string name = 1;
+    string topic_nick = 2;
+    Timestamp topic_time = 3;
+    string topic = 4;
+    // Modes is a workaround because proto3 does not support
+    // map<string, repeated string>.
+    message Modes {
+      repeated string mode = 1;
+    }
+    map<string, Modes> nicks = 5;
+    repeated string modes = 6;
+  }
+  repeated Channel channels = 2;
+  
+  message SVSHold {
+    Timestamp added = 1;
+    string duration = 2;
+    string reason = 3;
+  }
+  map<string, SVSHold> svsholds = 3;
+
+  RobustId last_processed = 4;
+
+  message Config {
+    uint64 revision = 1;
+    message IRC {
+      message Operator {
+	string name = 1;
+	string password = 2;
+      }
+      repeated Operator operators = 1;
+
+      message Service {
+	string password = 1;
+      }
+      repeated Service services = 2;
+    }
+    IRC irc = 2;
+    string session_expiration = 3;
+    string post_message_cooloff = 4;
+  }
+  Config config = 5;
+
+  // last_included_index is the last ircstore message index which was
+  // included when taking the snapshot. This is relevant to store this
+  // snapshot in fsm.lastSnapshotState when restoring after ircstore
+  // was deleted.
+  uint64 last_included_index = 6;
+}

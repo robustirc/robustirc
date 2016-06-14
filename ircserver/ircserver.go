@@ -93,10 +93,11 @@ type Session struct {
 	Operator     bool
 	AwayMsg      string
 
-	// throttlingExponent starts at 0 and is increased on every subsequent
-	// message until 2^throttlingExponent ≥ netConfig.PostMessageCooloff.
-	// It will be reset once the user does not send messages for
-	// netConfig.PostMessageCooloff.
+	// throttlingExponent starts at 0 and is increased on every
+	// subsequent message until 2^throttlingExponent ≥
+	// ircServer.Config.PostMessageCooloff.  It will be reset once the
+	// user does not send messages for
+	// ircServer.Config.PostMessageCooloff.
 	throttlingExponent int
 
 	invitedTo map[lcChan]bool
@@ -214,10 +215,9 @@ type IRCServer struct {
 	// Used for the RPL_CREATED message.
 	ServerCreation time.Time
 
-	// Config contains the IRC-related part of the RobustIRC configuration.
-	Config config.IRC
-
-	CompactionDatabase *compactionDatabase
+	// Config contains the network configuration.
+	Config   config.Network
+	ConfigMu *sync.RWMutex
 }
 
 // NewIRCServer returns a new IRC server.
@@ -226,21 +226,18 @@ func NewIRCServer(raftdir, networkname string, serverCreation time.Time) *IRCSer
 	if err != nil {
 		log.Panicf("Could not create new outputstream: %v\n", err)
 	}
-	cdb, err := initializeCompaction(raftdir)
-	if err != nil {
-		log.Panicf("Could not initialize compaction: %v\n", err)
-	}
 	return &IRCServer{
-		channels:           make(map[lcChan]*channel),
-		svsholds:           make(map[lcNick]svshold),
-		nicks:              make(map[lcNick]*Session),
-		sessions:           make(map[types.RobustId]*Session),
-		sessionsMu:         &sync.RWMutex{},
-		lastProcessedMu:    &sync.RWMutex{},
-		output:             os,
-		ServerPrefix:       &irc.Prefix{Name: networkname},
-		ServerCreation:     serverCreation,
-		CompactionDatabase: cdb,
+		channels:        make(map[lcChan]*channel),
+		svsholds:        make(map[lcNick]svshold),
+		nicks:           make(map[lcNick]*Session),
+		sessions:        make(map[types.RobustId]*Session),
+		sessionsMu:      &sync.RWMutex{},
+		lastProcessedMu: &sync.RWMutex{},
+		output:          os,
+		ServerPrefix:    &irc.Prefix{Name: networkname},
+		ServerCreation:  serverCreation,
+		Config:          config.DefaultConfig,
+		ConfigMu:        &sync.RWMutex{},
 	}
 }
 
@@ -272,7 +269,7 @@ func (i *IRCServer) NewRobustMessage(t types.RobustType, session types.RobustId,
 func (i *IRCServer) UpdateLastClientMessageID(msg *types.RobustMessage) error {
 	i.sessionsMu.Lock()
 	defer i.sessionsMu.Unlock()
-	session, err := i.GetSession(msg.Session)
+	session, err := i.getSessionLocked(msg.Session)
 	if err != nil {
 		return err
 	}
@@ -301,7 +298,7 @@ func (i *IRCServer) DeleteSession(s *Session, msgid int64) {
 	for _, c := range i.channels {
 		delete(c.nicks, NickToLower(s.Nick))
 
-		i.maybeDeleteChannel(c, msgid)
+		i.maybeDeleteChannel(c)
 	}
 	delete(i.nicks, NickToLower(s.Nick))
 	// Instead of deleting the session here, we defer that to SendMessages, as
@@ -313,8 +310,10 @@ func (i *IRCServer) DeleteSession(s *Session, msgid int64) {
 
 // ExpireSessions returns RobustDeleteSession RobustMessages for all sessions
 // that are older than timeout. These messages are then applied to raft.
-func (i *IRCServer) ExpireSessions(timeout time.Duration) []*types.RobustMessage {
+func (i *IRCServer) ExpireSessions() []*types.RobustMessage {
 	var deletes []*types.RobustMessage
+
+	timeout := time.Duration(i.Config.SessionExpiration)
 
 	i.sessionsMu.RLock()
 	defer i.sessionsMu.RUnlock()
@@ -388,11 +387,10 @@ func extractPassword(password, prefix string) string {
 	return extracted
 }
 
-func (i *IRCServer) maybeDeleteChannel(c *channel, msgid int64) {
+func (i *IRCServer) maybeDeleteChannel(c *channel) {
 	if len(c.nicks) > 0 {
 		return
 	}
-	i.CompactionDatabase.ExecStmt("_delete_channel", msgid, c.name)
 	lc := ChanToLower(c.name)
 	delete(i.channels, lc)
 	for _, s := range i.sessions {
@@ -529,6 +527,12 @@ func (i *IRCServer) SendMessages(reply *Replyctx, session types.RobustId, id int
 // exist in the future, but was not yet seen on this IRC instance server
 // (perhaps due to raft delay).
 func (i *IRCServer) GetSession(id types.RobustId) (*Session, error) {
+	i.sessionsMu.RLock()
+	defer i.sessionsMu.RUnlock()
+	return i.getSessionLocked(id)
+}
+
+func (i *IRCServer) getSessionLocked(id types.RobustId) (*Session, error) {
 	s, ok := i.sessions[id]
 	if ok {
 		return s, nil
@@ -550,8 +554,6 @@ func (i *IRCServer) GetSession(id types.RobustId) (*Session, error) {
 // secret between the RobustIRC network and the client to prevent session
 // hijacking.
 func (i *IRCServer) GetAuth(sessionid types.RobustId) (string, error) {
-	i.sessionsMu.RLock()
-	defer i.sessionsMu.RUnlock()
 	session, err := i.GetSession(sessionid)
 	if err != nil {
 		return "", err
@@ -582,7 +584,11 @@ func (i *IRCServer) GetStartId(sessionid types.RobustId) types.RobustId {
 }
 
 // ThrottleUntil returns the last activity of |sessionid| or the zero time.
-func (i *IRCServer) ThrottleUntil(sessionid types.RobustId, cooloff time.Duration) time.Time {
+func (i *IRCServer) ThrottleUntil(sessionid types.RobustId) time.Time {
+	cooloff := time.Duration(i.Config.PostMessageCooloff)
+	if cooloff == 0 {
+		return time.Time{}
+	}
 	i.sessionsMu.RLock()
 	defer i.sessionsMu.RUnlock()
 
