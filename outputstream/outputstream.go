@@ -43,7 +43,12 @@ type messageBatch struct {
 }
 
 type OutputStream struct {
+	// tmpdir is the directory which we pass to ioutil.TempDir.
 	tmpdir string
+
+	// dirname is the directory returned by ioutil.TempDir which
+	// contains our database.
+	dirname string
 
 	// messagesMu guards |db|, |batch| and |lastseen|.
 	messagesMu sync.RWMutex
@@ -86,6 +91,16 @@ func NewOutputStream(tmpdir string) (*OutputStream, error) {
 	return os, os.Reset()
 }
 
+func (o *OutputStream) Close() error {
+	if o.db == nil {
+		return nil
+	}
+	if err := o.db.Close(); err != nil {
+		return err
+	}
+	return os.RemoveAll(o.dirname)
+}
+
 // Reset deletes all messages.
 func (os *OutputStream) Reset() error {
 	var key [8]byte
@@ -93,16 +108,15 @@ func (os *OutputStream) Reset() error {
 	os.messagesMu.Lock()
 	defer os.messagesMu.Unlock()
 
-	if os.db != nil {
-		if err := os.db.Close(); err != nil {
-			return err
-		}
+	if err := os.Close(); err != nil {
+		return err
 	}
 
 	dirname, err := ioutil.TempDir(os.tmpdir, "tmp-outputstream-")
 	if err != nil {
 		return err
 	}
+	os.dirname = dirname
 
 	// Open a temporary database, i.e. one whose values we only use as long as
 	// this RobustIRC process is running, and which will be deleted at the next

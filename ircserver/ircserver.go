@@ -241,6 +241,13 @@ func NewIRCServer(raftdir, networkname string, serverCreation time.Time) *IRCSer
 	}
 }
 
+// Close closes all resources this IRCServer holds (e.g. the
+// outputstream). After calling Close(), you must not use this
+// IRCServer object anymore.
+func (i *IRCServer) Close() error {
+	return i.output.Close()
+}
+
 // NewRobustMessage creates a new RobustMessage with an id that is guaranteed
 // to be higher than the last processed message (it panics otherwise) so that
 // timestamp drift is loudly complained about instead of silently accepted to

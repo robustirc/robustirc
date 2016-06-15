@@ -153,6 +153,7 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 	compactionEnd := compactionStart.Add(-7 * 24 * time.Hour)
 
 	tmpServer := ircserver.NewIRCServer("", "testnetwork", time.Now())
+	defer tmpServer.Close()
 	if oldState, ok := fsm.lastSnapshotState[first-1]; !ok {
 		if first == 1 {
 			// This is the first snapshot which this RobustIRC network
@@ -251,7 +252,9 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 		log.Fatal(err)
 	}
 	fsm.ircstore = ircStore
-
+	if err := ircServer.Close(); err != nil {
+		glog.Error(err)
+	}
 	ircServer = ircserver.NewIRCServer(*raftDir, *network, time.Now())
 	decoder := json.NewDecoder(snap)
 	for {
