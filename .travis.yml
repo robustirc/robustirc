@@ -6,6 +6,15 @@ language: go
 go:
   - 1.6
 
+env:
+  global:
+    secure: GxkLYZFoOG6rI0An0YKrCr872VnUCCmZX0uNxt46lA4RTdPYSAvHCFEgCFmZFGn4F5VLNYMgrcKiOOYnnfy3tIY2tqgKeBrrZo+ZiSJ0XpzDJq4RO/yY9fIqnDBbgTS9K9RoUbHfAWjVulpCjje1Ydw4QUt1sQQH0QyPx7/nNB4=
+
+# Prerequisites for coveralls.io integration:
+before_install:
+  - go get github.com/mattn/goveralls
+  - go get golang.org/x/tools/cmd/cover
+
 # The default install command ("go get ./...") fails because we have
 # directories that do not contain executables (e.g. "mod_test").
 # We need to specify the bridge because it is used by the mod_test.
@@ -19,5 +28,6 @@ script:
   # Check whether files were not gofmt'ed.
   - "gosrc=$(find . -name '*.go' | tr '\\n' ' '); [ $(gofmt -l $gosrc 2>&- | wc -l) -eq 0 ] || (echo 'gofmt was not run on these files:'; gofmt -l $gosrc 2>&-; false)"
   - go tool vet .
+  - $GOPATH/bin/goveralls -service=travis-ci
 
 after_failure: head -500 /tmp/robustirc*/stderr.txt
