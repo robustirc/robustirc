@@ -5,6 +5,7 @@ import (
 	crypto_rand "crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -385,6 +386,25 @@ func (l *localnet) Kill(deleteTempdirs bool) {
 	os.Remove(tempdirsFile)
 }
 
+func ReadCertificateFile(path string) (*x509.Certificate, error) {
+	contents, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(contents)
+	if block == nil {
+		return nil, fmt.Errorf("Could not decode cert.pem as PEM")
+	}
+	if got, want := block.Type, "CERTIFICATE"; got != want {
+		return nil, fmt.Errorf("cert.pem has incorrect type: got %q, want %q", got, want)
+	}
+	if len(block.Headers) != 0 {
+		return nil, fmt.Errorf("cert.pem certificate block has unexpected headers")
+	}
+
+	return x509.ParseCertificate(block.Bytes)
+}
+
 func NewLocalnet(port int, dir string) (*localnet, error) {
 	result := &localnet{
 		dir: dir,
@@ -445,14 +465,26 @@ func NewLocalnet(port int, dir string) (*localnet, error) {
 		generatecert(result.dir)
 	}
 
-	roots := x509.NewCertPool()
-	contents, err := ioutil.ReadFile(filepath.Join(result.dir, "cert.pem"))
+	certPath := filepath.Join(result.dir, "cert.pem")
+	cert, err := ReadCertificateFile(certPath)
 	if err != nil {
-		log.Panicf("Could not read cert.pem: %v", err)
+		log.Panicf("Could not parse %q, try deleting it (error: %v)", certPath, err)
 	}
-	if !roots.AppendCertsFromPEM(contents) {
-		log.Panicf("Could not parse %q, try deleting it", filepath.Join(result.dir, "cert.pem"))
+
+	// Generate a new certificate in case it expires in less than 30 days.
+	untilExpiration := cert.NotAfter.Sub(time.Now())
+	if untilExpiration < 30*24*time.Hour {
+		log.Printf("Certificate expires in %v, renewing", untilExpiration)
+		generatecert(result.dir)
+		cert, err = ReadCertificateFile(certPath)
+		if err != nil {
+			log.Panicf("Could not parse %q, try deleting it (error: %v)", certPath, err)
+		}
 	}
+
+	roots := x509.NewCertPool()
+	roots.AddCert(cert)
+
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{RootCAs: roots},
 	}
