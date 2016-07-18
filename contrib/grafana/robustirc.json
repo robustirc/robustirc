@@ -1,7 +1,42 @@
 {
-  "id": 1,
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "prometheus",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "panel",
+      "id": "text",
+      "name": "Text",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "graph",
+      "name": "Graph",
+      "version": ""
+    },
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "3.1.0"
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus",
+      "version": "1.0.0"
+    }
+  ],
+  "id": null,
   "title": "RobustIRC",
-  "originalTitle": "RobustIRC",
   "tags": [],
   "style": "dark",
   "timezone": "browser",
@@ -37,17 +72,11 @@
         {
           "aliasColors": {},
           "bars": false,
-          "datasource": null,
+          "datasource": "${DS_PROMETHEUS}",
           "editable": true,
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": 0,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -83,38 +112,49 @@
               "expr": "job:committed:rate5m_sum",
               "intervalFactor": 2,
               "metric": "",
-              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22job%3Acommitted%3Arate5m_sum%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A39%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D"
+              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22job%3Acommitted%3Arate5m_sum%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A39%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
+              "refId": "A",
+              "step": 120
             }
           ],
           "timeFrom": null,
           "timeShift": null,
           "title": "Committed messages/s",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
-            "value_type": "cumulative"
+            "value_type": "cumulative",
+            "sort": 0
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": 0,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         },
         {
           "aliasColors": {},
           "bars": false,
-          "datasource": null,
+          "datasource": "${DS_PROMETHEUS}",
           "editable": true,
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -152,22 +192,39 @@
               "intervalFactor": 2,
               "legendFormat": "{{ instance }}",
               "metric": "",
-              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22raft_isleader%20%3E%200%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A40%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D"
+              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22raft_isleader%20%3E%200%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A40%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
+              "refId": "A",
+              "step": 120
             }
           ],
           "timeFrom": null,
           "timeShift": null,
           "title": "raft leader",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
-            "value_type": "cumulative"
+            "value_type": "cumulative",
+            "sort": 0
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         }
       ],
@@ -181,17 +238,11 @@
         {
           "aliasColors": {},
           "bars": false,
-          "datasource": null,
+          "datasource": "${DS_PROMETHEUS}",
           "editable": true,
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -228,22 +279,39 @@
               "intervalFactor": 2,
               "legendFormat": "",
               "metric": "",
-              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22job%3Aavailability%3Atopk_sum_rate%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A40%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D"
+              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22job%3Aavailability%3Atopk_sum_rate%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A40%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
+              "refId": "A",
+              "step": 120
             }
           ],
           "timeFrom": null,
           "timeShift": null,
           "title": "Network availability",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
-            "value_type": "cumulative"
+            "value_type": "cumulative",
+            "sort": 0
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         }
       ],
@@ -277,17 +345,11 @@
         {
           "aliasColors": {},
           "bars": false,
-          "datasource": null,
+          "datasource": "${DS_PROMETHEUS}",
           "editable": true,
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -324,38 +386,49 @@
               "intervalFactor": 2,
               "legendFormat": "{{ instance }}",
               "metric": "",
-              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22rate(process_cpu_seconds_total%7Bjob%3D%5C%22robustirc%5C%22%7D%5B2m%5D)%22%2C%22range_input%22%3A%22604800s%22%2C%22end_input%22%3A%222015-9-17%2021%3A20%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D"
+              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22rate(process_cpu_seconds_total%7Bjob%3D%5C%22robustirc%5C%22%7D%5B2m%5D)%22%2C%22range_input%22%3A%22604800s%22%2C%22end_input%22%3A%222015-9-17%2021%3A20%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
+              "refId": "A",
+              "step": 120
             }
           ],
           "timeFrom": null,
           "timeShift": null,
           "title": "CPU seconds/s",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
-            "value_type": "cumulative"
+            "value_type": "cumulative",
+            "sort": 0
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         },
         {
           "aliasColors": {},
           "bars": false,
-          "datasource": null,
+          "datasource": "${DS_PROMETHEUS}",
           "editable": true,
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -392,22 +465,39 @@
               "intervalFactor": 2,
               "legendFormat": "{{ instance }}",
               "metric": "",
-              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22job_instance%3Aavailability%3Asum_rate%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A32%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D"
+              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22job_instance%3Aavailability%3Asum_rate%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A32%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
+              "refId": "A",
+              "step": 120
             }
           ],
           "timeFrom": null,
           "timeShift": null,
           "title": "Node availability",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
-            "value_type": "cumulative"
+            "value_type": "cumulative",
+            "sort": 0
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         }
       ],
@@ -421,17 +511,11 @@
         {
           "aliasColors": {},
           "bars": false,
-          "datasource": null,
+          "datasource": "${DS_PROMETHEUS}",
           "editable": true,
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -468,38 +552,49 @@
               "intervalFactor": 2,
               "legendFormat": "{{ instance }}",
               "metric": "",
-              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22process_resident_memory_bytes%7Bjob%3D%5C%22robustirc%5C%22%7D%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A21%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D"
+              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22process_resident_memory_bytes%7Bjob%3D%5C%22robustirc%5C%22%7D%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A21%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
+              "refId": "A",
+              "step": 120
             }
           ],
           "timeFrom": null,
           "timeShift": null,
           "title": "Process RSS",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
-            "value_type": "cumulative"
+            "value_type": "cumulative",
+            "sort": 0
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "bytes",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "bytes",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         },
         {
           "aliasColors": {},
           "bars": false,
-          "datasource": null,
+          "datasource": "${DS_PROMETHEUS}",
           "editable": true,
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -536,22 +631,39 @@
               "intervalFactor": 2,
               "legendFormat": "{{ instance }}",
               "metric": "",
-              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22time()%20-%20process_start_time_seconds%7Bjob%3D%5C%22robustirc%5C%22%7D%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A22%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D"
+              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22time()%20-%20process_start_time_seconds%7Bjob%3D%5C%22robustirc%5C%22%7D%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A22%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
+              "refId": "A",
+              "step": 120
             }
           ],
           "timeFrom": null,
           "timeShift": null,
           "title": "Uptime",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
-            "value_type": "cumulative"
+            "value_type": "cumulative",
+            "sort": 0
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "s",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "s",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         }
       ],
@@ -585,17 +697,11 @@
         {
           "aliasColors": {},
           "bars": false,
-          "datasource": null,
+          "datasource": "${DS_PROMETHEUS}",
           "editable": true,
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -633,17 +739,21 @@
               "intervalFactor": 2,
               "legendFormat": "{{ instance }} → alp",
               "metric": "",
-              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22raftmetrics_raft_replication_heartbeat_alp_robustirc_net%3A60667%7Bquantile%3D%5C%220.99%5C%22%7D%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A25%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D"
+              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22raftmetrics_raft_replication_heartbeat_alp_robustirc_net%3A60667%7Bquantile%3D%5C%220.99%5C%22%7D%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A25%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
+              "refId": "A",
+              "step": 120
             },
             {
               "calculatedInterval": "1m",
               "datasourceErrors": {},
               "errors": {},
-              "expr": "raftmetrics_raft_replication_heartbeat_dock0_robustirc_net:60667{quantile=\"0.99\"}",
+              "expr": "raftmetrics_raft_replication_heartbeat_vultr_robustirc_net:60667{quantile=\"0.99\"}",
               "intervalFactor": 2,
-              "legendFormat": "{{ instance }} → dock0",
+              "legendFormat": "{{ instance }} → vultr",
               "metric": "",
               "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22raftmetrics_raft_replication_heartbeat_dock0_robustirc_net%3A60667%7Bquantile%3D%5C%220.99%5C%22%7D%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A25%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
+              "refId": "B",
+              "step": 120,
               "target": ""
             },
             {
@@ -656,6 +766,8 @@
               "legendFormat": "{{ instance }} → ridcully",
               "metric": "",
               "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22raftmetrics_raft_replication_heartbeat_ridcully_robustirc_net%3A60667%7Bquantile%3D%5C%220.99%5C%22%7D%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A25%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
+              "refId": "C",
+              "step": 120,
               "target": ""
             }
           ],
@@ -663,31 +775,40 @@
           "timeShift": null,
           "title": "99th percentile heartbeat latency",
           "tooltip": {
+            "msResolution": true,
             "shared": true,
-            "value_type": "cumulative"
+            "value_type": "cumulative",
+            "sort": 0
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "ms",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "ms",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         },
         {
           "aliasColors": {},
           "bars": false,
-          "datasource": null,
+          "datasource": "${DS_PROMETHEUS}",
           "editable": true,
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -723,22 +844,39 @@
               "expr": "raftmetrics_raft_commitTime{quantile=\"0.99\"}",
               "intervalFactor": 2,
               "metric": "",
-              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22raftmetrics_raft_commitTime%7Bquantile%3D%5C%220.99%5C%22%7D%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A29%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D"
+              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22raftmetrics_raft_commitTime%7Bquantile%3D%5C%220.99%5C%22%7D%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A29%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
+              "refId": "A",
+              "step": 120
             }
           ],
           "timeFrom": null,
           "timeShift": null,
           "title": "Raft commit time",
           "tooltip": {
+            "msResolution": true,
             "shared": true,
-            "value_type": "cumulative"
+            "value_type": "cumulative",
+            "sort": 0
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "ms",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "ms",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         }
       ],
@@ -752,17 +890,11 @@
         {
           "aliasColors": {},
           "bars": false,
-          "datasource": null,
+          "datasource": "${DS_PROMETHEUS}",
           "editable": true,
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -800,38 +932,49 @@
               "intervalFactor": 2,
               "legendFormat": "{{instance}}",
               "metric": "",
-              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22rate(raftmetrics_raft_httptransport_handled%5B2m%5D)%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-9-17%2021%3A35%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D"
+              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22rate(raftmetrics_raft_httptransport_handled%5B2m%5D)%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-9-17%2021%3A35%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
+              "refId": "A",
+              "step": 120
             }
           ],
           "timeFrom": null,
           "timeShift": null,
           "title": "Incoming RPCs/s",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
-            "value_type": "cumulative"
+            "value_type": "cumulative",
+            "sort": 0
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         },
         {
           "aliasColors": {},
           "bars": false,
-          "datasource": null,
+          "datasource": "${DS_PROMETHEUS}",
           "editable": true,
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -869,22 +1012,39 @@
               "intervalFactor": 2,
               "legendFormat": "{{instance}}",
               "metric": "",
-              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22rate(raftmetrics_raft_httptransport_latency_count%5B2m%5D)%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A29%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D"
+              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22rate(raftmetrics_raft_httptransport_latency_count%5B2m%5D)%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A29%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
+              "refId": "A",
+              "step": 120
             }
           ],
           "timeFrom": null,
           "timeShift": null,
           "title": "Outgoing RPCs/s",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
-            "value_type": "cumulative"
+            "value_type": "cumulative",
+            "sort": 0
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         }
       ],
@@ -918,17 +1078,11 @@
         {
           "aliasColors": {},
           "bars": false,
-          "datasource": null,
+          "datasource": "${DS_PROMETHEUS}",
           "editable": true,
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": 0,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -965,38 +1119,49 @@
               "intervalFactor": 2,
               "legendFormat": "",
               "metric": "",
-              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22avg(irc_sessions)%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A30%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D"
+              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22avg(irc_sessions)%22%2C%22range_input%22%3A%2243200s%22%2C%22end_input%22%3A%222015-9-17%2021%3A30%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
+              "refId": "A",
+              "step": 120
             }
           ],
           "timeFrom": null,
           "timeShift": null,
           "title": "IRC sessions",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
-            "value_type": "cumulative"
+            "value_type": "cumulative",
+            "sort": 0
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": 0,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         },
         {
           "aliasColors": {},
           "bars": false,
-          "datasource": null,
+          "datasource": "${DS_PROMETHEUS}",
           "editable": true,
           "error": false,
           "fill": 1,
           "grid": {
-            "leftLogBase": 1,
-            "leftMax": null,
-            "leftMin": null,
-            "rightLogBase": 1,
-            "rightMax": null,
-            "rightMin": null,
             "threshold1": null,
             "threshold1Color": "rgba(216, 200, 27, 0.27)",
             "threshold2": null,
@@ -1034,64 +1199,79 @@
               "intervalFactor": 2,
               "legendFormat": "{{ command }}",
               "metric": "",
-              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22topk(5%2C%20avg(rate(irc_messages_processed%5B2m%5D))%20by%20(command))%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-9-18%207%3A15%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D"
+              "prometheusLink": "/api/datasources/proxy/2/graph#%5B%7B%22expr%22%3A%22topk(5%2C%20avg(rate(irc_messages_processed%5B2m%5D))%20by%20(command))%22%2C%22range_input%22%3A%2243201s%22%2C%22end_input%22%3A%222015-9-18%207%3A15%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3Afalse%2C%22tab%22%3A0%7D%5D",
+              "refId": "A",
+              "step": 120
             }
           ],
           "timeFrom": null,
           "timeShift": null,
           "title": "Top IRC commands",
           "tooltip": {
+            "msResolution": false,
             "shared": true,
-            "value_type": "cumulative"
+            "value_type": "cumulative",
+            "sort": 0
           },
           "type": "graph",
-          "x-axis": true,
-          "y-axis": true,
-          "y_formats": [
-            "short",
-            "short"
+          "xaxis": {
+            "show": true
+          },
+          "yaxes": [
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            },
+            {
+              "format": "short",
+              "logBase": 1,
+              "max": null,
+              "min": null,
+              "show": true
+            }
           ]
         }
       ],
       "title": "New row"
     }
   ],
-  "nav": [
-    {
-      "collapse": false,
-      "enable": true,
-      "notice": false,
-      "now": true,
-      "refresh_intervals": [
-        "5s",
-        "10s",
-        "30s",
-        "1m",
-        "5m",
-        "15m",
-        "30m",
-        "1h",
-        "2h",
-        "1d"
-      ],
-      "status": "Stable",
-      "time_options": [
-        "5m",
-        "15m",
-        "1h",
-        "6h",
-        "12h",
-        "24h",
-        "2d",
-        "7d",
-        "30d"
-      ],
-      "type": "timepicker"
-    }
-  ],
   "time": {
     "from": "now-12h",
     "to": "now"
+  },
+  "timepicker": {
+    "collapse": false,
+    "enable": true,
+    "notice": false,
+    "now": true,
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ],
+    "status": "Stable",
+    "time_options": [
+      "5m",
+      "15m",
+      "1h",
+      "6h",
+      "12h",
+      "24h",
+      "2d",
+      "7d",
+      "30d"
+    ],
+    "type": "timepicker"
   },
   "templating": {
     "list": []
@@ -1099,7 +1279,8 @@
   "annotations": {
     "list": []
   },
-  "schemaVersion": 6,
+  "schemaVersion": 12,
   "version": 14,
-  "links": []
+  "links": [],
+  "gnetId": null
 }
