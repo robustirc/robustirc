@@ -1,5 +1,7 @@
 # committed messages/s, regardless of the node on which they were committed
 job:committed:rate5m_sum = sum(rate(raftmetrics_raft_commitTime_count[5m])) by (job)
+# Same metric, but with 30s resolution for loadtests.
+job:committed:rate30s_sum = sum(rate(raftmetrics_raft_commitTime_count[30s])) by (job)
 
 # TODO(secure): does this time series include s2s connections? maybe introduce a better one
 job:sessions:min = min(irc_sessions) by (job)
