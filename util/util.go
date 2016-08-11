@@ -15,7 +15,6 @@ import (
 	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/types"
 	"github.com/sorcix/irc"
-	"github.com/stapelberg/glog"
 
 	pb "github.com/robustirc/robustirc/proto"
 )
@@ -105,10 +104,6 @@ func EnsureNetworkHealthy(servers []string, networkPassword string) (map[string]
 	}
 
 	for _, status := range statuses {
-		// No error checking since this was _parsed_ from JSON, so it must be valid.
-		pretty, _ := json.MarshalIndent(status, "", "  ")
-		glog.Infof("%s\n", pretty)
-
 		if status.State != "Leader" && status.State != "Follower" {
 			return statuses, fmt.Errorf("Server %q in state %q, need Leader or Follower",
 				status.Server, status.State)
