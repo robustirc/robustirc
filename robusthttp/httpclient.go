@@ -6,6 +6,7 @@ import (
 	"flag"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"time"
 
@@ -51,7 +52,14 @@ func Transport(deadlined bool) *http.Transport {
 		TLSHandshakeTimeout: 5 * time.Second,
 	}
 	if deadlined {
+		// Deadline dialing and every read/write.
 		transport.Dial = robustsession.DeadlineConnDialer(2*time.Second, 10*time.Second, 10*time.Second)
+	} else {
+		// Deadline dialing, like http.DefaultTransport.
+		transport.Dial = (&net.Dialer{
+			Timeout:   10 * time.Second, // http.DefaultTransport uses 30s.
+			KeepAlive: 30 * time.Second,
+		}).Dial
 	}
 	return transport
 }
