@@ -19,7 +19,7 @@ func timeToTimestamp(t time.Time) *pb.Timestamp {
 }
 
 func timestampToTime(t *pb.Timestamp) time.Time {
-	if t.IsZero {
+	if t == nil || t.IsZero {
 		return time.Time{}
 	}
 	return time.Unix(0, t.UnixNano)
@@ -54,6 +54,7 @@ func (i *IRCServer) Marshal(lastIncludedIndex uint64) ([]byte, error) {
 			Realname:           session.Realname,
 			Channels:           channels,
 			LastActivity:       timeToTimestamp(session.LastActivity),
+			LastNonPing:        timeToTimestamp(session.LastNonPing),
 			Operator:           session.Operator,
 			AwayMsg:            session.AwayMsg,
 			ThrottlingExponent: int64(session.throttlingExponent),
@@ -175,6 +176,7 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 			Realname:           s.Realname,
 			Channels:           channels,
 			LastActivity:       timestampToTime(s.LastActivity),
+			LastNonPing:        timestampToTime(s.LastNonPing),
 			Operator:           s.Operator,
 			AwayMsg:            s.AwayMsg,
 			throttlingExponent: int(s.ThrottlingExponent),
@@ -193,6 +195,9 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 				User: s.IrcPrefix.User,
 				Host: s.IrcPrefix.Host,
 			},
+		}
+		if newSession.LastNonPing.IsZero() {
+			newSession.LastNonPing = newSession.LastActivity
 		}
 		i.sessions[newSession.Id] = newSession
 		if s.Server {

@@ -1159,6 +1159,45 @@ func TestChannelCaseInsensitive(t *testing.T) {
 		})
 }
 
+func TestIdle(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	joinTime := time.Now()
+	msg := types.RobustMessage{
+		Id:      types.RobustId{Id: joinTime.UnixNano()},
+		Session: ids["mero"],
+		Data:    "JOIN #test",
+	}
+	if err := i.UpdateLastClientMessageID(&msg); err != nil {
+		t.Fatalf("Unexpected error calling UpdateLastClientMessageID: %v", err)
+	}
+	i.ProcessMessage(msg.Id, ids["mero"], irc.ParseMessage(string(msg.Data)))
+	sMero, _ := i.GetSession(ids["mero"])
+	if got, want := sMero.LastNonPing, joinTime; got != want {
+		t.Fatalf("LastActivity for mero: got %v, want %v", got, want)
+	}
+	if got, want := sMero.LastActivity, joinTime; got != want {
+		t.Fatalf("LastActivity for mero: got %v, want %v", got, want)
+	}
+
+	pingTime := time.Now()
+	msg = types.RobustMessage{
+		Id:      types.RobustId{Id: pingTime.UnixNano()},
+		Session: ids["mero"],
+		Data:    "PING :foo",
+	}
+	if err := i.UpdateLastClientMessageID(&msg); err != nil {
+		t.Fatalf("Unexpected error calling UpdateLastClientMessageID: %v", err)
+	}
+	i.ProcessMessage(msg.Id, ids["mero"], irc.ParseMessage(string(msg.Data)))
+	if got, want := sMero.LastNonPing, joinTime; got != want {
+		t.Fatalf("LastActivity for mero: got %v, want %v", got, want)
+	}
+	if got, want := sMero.LastActivity, pingTime; got != want {
+		t.Fatalf("LastActivity for mero: got %v, want %v", got, want)
+	}
+}
+
 func TestWhois(t *testing.T) {
 	i, ids := stdIRCServer()
 

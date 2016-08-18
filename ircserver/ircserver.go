@@ -90,6 +90,7 @@ type Session struct {
 	Realname     string
 	Channels     map[lcChan]bool
 	LastActivity time.Time
+	LastNonPing  time.Time
 	Operator     bool
 	AwayMsg      string
 
@@ -281,6 +282,9 @@ func (i *IRCServer) UpdateLastClientMessageID(msg *types.RobustMessage) error {
 		return err
 	}
 	session.LastActivity = time.Unix(0, msg.Id.Id)
+	if !strings.HasPrefix(strings.ToLower(msg.Data), "ping") {
+		session.LastNonPing = session.LastActivity
+	}
 	session.lastClientMessageId = msg.ClientMessageId
 	return nil
 }
@@ -294,6 +298,7 @@ func (i *IRCServer) CreateSession(id types.RobustId, auth string) {
 		Channels:     make(map[lcChan]bool),
 		invitedTo:    make(map[lcChan]bool),
 		LastActivity: time.Unix(0, id.Id),
+		LastNonPing:  time.Unix(0, id.Id),
 		svid:         "0",
 	}
 }
