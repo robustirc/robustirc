@@ -56,13 +56,13 @@ func applyRobustMessage(msg *types.RobustMessage, i *ircserver.IRCServer) {
 		if err := i.UpdateLastClientMessageID(msg); err != nil {
 			log.Printf("Error updating the last message for session: %v\n", err)
 		} else {
-			ircmsg := irc.ParseMessage(string(msg.Data))
+			ircmsg := irc.ParseMessage(msg.Data)
 			reply := i.ProcessMessage(msg.Id, msg.Session, ircmsg)
 			i.SendMessages(reply, msg.Session, msg.Session.Id)
 		}
 
 	case types.RobustConfig:
-		newCfg, err := config.FromString(string(msg.Data))
+		newCfg, err := config.FromString(msg.Data)
 		if err != nil {
 			log.Printf("Skipping unexpectedly invalid configuration (%v)\n", err)
 		} else {
