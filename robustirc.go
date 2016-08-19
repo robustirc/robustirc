@@ -432,7 +432,7 @@ func main() {
 	}
 
 	// Keep 5 snapshots in *raftDir/snapshots, log to stderr.
-	fss, err := raft.NewFileSnapshotStore(*raftDir, 5, nil)
+	fss, err := raft.NewFileSnapshotStoreWithLogger(*raftDir, 5, config.Logger)
 	if err != nil {
 		log.Fatal(err)
 	}
