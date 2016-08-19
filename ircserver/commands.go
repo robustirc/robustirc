@@ -1001,6 +1001,16 @@ func (i *IRCServer) cmdTopic(s *Session, reply *Replyctx, msg *irc.Message) {
 
 	// “TOPIC :”, i.e. unset the topic.
 	if msg.Trailing == "" && msg.EmptyTrailing {
+		if c.modes['t'] && !c.nicks[NickToLower(s.Nick)][chanop] {
+			i.sendUser(s, reply, &irc.Message{
+				Prefix:   i.ServerPrefix,
+				Command:  irc.ERR_CHANOPRIVSNEEDED,
+				Params:   []string{s.Nick, channel},
+				Trailing: "You're not channel operator",
+			})
+			return
+		}
+
 		c.topicNick = ""
 		c.topicTime = time.Time{}
 		c.topic = ""

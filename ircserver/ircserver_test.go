@@ -878,6 +878,10 @@ func TestChannelMode(t *testing.T) {
 		})
 
 	mustMatchMsg(t,
+		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("TOPIC #test :")),
+		":robustirc.net 482 sECuRE #test :You're not channel operator")
+
+	mustMatchMsg(t,
 		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("MODE #test +o sECuRE")),
 		":mero!foo@robust/0x13b5aa0a2bcfb8ae MODE #test +o sECuRE")
 
