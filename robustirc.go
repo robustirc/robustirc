@@ -429,6 +429,7 @@ func main() {
 	config.Logger = log.New(glog.LogBridgeFor("INFO"), "", log.Lshortfile)
 	if *singleNode {
 		config.EnableSingleNode = true
+		config.StartAsLeader = true
 	}
 
 	// Keep 5 snapshots in *raftDir/snapshots, log to stderr.
