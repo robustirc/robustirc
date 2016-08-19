@@ -1221,6 +1221,15 @@ func (i *IRCServer) cmdWhois(s *Session, reply *Replyctx, msg *irc.Message) {
 		Trailing: "seconds idle, signon time",
 	})
 
+	if session.modes['r'] {
+		i.sendUser(s, reply, &irc.Message{
+			Prefix:   i.ServerPrefix,
+			Command:  "307", // RPL_WHOISREGNICK (not in the RFC)
+			Params:   []string{s.Nick, session.Nick},
+			Trailing: "user has identified to services",
+		})
+	}
+
 	i.sendUser(s, reply, &irc.Message{
 		Prefix:   i.ServerPrefix,
 		Command:  irc.RPL_ENDOFWHOIS,

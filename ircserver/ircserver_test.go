@@ -1297,6 +1297,22 @@ func TestWhois(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 317 sECuRE mero 0 1420228218 :seconds idle, signon time"),
 			irc.ParseMessage(":robustirc.net 318 sECuRE mero :End of /WHOIS list"),
 		})
+
+	sMero, _ := i.GetSession(ids["mero"])
+	sMero.modes['r'] = true
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 311 sECuRE mero foo robust/0x13b5aa0a2bcfb8ae * :Axel Wagner"),
+			irc.ParseMessage(":robustirc.net 319 sECuRE mero :#second @#test"),
+			irc.ParseMessage(":robustirc.net 312 sECuRE mero robustirc.net :RobustIRC"),
+			irc.ParseMessage(":robustirc.net 313 sECuRE mero :is an IRC operator"),
+			irc.ParseMessage(":robustirc.net 301 sECuRE mero :cleaning dishes"),
+			irc.ParseMessage(":robustirc.net 317 sECuRE mero 0 1420228218 :seconds idle, signon time"),
+			irc.ParseMessage(":robustirc.net 307 sECuRE mero :user has identified to services"),
+			irc.ParseMessage(":robustirc.net 318 sECuRE mero :End of /WHOIS list"),
+		})
 }
 
 func TestList(t *testing.T) {
