@@ -363,6 +363,10 @@ func (i *IRCServer) cmdJoin(s *Session, reply *Replyctx, msg *irc.Message) {
 			})
 			continue
 		}
+		// Invites are only valid once.
+		if c.modes['i'] {
+			delete(s.invitedTo, ChanToLower(channelname))
+		}
 		if _, ok := c.nicks[NickToLower(s.Nick)]; ok {
 			continue
 		}

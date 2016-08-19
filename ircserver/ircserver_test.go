@@ -1505,6 +1505,32 @@ func TestInvite(t *testing.T) {
 			irc.ParseMessage(":robustirc.net NOTICE #second :sECuRE invited xeen into the channel."),
 			irc.ParseMessage(":robustirc.net 301 sECuRE xeen :gone"),
 		})
+
+	// Verify INVITEs only work once.
+	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #third"))
+	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("MODE #third +i"))
+
+	mustMatchMsg(t,
+		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #third")),
+		":robustirc.net 473 mero #third :Cannot join channel (+i)")
+
+	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("INVITE mero #third"))
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #third")),
+		[]*irc.Message{
+			irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae JOIN :#third"),
+			irc.ParseMessage(":robustirc.net SJOIN 1 #third :mero"),
+			irc.ParseMessage(":robustirc.net 331 mero #third :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 mero = #third :@sECuRE mero"),
+			irc.ParseMessage(":robustirc.net 366 mero #third :End of /NAMES list."),
+		})
+
+	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("PART #third"))
+
+	mustMatchMsg(t,
+		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #third")),
+		":robustirc.net 473 mero #third :Cannot join channel (+i)")
 }
 
 func TestUserhost(t *testing.T) {
