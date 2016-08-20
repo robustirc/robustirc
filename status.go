@@ -183,13 +183,13 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 	var messages []*types.RobustMessage
 	first, _ := ircStore.FirstIndex()
 	last, _ := ircStore.LastIndex()
-	for idx := first; idx <= last; idx++ {
+	iterator := ircStore.GetBulkIterator(first, last+1)
+	defer iterator.Release()
+	for iterator.Next() {
 		var elog raft.Log
-
-		if err := ircStore.GetLog(idx, &elog); err != nil {
-			// Not every message goes into the ircStore (e.g. raft peer change
-			// messages do not).
-			continue
+		if err := json.Unmarshal(iterator.Value(), &elog); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 		if elog.Type != raft.LogCommand {
 			continue
@@ -207,6 +207,11 @@ func handleIrclog(w http.ResponseWriter, r *http.Request) {
 				messages = append(messages, msg)
 			}
 		}
+	}
+
+	if err := iterator.Error(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	args := struct {
