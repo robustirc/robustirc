@@ -97,6 +97,7 @@ func (m *RobustMessage) PrivacyFilter() string {
 		command := strings.ToUpper(msg.Command)
 		if command == irc.PRIVMSG ||
 			command == irc.NOTICE ||
+			command == irc.PASS ||
 			strings.HasSuffix(command, "serv") {
 			msg.Trailing = "<privacy filtered>"
 			return string(msg.Bytes())
