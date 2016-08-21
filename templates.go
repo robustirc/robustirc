@@ -163,7 +163,7 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 			  <h2>Server State</h2>
 
 			  <pre>
-			    {{ .ServerState }}
+			    {{- .ServerState -}}
 			  </pre>
 			</div>
 		</div>
