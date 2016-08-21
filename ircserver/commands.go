@@ -228,6 +228,10 @@ func (i *IRCServer) login(s *Session, reply *Replyctx, msg *irc.Message) {
 		}
 	}
 
+	// In the interest of privacy, clear the password to make
+	// accidental leaks less likely.
+	s.Pass = ""
+
 	i.cmdMotd(s, reply, msg)
 }
 
