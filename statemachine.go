@@ -67,6 +67,7 @@ func applyRobustMessage(msg *types.RobustMessage, i *ircserver.IRCServer) {
 			log.Printf("Skipping unexpectedly invalid configuration (%v)\n", err)
 		} else {
 			i.Config = newCfg
+			i.Config.Revision = msg.Revision
 		}
 	}
 }
