@@ -66,6 +66,11 @@ func CollectStatuses(servers []string, networkPassword string) (map[string]Serve
 		statusesMu sync.Mutex
 		g          errgroup.Group
 	)
+	setStatus := func(status ServerStatus) {
+		statusesMu.Lock()
+		defer statusesMu.Unlock()
+		statuses[status.Server] = status
+	}
 	for _, server := range servers {
 		server := server // capture range variable
 		g.Go(func() error {
@@ -74,9 +79,7 @@ func CollectStatuses(servers []string, networkPassword string) (map[string]Serve
 				return err
 			}
 			status.Server = server
-			statusesMu.Lock()
-			statuses[server] = status
-			statusesMu.Unlock()
+			setStatus(status)
 			return nil
 		})
 	}

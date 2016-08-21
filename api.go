@@ -31,10 +31,10 @@ import (
 )
 
 var (
-	// GetMessageRequests contains information about each GetMessages request
+	// getMessagesRequests contains information about each GetMessages request
 	// to be exposed on the HTTP status handler.
-	GetMessageRequests    = make(map[string]GetMessageStats)
-	getMessagesRequestsMu sync.Mutex
+	getMessagesRequests   = make(map[string]GetMessagesStats)
+	getMessagesRequestsMu sync.RWMutex
 
 	// applyMu guards calls to raft.Apply(). We need to lock them because
 	// otherwise we cannot guarantee that multiple goroutines will write
@@ -52,14 +52,14 @@ var (
 )
 
 // GetMessageStats encapsulates information about a GetMessages request.
-type GetMessageStats struct {
+type GetMessagesStats struct {
 	Session   types.RobustId
 	Nick      string
 	Started   time.Time
 	UserAgent string
 }
 
-func (stats GetMessageStats) NickWithFallback() string {
+func (stats GetMessagesStats) NickWithFallback() string {
 	if stats.Nick != "" {
 		return stats.Nick
 	}
@@ -71,7 +71,7 @@ func (stats GetMessageStats) NickWithFallback() string {
 
 // StartedAndRelative converts |stats.Started| into a human-readable formatted
 // time, followed by a relative time specification.
-func (stats GetMessageStats) StartedAndRelative() string {
+func (stats GetMessagesStats) StartedAndRelative() string {
 	return stats.Started.Format("2006-01-02 15:04:05 -07:00") + " (" +
 		time.Now().Round(time.Second).Sub(stats.Started.Round(time.Second)).String() + " ago)"
 }
@@ -84,6 +84,19 @@ func (nopCloser) Close() error {
 	return nil
 }
 
+func getNodeProxy(leader string) (*httputil.ReverseProxy, bool) {
+	nodeProxiesMu.RLock()
+	defer nodeProxiesMu.RUnlock()
+	p, ok := nodeProxies[leader]
+	return p, ok
+}
+
+func setNodeProxy(leader string, proxy *httputil.ReverseProxy) {
+	nodeProxiesMu.Lock()
+	defer nodeProxiesMu.Unlock()
+	nodeProxies[leader] = proxy
+}
+
 func maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body io.ReadCloser) {
 	leader := node.Leader()
 	if leader == "" {
@@ -92,10 +105,7 @@ func maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body io.ReadClos
 		return
 	}
 
-	nodeProxiesMu.RLock()
-	p, ok := nodeProxies[leader]
-	nodeProxiesMu.RUnlock()
-
+	p, ok := getNodeProxy(leader)
 	if !ok {
 		u, err := url.Parse("https://" + leader)
 		if err != nil {
@@ -106,9 +116,7 @@ func maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body io.ReadClos
 		p.Transport = robusthttp.Transport(true)
 
 		// Races are okay, i.e. overwriting the proxy a different goroutine set up.
-		nodeProxiesMu.Lock()
-		nodeProxies[leader] = p
-		nodeProxiesMu.Unlock()
+		setNodeProxy(leader, p)
 	}
 
 	location := *r.URL
@@ -209,20 +217,13 @@ func handlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		return
 	}
 
-	applyMu.Lock()
-	msg := ircServer.NewRobustMessage(types.RobustIRCFromClient, session, req.Data)
-	msg.ClientMessageId = req.ClientMessageId
-	msgbytes, err := json.Marshal(msg)
-	if err != nil {
-		applyMu.Unlock()
-		http.Error(w, fmt.Sprintf("Could not store message, cannot encode it as JSON: %v", err),
-			http.StatusBadRequest)
-		return
+	msg := &types.RobustMessage{
+		Session:         session,
+		Type:            types.RobustIRCFromClient,
+		Data:            req.Data,
+		ClientMessageId: req.ClientMessageId,
 	}
-
-	f := node.Apply(msgbytes, 10*time.Second)
-	applyMu.Unlock()
-	if err := f.Error(); err != nil {
+	if err := applyMessageWait(msg, 10*time.Second); err != nil {
 		if err == raft.ErrNotLeader {
 			maybeProxyToLeader(w, r, nopCloser{&body})
 			return
@@ -324,6 +325,28 @@ func pingMessage() *types.RobustMessage {
 	return pingmsg
 }
 
+func setGetMessagesRequests(remoteAddr string, stats GetMessagesStats) {
+	getMessagesRequestsMu.Lock()
+	defer getMessagesRequestsMu.Unlock()
+	getMessagesRequests[remoteAddr] = stats
+}
+
+func deleteGetMessagesRequests(remoteAddr string) {
+	getMessagesRequestsMu.Lock()
+	defer getMessagesRequestsMu.Unlock()
+	delete(getMessagesRequests, remoteAddr)
+}
+
+func copyGetMessagesRequests() map[string]GetMessagesStats {
+	result := make(map[string]GetMessagesStats)
+	getMessagesRequestsMu.RLock()
+	defer getMessagesRequestsMu.RUnlock()
+	for key, value := range getMessagesRequests {
+		result[key] = value
+	}
+	return result
+}
+
 func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Avoid sessionOrProxy() because GetMessages can be answered on any raft
 	// node, it’s a read-only request.
@@ -338,19 +361,13 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	}
 
 	remoteAddr := r.RemoteAddr
-	getMessagesRequestsMu.Lock()
-	GetMessageRequests[remoteAddr] = GetMessageStats{
+	setGetMessagesRequests(remoteAddr, GetMessagesStats{
 		Session:   session,
 		Nick:      ircServer.GetNick(session),
 		Started:   time.Now(),
 		UserAgent: r.Header.Get("User-Agent"),
-	}
-	getMessagesRequestsMu.Unlock()
-	defer func() {
-		getMessagesRequestsMu.Lock()
-		delete(GetMessageRequests, remoteAddr)
-		getMessagesRequestsMu.Unlock()
-	}()
+	})
+	defer deleteGetMessagesRequests(remoteAddr)
 
 	lastSeen := ircServer.GetStartId(session)
 	lastSeenStr := r.FormValue("lastseen")
@@ -531,14 +548,12 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request, ps httprouter.P
 		return
 	}
 	sessionauth := fmt.Sprintf("%x", b)
-	applyMu.Lock()
-	msg := ircServer.NewRobustMessage(types.RobustCreateSession, types.RobustId{}, sessionauth)
-	// Cannot fail, no user input.
-	msgbytes, _ := json.Marshal(msg)
 
-	f := node.Apply(msgbytes, 10*time.Second)
-	applyMu.Unlock()
-	if err := f.Error(); err != nil {
+	msg := &types.RobustMessage{
+		Type: types.RobustCreateSession,
+		Data: sessionauth,
+	}
+	if err := applyMessageWait(msg, 10*time.Second); err != nil {
 		if err == raft.ErrNotLeader {
 			maybeProxyToLeader(w, r, nopCloser{bytes.NewBuffer(nil)})
 			return
@@ -585,14 +600,12 @@ func handleDeleteSession(w http.ResponseWriter, r *http.Request, ps httprouter.P
 		return
 	}
 
-	applyMu.Lock()
-	msg := ircServer.NewRobustMessage(types.RobustDeleteSession, session, req.Quitmessage)
-	// Cannot fail, no user input.
-	msgbytes, _ := json.Marshal(msg)
-
-	f := node.Apply(msgbytes, 10*time.Second)
-	applyMu.Unlock()
-	if err := f.Error(); err != nil {
+	msg := &types.RobustMessage{
+		Session: session,
+		Type:    types.RobustDeleteSession,
+		Data:    req.Quitmessage,
+	}
+	if err := applyMessageWait(msg, 10*time.Second); err != nil {
 		if err == raft.ErrNotLeader {
 			maybeProxyToLeader(w, r, nopCloser{&body})
 			return
@@ -638,20 +651,16 @@ func configRevision() uint64 {
 }
 
 func applyConfig(revision uint64, body string) error {
-	applyMu.Lock()
-	defer applyMu.Unlock()
 	if got, want := revision, configRevision(); got != want {
 		return fmt.Errorf("Revision mismatch (got %d, want %d). Try again.", got, want)
 	}
 
-	msg := ircServer.NewRobustMessage(types.RobustConfig, types.RobustId{}, body)
-	msg.Revision = revision + 1
-	msgbytes, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("Could not store message, cannot encode it as JSON: %v", err)
+	msg := &types.RobustMessage{
+		Type:     types.RobustConfig,
+		Data:     body,
+		Revision: revision + 1,
 	}
-
-	return node.Apply(msgbytes, 10*time.Second).Error()
+	return applyMessageWait(msg, 10*time.Second)
 }
 
 func handlePostConfig(w http.ResponseWriter, r *http.Request) {

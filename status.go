@@ -144,7 +144,7 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		Entries            []*raft.Log
 		Stats              map[string]string
 		Sessions           map[types.RobustId]ircserver.Session
-		GetMessageRequests map[string]GetMessageStats
+		GetMessageRequests map[string]GetMessagesStats
 		PrevOffset         int64
 		NextOffset         uint64
 		NetConfig          config.Network
@@ -159,7 +159,7 @@ func handleStatus(res http.ResponseWriter, req *http.Request) {
 		entries,
 		node.Stats(),
 		ircServer.GetSessions(),
-		GetMessageRequests,
+		copyGetMessagesRequests(),
 		prevOffset,
 		lo + 50,
 		ircServer.Config,

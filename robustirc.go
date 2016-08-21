@@ -34,6 +34,7 @@ import (
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/timesafeguard"
+	"github.com/robustirc/robustirc/types"
 
 	auth "github.com/abbot/go-http-auth"
 	"github.com/armon/go-metrics"
@@ -236,6 +237,28 @@ func deleteOldCompactionDatabases(tmpdir string) error {
 		}
 	}
 	return nil
+}
+
+// applyMessage applies the specified message to the network via Raft.
+func applyMessage(msg *types.RobustMessage, timeout time.Duration) (raft.ApplyFuture, error) {
+	applyMu.Lock()
+	defer applyMu.Unlock()
+
+	msg.Id = ircServer.NewRobustMessageId()
+	msgbytes, err := json.Marshal(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	return node.Apply(msgbytes, timeout), nil
+}
+
+func applyMessageWait(msg *types.RobustMessage, timeout time.Duration) error {
+	f, err := applyMessage(msg, timeout)
+	if err != nil {
+		return err
+	}
+	return f.Error()
 }
 
 // Copied from src/net/http/server.go
@@ -605,17 +628,11 @@ func main() {
 				continue
 			}
 
-			applyMu.Lock()
 			for _, msg := range ircServer.ExpireSessions() {
-				// Cannot fail, no user input.
-				msgbytes, _ := json.Marshal(msg)
-				f := node.Apply(msgbytes, 10*time.Second)
-				if err := f.Error(); err != nil {
-					log.Printf("Apply(): %v\n", err)
-					break
+				if err := applyMessageWait(msg, 10*time.Second); err != nil {
+					log.Printf("Apply(): %v", err)
 				}
 			}
-			applyMu.Unlock()
 		}
 	}
 }

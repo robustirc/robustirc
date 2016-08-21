@@ -249,27 +249,23 @@ func (i *IRCServer) Close() error {
 	return i.output.Close()
 }
 
-// NewRobustMessage creates a new RobustMessage with an id that is guaranteed
-// to be higher than the last processed message (it panics otherwise) so that
-// timestamp drift is loudly complained about instead of silently accepted to
-// the point where it breaks the network’s regular operation.
+// NewRobustMessageId returns an id that is guaranteed to be higher
+// than the last processed message (it panics otherwise) so that
+// timestamp drift is loudly complained about instead of silently
+// accepted to the point where it breaks the network’s regular
+// operation.
 //
-// NewRobustMessage should only be called while node.State() == raft.Leader,
-// otherwise it might panic due to time drift in the network, leading to the
-// node exiting (and being restarted).
-func (i *IRCServer) NewRobustMessage(t types.RobustType, session types.RobustId, data string) *types.RobustMessage {
+// NewRobustMessageId should only be called while node.State() ==
+// raft.Leader, otherwise it might panic due to time drift in the
+// network, leading to the node exiting (and being restarted).
+func (i *IRCServer) NewRobustMessageId() types.RobustId {
 	unixnano := time.Now().UnixNano()
 	i.lastProcessedMu.RLock()
 	defer i.lastProcessedMu.RUnlock()
 	if unixnano < i.lastProcessed.Id {
 		panic(fmt.Sprintf("Assumption violated: current time %d is older than the timestamp of the last processed message (%d)", unixnano, i.lastProcessed.Id))
 	}
-	return &types.RobustMessage{
-		Id:      types.RobustId{Id: unixnano},
-		Session: session,
-		Type:    t,
-		Data:    data,
-	}
+	return types.RobustId{Id: unixnano}
 }
 
 // UpdateLastMessage stores the clientmessageid of the last message in the
@@ -341,8 +337,11 @@ func (i *IRCServer) ExpireSessions() []*types.RobustMessage {
 
 		log.Printf("Expiring session %v\n", id)
 
-		deletes = append(deletes, i.NewRobustMessage(
-			types.RobustDeleteSession, id, fmt.Sprintf("Ping timeout (%v)", timeout)))
+		deletes = append(deletes, &types.RobustMessage{
+			Session: id,
+			Type:    types.RobustDeleteSession,
+			Data:    fmt.Sprintf("Ping timeout (%v)", timeout),
+		})
 	}
 	return deletes
 }
@@ -486,14 +485,18 @@ func (i *IRCServer) ProcessMessage(id types.RobustId, session types.RobustId, me
 	return reply
 }
 
+func (i *IRCServer) setLastProcessed(id types.RobustId) {
+	i.lastProcessedMu.Lock()
+	defer i.lastProcessedMu.Unlock()
+	i.lastProcessed = id
+}
+
 // SendMessages appends the specified batch of messages to the output, marking
 // them as a response to the incoming message with id 'id' and associating them
 // with session 'session'. IRC clients will eventually receive these messages
 // by calling GetNext.
 func (i *IRCServer) SendMessages(reply *Replyctx, session types.RobustId, id int64) {
-	i.lastProcessedMu.Lock()
-	i.lastProcessed = types.RobustId{Id: id}
-	i.lastProcessedMu.Unlock()
+	i.setLastProcessed(types.RobustId{Id: id})
 
 	defer func() {
 		i.sessionsMu.Lock()
