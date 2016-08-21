@@ -620,10 +620,10 @@ func handleQuit(w http.ResponseWriter, r *http.Request) {
 
 func handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
-	w.Header().Set("X-RobustIRC-Config-Revision", strconv.Itoa(ircServer.Config.Revision))
 
 	ircServer.ConfigMu.RLock()
 	defer ircServer.ConfigMu.RUnlock()
+	w.Header().Set("X-RobustIRC-Config-Revision", strconv.FormatUint(ircServer.Config.Revision, 10))
 	if err := toml.NewEncoder(w).Encode(&ircServer.Config); err != nil {
 		log.Printf("Could not send TOML config: %v\n", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -631,13 +631,13 @@ func handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func configRevision() int {
+func configRevision() uint64 {
 	ircServer.ConfigMu.RLock()
 	defer ircServer.ConfigMu.RUnlock()
 	return ircServer.Config.Revision
 }
 
-func applyConfig(revision int, body string) error {
+func applyConfig(revision uint64, body string) error {
 	applyMu.Lock()
 	defer applyMu.Unlock()
 	if got, want := revision, configRevision(); got != want {
@@ -645,7 +645,7 @@ func applyConfig(revision int, body string) error {
 	}
 
 	msg := ircServer.NewRobustMessage(types.RobustConfig, types.RobustId{}, body)
-	msg.Revision = int(revision) + 1
+	msg.Revision = revision + 1
 	msgbytes, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("Could not store message, cannot encode it as JSON: %v", err)
@@ -655,7 +655,7 @@ func applyConfig(revision int, body string) error {
 }
 
 func handlePostConfig(w http.ResponseWriter, r *http.Request) {
-	revision, err := strconv.ParseInt(r.Header.Get("X-RobustIRC-Config-Revision"), 0, 64)
+	revision, err := strconv.ParseUint(r.Header.Get("X-RobustIRC-Config-Revision"), 0, 64)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -673,7 +673,7 @@ func handlePostConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := applyConfig(int(revision), body.String()); err != nil {
+	if err := applyConfig(revision, body.String()); err != nil {
 		if err == raft.ErrNotLeader {
 			maybeProxyToLeader(w, r, nopCloser{&body})
 			return

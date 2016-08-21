@@ -82,7 +82,7 @@ type RobustMessage struct {
 	ClientMessageId uint64 `json:",omitempty"`
 
 	// Revision is the config file revision. Only present when Type == RobustConfig
-	Revision int `json:",omitempty"`
+	Revision uint64 `json:",omitempty"`
 }
 
 func (m *RobustMessage) Timestamp() string {

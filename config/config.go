@@ -41,7 +41,7 @@ type IRC struct {
 
 // Network is the network configuration, i.e. the top level.
 type Network struct {
-	Revision int `toml:"-"`
+	Revision uint64 `toml:"-"`
 
 	IRC IRC
 

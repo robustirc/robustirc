@@ -127,7 +127,7 @@ func (i *IRCServer) Marshal(lastIncludedIndex uint64) ([]byte, error) {
 		})
 	}
 	config := &pb.Snapshot_Config{
-		Revision: uint64(i.Config.Revision),
+		Revision: i.Config.Revision,
 		Irc: &pb.Snapshot_Config_IRC{
 			Operators: operators,
 			Services:  services,
@@ -265,7 +265,7 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 		return 0, err
 	}
 	i.Config = config.Network{
-		Revision: int(snapshot.Config.Revision),
+		Revision: snapshot.Config.Revision,
 		IRC: config.IRC{
 			Operators: operators,
 			Services:  services,
