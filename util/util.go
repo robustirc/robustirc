@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/types"
@@ -59,36 +61,26 @@ func GetServerStatus(server, networkPassword string) (ServerStatus, error) {
 }
 
 func CollectStatuses(servers []string, networkPassword string) (map[string]ServerStatus, error) {
-	statuses := make(map[string]ServerStatus, len(servers))
-	var statusesMu sync.Mutex
-	errChan := make(chan error, len(servers))
-	var wg sync.WaitGroup
+	var (
+		statuses   = make(map[string]ServerStatus, len(servers))
+		statusesMu sync.Mutex
+		g          errgroup.Group
+	)
 	for _, server := range servers {
-		wg.Add(1)
-		go func(server string) {
-			defer wg.Done()
+		server := server // capture range variable
+		g.Go(func() error {
 			status, err := GetServerStatus(server, networkPassword)
 			if err != nil {
-				errChan <- err
-				return
+				return err
 			}
 			status.Server = server
 			statusesMu.Lock()
 			statuses[server] = status
 			statusesMu.Unlock()
-		}(server)
+			return nil
+		})
 	}
-	wg.Wait()
-
-	select {
-	case err := <-errChan:
-		close(errChan)
-		for _ = range errChan {
-		}
-		return statuses, err
-	default:
-		return statuses, nil
-	}
+	return statuses, g.Wait()
 }
 
 // EnsureNetworkHealthy returns nil when all of the following is true:
