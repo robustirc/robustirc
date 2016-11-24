@@ -17,7 +17,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/types"
-	"github.com/sorcix/irc"
+	"gopkg.in/sorcix/irc.v2"
 
 	pb "github.com/robustirc/robustirc/proto"
 )
@@ -196,12 +196,12 @@ func PrivacyFilterIrcmsg(message *irc.Message) *irc.Message {
 	if message == nil {
 		return nil
 	}
-	if message.Command == irc.PRIVMSG || message.Command == irc.NOTICE {
-		message.Trailing = "<privacy filtered>"
-	}
-	if message.Command == irc.PASS {
-		message.Params = []string{"<privacy filtered>"}
-		message.Trailing = ""
+	if message.Command == irc.PRIVMSG ||
+		message.Command == irc.NOTICE ||
+		message.Command == irc.PASS {
+		if len(message.Params) > 0 {
+			message.Params[len(message.Params)-1] = "<privacy filtered>"
+		}
 	}
 	return message
 }

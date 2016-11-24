@@ -9,7 +9,7 @@ import (
 	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/types"
 
-	"github.com/sorcix/irc"
+	"gopkg.in/sorcix/irc.v2"
 )
 
 func stdIRCServer() (*IRCServer, map[string]types.RobustId) {
@@ -583,7 +583,7 @@ func TestInvalidChannelPlumbing(t *testing.T) {
 	mustMatchIrcmsgs(t,
 		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #foobar")),
 		[]*irc.Message{
-			{Prefix: &s.ircPrefix, Command: irc.JOIN, Trailing: "#foobar"},
+			{Prefix: &s.ircPrefix, Command: irc.JOIN, Params: []string{"#foobar"}},
 			irc.ParseMessage(":robustirc.net SJOIN 1 #foobar :@sECuRE"),
 			irc.ParseMessage(":robustirc.net 331 sECuRE #foobar :No topic is set"),
 			irc.ParseMessage(":robustirc.net 353 sECuRE = #foobar :@sECuRE"),
@@ -622,7 +622,7 @@ func TestInvalidPrivmsg(t *testing.T) {
 
 	mustMatchMsg(t,
 		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("PRIVMSG #test foo")),
-		":robustirc.net 412 sECuRE :No text to send")
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG #test :foo")
 
 	mustMatchMsg(t,
 		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("PRIVMSG")),
@@ -741,10 +741,9 @@ func TestTopic(t *testing.T) {
 		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("TOPIC #test :yeah, this is a topic.")),
 		[]*irc.Message{
 			{
-				Prefix:   &sSecure.ircPrefix,
-				Command:  irc.TOPIC,
-				Params:   []string{"#test"},
-				Trailing: "yeah, this is a topic.",
+				Prefix:  &sSecure.ircPrefix,
+				Command: irc.TOPIC,
+				Params:  []string{"#test", "yeah, this is a topic."},
 			},
 			irc.ParseMessage(":sECuRE TOPIC #test sECuRE 1420228218 :yeah, this is a topic."),
 		})
@@ -761,7 +760,7 @@ func TestTopic(t *testing.T) {
 	mustMatchIrcmsgs(t,
 		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #test")),
 		[]*irc.Message{
-			{Prefix: &sMero.ircPrefix, Command: irc.JOIN, Trailing: "#test"},
+			{Prefix: &sMero.ircPrefix, Command: irc.JOIN, Params: []string{"#test"}},
 			irc.ParseMessage(":robustirc.net SJOIN 1 #test :mero"),
 			irc.ParseMessage(":robustirc.net 332 mero #test :yeah, this is a topic."),
 			irc.ParseMessage(":robustirc.net 333 mero #test sECuRE 1420228218"),
@@ -937,7 +936,7 @@ func TestChannelMemberStatus(t *testing.T) {
 	mustMatchIrcmsgs(t,
 		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #test")),
 		[]*irc.Message{
-			{Prefix: &sSecure.ircPrefix, Command: irc.JOIN, Trailing: "#test"},
+			{Prefix: &sSecure.ircPrefix, Command: irc.JOIN, Params: []string{"#test"}},
 			irc.ParseMessage(":robustirc.net SJOIN 1 #test :sECuRE"),
 			irc.ParseMessage(":robustirc.net 331 sECuRE #test :No topic is set"),
 			irc.ParseMessage(":robustirc.net 353 sECuRE = #test :@mero sECuRE"),
@@ -1137,7 +1136,7 @@ func TestKick(t *testing.T) {
 	mustMatchIrcmsgs(t,
 		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("JOIN #TEST")),
 		[]*irc.Message{
-			{Prefix: &sXeen.ircPrefix, Command: irc.JOIN, Trailing: "#TEST"},
+			{Prefix: &sXeen.ircPrefix, Command: irc.JOIN, Params: []string{"#TEST"}},
 			irc.ParseMessage(":robustirc.net SJOIN 1 #TEST :xeen"),
 			irc.ParseMessage(":robustirc.net 331 xeen #TEST :No topic is set"),
 			irc.ParseMessage(":robustirc.net 353 xeen = #TEST :@sECuRE xeen"),
@@ -1155,7 +1154,7 @@ func TestChannelCaseInsensitive(t *testing.T) {
 	mustMatchIrcmsgs(t,
 		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #TEST")),
 		[]*irc.Message{
-			{Prefix: &sMero.ircPrefix, Command: irc.JOIN, Trailing: "#TEST"},
+			{Prefix: &sMero.ircPrefix, Command: irc.JOIN, Params: []string{"#TEST"}},
 			irc.ParseMessage(":robustirc.net SJOIN 1 #TEST :mero"),
 			irc.ParseMessage(":robustirc.net 331 mero #TEST :No topic is set"),
 			irc.ParseMessage(":robustirc.net 353 mero = #TEST :@sECuRE mero"),

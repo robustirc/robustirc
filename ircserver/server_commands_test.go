@@ -6,7 +6,7 @@ import (
 
 	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/types"
-	"github.com/sorcix/irc"
+	"gopkg.in/sorcix/irc.v2"
 )
 
 func stdIRCServerWithServices() (*IRCServer, map[string]types.RobustId) {
@@ -389,7 +389,7 @@ func TestServerPrivmsg(t *testing.T) {
 
 	mustMatchMsg(t,
 		i.ProcessMessage(types.RobustId{}, ids["services"], irc.ParseMessage(":ChanServ PRIVMSG #test")),
-		":robustirc.net 412 ChanServ :No text to send")
+		":ChanServ!services@services PRIVMSG #test :#test")
 
 	mustMatchMsg(t,
 		i.ProcessMessage(types.RobustId{}, ids["services"], irc.ParseMessage(":ChanServ PRIVMSG #toast :a")),
