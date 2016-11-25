@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/sorcix/irc.v2"
+	"github.com/sorcix/irc"
 )
 
 type RobustId struct {
@@ -99,9 +99,7 @@ func (m *RobustMessage) PrivacyFilter() string {
 			command == irc.NOTICE ||
 			command == irc.PASS ||
 			strings.HasSuffix(command, "serv") {
-			if len(msg.Params) > 0 {
-				msg.Params[len(msg.Params)-1] = "<privacy filtered>"
-			}
+			msg.Trailing = "<privacy filtered>"
 			return string(msg.Bytes())
 		}
 	}

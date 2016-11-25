@@ -3,7 +3,7 @@ package ircserver
 import (
 	"testing"
 
-	"gopkg.in/sorcix/irc.v2"
+	"github.com/sorcix/irc"
 )
 
 func TestNormalizeModes(t *testing.T) {

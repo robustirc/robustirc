@@ -6,7 +6,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/types"
-	"gopkg.in/sorcix/irc.v2"
+	"github.com/sorcix/irc"
 
 	pb "github.com/robustirc/robustirc/proto"
 )

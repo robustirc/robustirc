@@ -23,7 +23,7 @@ import (
 	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/outputstream"
 	"github.com/robustirc/robustirc/types"
-	"gopkg.in/sorcix/irc.v2"
+	"github.com/sorcix/irc"
 )
 
 const (
@@ -422,9 +422,10 @@ func (i *IRCServer) ProcessMessage(id types.RobustId, session types.RobustId, me
 
 	if message == nil {
 		i.sendUser(s, reply, &irc.Message{
-			Prefix:  i.ServerPrefix,
-			Command: irc.ERR_UNKNOWNCOMMAND,
-			Params:  []string{s.Nick, "Unknown command"},
+			Prefix:   i.ServerPrefix,
+			Command:  irc.ERR_UNKNOWNCOMMAND,
+			Params:   []string{s.Nick},
+			Trailing: "Unknown command",
 		})
 		return reply
 	}
@@ -440,14 +441,15 @@ func (i *IRCServer) ProcessMessage(id types.RobustId, session types.RobustId, me
 		command != irc.QUIT &&
 		command != irc.SERVER {
 		i.sendUser(s, reply, &irc.Message{
-			Prefix:  i.ServerPrefix,
-			Command: irc.ERR_NOTREGISTERED,
-			Params:  []string{command, "You have not registered"},
+			Prefix:   i.ServerPrefix,
+			Command:  irc.ERR_NOTREGISTERED,
+			Params:   []string{command},
+			Trailing: "You have not registered",
 		})
 		if s.LastActivity.Sub(time.Unix(0, s.Id.Id)) > 10*time.Minute {
 			i.sendUser(s, reply, &irc.Message{
-				Command: irc.ERROR,
-				Params:  []string{"Closing Link: You have not registered within 10 minutes"},
+				Command:  irc.ERROR,
+				Trailing: "Closing Link: You have not registered within 10 minutes",
 			})
 			i.DeleteSession(s, reply.msgid)
 		}
@@ -461,18 +463,20 @@ func (i *IRCServer) ProcessMessage(id types.RobustId, session types.RobustId, me
 	cmd, ok := Commands[serverPrefix+command]
 	if !ok {
 		i.sendUser(s, reply, &irc.Message{
-			Prefix:  i.ServerPrefix,
-			Command: irc.ERR_UNKNOWNCOMMAND,
-			Params:  []string{s.Nick, command, "Unknown command"},
+			Prefix:   i.ServerPrefix,
+			Command:  irc.ERR_UNKNOWNCOMMAND,
+			Params:   []string{s.Nick, command},
+			Trailing: "Unknown command",
 		})
 		return reply
 	}
 
 	if len(message.Params) < cmd.MinParams {
 		i.sendUser(s, reply, &irc.Message{
-			Prefix:  i.ServerPrefix,
-			Command: irc.ERR_NEEDMOREPARAMS,
-			Params:  []string{s.Nick, command, "Not enough parameters"},
+			Prefix:   i.ServerPrefix,
+			Command:  irc.ERR_NEEDMOREPARAMS,
+			Params:   []string{s.Nick, command},
+			Trailing: "Not enough parameters",
 		})
 		return reply
 	}

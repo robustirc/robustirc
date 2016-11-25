@@ -12,8 +12,8 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/types"
 	"github.com/robustirc/robustirc/util"
+	"github.com/sorcix/irc"
 	"github.com/stapelberg/glog"
-	"gopkg.in/sorcix/irc.v2"
 )
 
 type canaryMessageOutput struct {
