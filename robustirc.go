@@ -578,11 +578,11 @@ func main() {
 	// Manually create the net.TCPListener so that joinMaster() does not run
 	// into connection refused errors (the master will try to contact the
 	// node before acknowledging the join).
-	srv.TLSConfig.Certificates = make([]tls.Certificate, 1)
-	srv.TLSConfig.Certificates[0], err = tls.LoadX509KeyPair(*tlsCertPath, *tlsKeyPath)
+	kpr, err := NewKeypairReloader(*tlsCertPath, *tlsKeyPath)
 	if err != nil {
 		log.Fatal(err)
 	}
+	srv.TLSConfig.GetCertificate = kpr.GetCertificateFunc()
 
 	ln, err := net.Listen("tcp", *listen)
 	if err != nil {
