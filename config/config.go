@@ -51,6 +51,11 @@ type Network struct {
 
 	// Enforced cooloff between two messages sent by a user. Set to 0 to disable throttling.
 	PostMessageCooloff Duration
+
+	// TrustedBridges is a map from X-Bridge-Auth header to human-readable
+	// name. For all bridges which send a configured header, the
+	// X-Forwarded-For header is respected.
+	TrustedBridges map[string]string
 }
 
 var DefaultConfig = Network{

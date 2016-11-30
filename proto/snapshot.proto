@@ -84,6 +84,7 @@ message Snapshot {
     IRC irc = 2;
     string session_expiration = 3;
     string post_message_cooloff = 4;
+    map<string, string> trusted_bridges = 5;
   }
   Config config = 5;
 

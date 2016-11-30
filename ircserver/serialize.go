@@ -134,6 +134,7 @@ func (i *IRCServer) Marshal(lastIncludedIndex uint64) ([]byte, error) {
 		},
 		SessionExpiration:  i.Config.SessionExpiration.String(),
 		PostMessageCooloff: i.Config.PostMessageCooloff.String(),
+		TrustedBridges:     i.Config.TrustedBridges,
 	}
 	snapshot := pb.Snapshot{
 		Sessions:          sessions,
@@ -272,6 +273,7 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 		},
 		SessionExpiration:  config.Duration(sessionExpiration),
 		PostMessageCooloff: config.Duration(postMessageCooloff),
+		TrustedBridges:     snapshot.Config.TrustedBridges,
 	}
 
 	return snapshot.LastIncludedIndex, nil

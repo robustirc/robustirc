@@ -53,10 +53,12 @@ var (
 
 // GetMessageStats encapsulates information about a GetMessages request.
 type GetMessagesStats struct {
-	Session   types.RobustId
-	Nick      string
-	Started   time.Time
-	UserAgent string
+	Session       types.RobustId
+	Nick          string
+	Started       time.Time
+	UserAgent     string
+	ForwardedFor  string
+	TrustedBridge string
 }
 
 func (stats GetMessagesStats) NickWithFallback() string {
@@ -362,10 +364,12 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 
 	remoteAddr := r.RemoteAddr
 	setGetMessagesRequests(remoteAddr, GetMessagesStats{
-		Session:   session,
-		Nick:      ircServer.GetNick(session),
-		Started:   time.Now(),
-		UserAgent: r.Header.Get("User-Agent"),
+		Session:       session,
+		Nick:          ircServer.GetNick(session),
+		Started:       time.Now(),
+		UserAgent:     r.Header.Get("User-Agent"),
+		ForwardedFor:  r.Header.Get("X-Forwarded-For"),
+		TrustedBridge: ircServer.TrustedBridge(r.Header.Get("X-Bridge-Auth")),
 	})
 	defer deleteGetMessagesRequests(remoteAddr)
 

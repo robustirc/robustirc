@@ -59,6 +59,12 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 							<td>{{.Name}}/&lt;hidden&gt;</td>
 						</tr>
 						{{ end }}
+						{{ range $auth, $name := .NetConfig.TrustedBridges }}
+						<tr>
+							<th>TrustedBridge</th>
+							<td>{{ $name }}</td>
+						</tr>
+						{{ end }}
 					</table>
 				</div>
 
@@ -92,7 +98,11 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 						<tr>
 							<td><code>{{ $val.Session.Id | printf "0x%x" }}</code></td>
 							<td>{{ $val.NickWithFallback }}</td>
-							<td>{{ $key }}</td>
+							{{ if ne $val.TrustedBridge "" }}
+							<td><span title="{{ $key }}">{{ $val.TrustedBridge }}</span> → {{ $val.ForwardedFor }}</td>
+							{{ else }}
+							<td><span title="{{ $val.ForwardedFor }} (UNTRUSTED!)">{{ $key }}</span></td>
+							{{ end }}
 							<td>{{ $val.StartedAndRelative }}</td>
 							<td>{{ $val.UserAgent }}</td>
 						</tr>

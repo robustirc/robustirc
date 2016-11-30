@@ -782,3 +782,12 @@ func (i *IRCServer) sendServices(reply *Replyctx, msg *irc.Message) *irc.Message
 	}
 	return msg
 }
+
+func (i *IRCServer) TrustedBridge(authHeader string) string {
+	if authHeader == "" {
+		return ""
+	}
+	i.ConfigMu.RLock()
+	defer i.ConfigMu.RUnlock()
+	return i.Config.TrustedBridges[authHeader]
+}
