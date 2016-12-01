@@ -351,11 +351,19 @@ func (i *IRCServer) cmdJoin(s *Session, reply *Replyctx, msg *irc.Message) {
 			})
 			continue
 		}
+		var modesmsg *irc.Message
 		c, ok := i.channels[ChanToLower(channelname)]
 		if !ok {
 			c = &channel{
 				name:  channelname,
 				nicks: make(map[lcNick]*[maxChanMemberStatus]bool),
+			}
+			c.modes['n'] = true
+			c.modes['t'] = true
+			modesmsg = &irc.Message{
+				Prefix:  i.ServerPrefix,
+				Command: "MODE",
+				Params:  []string{channelname, "+nt"},
 			}
 			i.channels[ChanToLower(channelname)] = c
 		} else if c.modes['i'] && !s.invitedTo[ChanToLower(channelname)] {
@@ -387,6 +395,9 @@ func (i *IRCServer) cmdJoin(s *Session, reply *Replyctx, msg *irc.Message) {
 			Command:  irc.JOIN,
 			Trailing: channelname,
 		})
+		if modesmsg != nil {
+			i.sendChannel(c, reply, modesmsg)
+		}
 		var prefix string
 		if c.nicks[NickToLower(s.Nick)][chanop] {
 			prefix = prefix + string('@')
@@ -397,7 +408,8 @@ func (i *IRCServer) cmdJoin(s *Session, reply *Replyctx, msg *irc.Message) {
 			Params:   []string{"1", channelname},
 			Trailing: prefix + s.Nick,
 		})
-		// Integrate the topic response by simulating a TOPIC command.
+		// Channel joins integrate the output of MODE, TOPIC and NAMES commands:
+		i.cmdMode(s, reply, &irc.Message{Command: irc.MODE, Params: []string{channelname}})
 		i.cmdTopic(s, reply, &irc.Message{Command: irc.TOPIC, Params: []string{channelname}})
 		i.cmdNames(s, reply, &irc.Message{Command: irc.NAMES, Params: []string{channelname}})
 	}

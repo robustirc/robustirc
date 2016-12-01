@@ -584,7 +584,9 @@ func TestInvalidChannelPlumbing(t *testing.T) {
 		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #foobar")),
 		[]*irc.Message{
 			{Prefix: &s.ircPrefix, Command: irc.JOIN, Trailing: "#foobar"},
+			irc.ParseMessage(":robustirc.net MODE #foobar +nt"),
 			irc.ParseMessage(":robustirc.net SJOIN 1 #foobar :@sECuRE"),
+			irc.ParseMessage(":robustirc.net 324 sECuRE #foobar +nt"),
 			irc.ParseMessage(":robustirc.net 331 sECuRE #foobar :No topic is set"),
 			irc.ParseMessage(":robustirc.net 353 sECuRE = #foobar :@sECuRE"),
 			irc.ParseMessage(":robustirc.net 366 sECuRE #foobar :End of /NAMES list."),
@@ -763,6 +765,7 @@ func TestTopic(t *testing.T) {
 		[]*irc.Message{
 			{Prefix: &sMero.ircPrefix, Command: irc.JOIN, Trailing: "#test"},
 			irc.ParseMessage(":robustirc.net SJOIN 1 #test :mero"),
+			irc.ParseMessage(":robustirc.net 324 mero #test +nt"),
 			irc.ParseMessage(":robustirc.net 332 mero #test :yeah, this is a topic."),
 			irc.ParseMessage(":robustirc.net 333 mero #test sECuRE 1420228218"),
 			irc.ParseMessage(":robustirc.net 353 mero = #test :@sECuRE mero"),
@@ -844,6 +847,7 @@ func TestChannelMode(t *testing.T) {
 	i, ids := stdIRCServer()
 
 	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("MODE #test -nt"))
 	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #test"))
 
 	// Set a topic from the outside.
@@ -953,6 +957,7 @@ func TestChannelMemberStatus(t *testing.T) {
 		[]*irc.Message{
 			{Prefix: &sSecure.ircPrefix, Command: irc.JOIN, Trailing: "#test"},
 			irc.ParseMessage(":robustirc.net SJOIN 1 #test :sECuRE"),
+			irc.ParseMessage(":robustirc.net 324 sECuRE #test +nt"),
 			irc.ParseMessage(":robustirc.net 331 sECuRE #test :No topic is set"),
 			irc.ParseMessage(":robustirc.net 353 sECuRE = #test :@mero sECuRE"),
 			irc.ParseMessage(":robustirc.net 366 sECuRE #test :End of /NAMES list."),
@@ -1153,6 +1158,7 @@ func TestKick(t *testing.T) {
 		[]*irc.Message{
 			{Prefix: &sXeen.ircPrefix, Command: irc.JOIN, Trailing: "#TEST"},
 			irc.ParseMessage(":robustirc.net SJOIN 1 #TEST :xeen"),
+			irc.ParseMessage(":robustirc.net 324 xeen #TEST +nt"),
 			irc.ParseMessage(":robustirc.net 331 xeen #TEST :No topic is set"),
 			irc.ParseMessage(":robustirc.net 353 xeen = #TEST :@sECuRE xeen"),
 			irc.ParseMessage(":robustirc.net 366 xeen #TEST :End of /NAMES list."),
@@ -1171,6 +1177,7 @@ func TestChannelCaseInsensitive(t *testing.T) {
 		[]*irc.Message{
 			{Prefix: &sMero.ircPrefix, Command: irc.JOIN, Trailing: "#TEST"},
 			irc.ParseMessage(":robustirc.net SJOIN 1 #TEST :mero"),
+			irc.ParseMessage(":robustirc.net 324 mero #TEST +nt"),
 			irc.ParseMessage(":robustirc.net 331 mero #TEST :No topic is set"),
 			irc.ParseMessage(":robustirc.net 353 mero = #TEST :@sECuRE mero"),
 			irc.ParseMessage(":robustirc.net 366 mero #TEST :End of /NAMES list."),
@@ -1416,12 +1423,16 @@ func TestJoinMultiple(t *testing.T) {
 		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #test,#second")),
 		[]*irc.Message{
 			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad JOIN :#test"),
+			irc.ParseMessage(":robustirc.net MODE #test +nt"),
 			irc.ParseMessage(":robustirc.net SJOIN 1 #test :@sECuRE"),
+			irc.ParseMessage(":robustirc.net 324 sECuRE #test +nt"),
 			irc.ParseMessage(":robustirc.net 331 sECuRE #test :No topic is set"),
 			irc.ParseMessage(":robustirc.net 353 sECuRE = #test :@sECuRE"),
 			irc.ParseMessage(":robustirc.net 366 sECuRE #test :End of /NAMES list."),
 			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad JOIN :#second"),
+			irc.ParseMessage(":robustirc.net MODE #second +nt"),
 			irc.ParseMessage(":robustirc.net SJOIN 1 #second :@sECuRE"),
+			irc.ParseMessage(":robustirc.net 324 sECuRE #second +nt"),
 			irc.ParseMessage(":robustirc.net 331 sECuRE #second :No topic is set"),
 			irc.ParseMessage(":robustirc.net 353 sECuRE = #second :@sECuRE"),
 			irc.ParseMessage(":robustirc.net 366 sECuRE #second :End of /NAMES list."),
@@ -1435,13 +1446,17 @@ func TestJoinMultiple(t *testing.T) {
 		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #third,invalid,#fourth")),
 		[]*irc.Message{
 			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad JOIN :#third"),
+			irc.ParseMessage(":robustirc.net MODE #third +nt"),
 			irc.ParseMessage(":robustirc.net SJOIN 1 #third :@sECuRE"),
+			irc.ParseMessage(":robustirc.net 324 sECuRE #third +nt"),
 			irc.ParseMessage(":robustirc.net 331 sECuRE #third :No topic is set"),
 			irc.ParseMessage(":robustirc.net 353 sECuRE = #third :@sECuRE"),
 			irc.ParseMessage(":robustirc.net 366 sECuRE #third :End of /NAMES list."),
 			irc.ParseMessage(":robustirc.net 403 sECuRE invalid :No such channel"),
 			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad JOIN :#fourth"),
+			irc.ParseMessage(":robustirc.net MODE #fourth +nt"),
 			irc.ParseMessage(":robustirc.net SJOIN 1 #fourth :@sECuRE"),
+			irc.ParseMessage(":robustirc.net 324 sECuRE #fourth +nt"),
 			irc.ParseMessage(":robustirc.net 331 sECuRE #fourth :No topic is set"),
 			irc.ParseMessage(":robustirc.net 353 sECuRE = #fourth :@sECuRE"),
 			irc.ParseMessage(":robustirc.net 366 sECuRE #fourth :End of /NAMES list."),
@@ -1466,7 +1481,9 @@ func TestInvite(t *testing.T) {
 		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #test")),
 		[]*irc.Message{
 			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad JOIN :#test"),
+			irc.ParseMessage(":robustirc.net MODE #test +nt"),
 			irc.ParseMessage(":robustirc.net SJOIN 1 #test :@sECuRE"),
+			irc.ParseMessage(":robustirc.net 324 sECuRE #test +nt"),
 			irc.ParseMessage(":robustirc.net 331 sECuRE #test :No topic is set"),
 			irc.ParseMessage(":robustirc.net 353 sECuRE = #test :@sECuRE"),
 			irc.ParseMessage(":robustirc.net 366 sECuRE #test :End of /NAMES list."),
@@ -1524,6 +1541,7 @@ func TestInvite(t *testing.T) {
 		[]*irc.Message{
 			irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae JOIN :#second"),
 			irc.ParseMessage(":robustirc.net SJOIN 1 #second :mero"),
+			irc.ParseMessage(":robustirc.net 324 mero #second +int"),
 			irc.ParseMessage(":robustirc.net 331 mero #second :No topic is set"),
 			irc.ParseMessage(":robustirc.net 353 mero = #second :@sECuRE mero"),
 			irc.ParseMessage(":robustirc.net 366 mero #second :End of /NAMES list."),
@@ -1555,6 +1573,7 @@ func TestInvite(t *testing.T) {
 		[]*irc.Message{
 			irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae JOIN :#third"),
 			irc.ParseMessage(":robustirc.net SJOIN 1 #third :mero"),
+			irc.ParseMessage(":robustirc.net 324 mero #third +int"),
 			irc.ParseMessage(":robustirc.net 331 mero #third :No topic is set"),
 			irc.ParseMessage(":robustirc.net 353 mero = #third :@sECuRE mero"),
 			irc.ParseMessage(":robustirc.net 366 mero #third :End of /NAMES list."),
@@ -1723,4 +1742,21 @@ func TestInvisible(t *testing.T) {
 	mustMatchMsg(t,
 		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("MODE sECuRE -i")),
 		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE sECuRE :-i")
+}
+
+func TestDefaultChannelModes(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("JOIN #foobar")),
+		[]*irc.Message{
+			irc.ParseMessage(":xeen!baz@robust/0x13b5aa0a2bcfb8af JOIN :#foobar"),
+			irc.ParseMessage(":robustirc.net MODE #foobar +nt"),
+			irc.ParseMessage(":robustirc.net SJOIN 1 #foobar :@xeen"),
+			irc.ParseMessage(":robustirc.net 324 xeen #foobar +nt"),
+			irc.ParseMessage(":robustirc.net 331 xeen #foobar :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 xeen = #foobar :@xeen"),
+			irc.ParseMessage(":robustirc.net 366 xeen #foobar :End of /NAMES list."),
+		})
+
 }
