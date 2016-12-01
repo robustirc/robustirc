@@ -908,10 +908,24 @@ func TestChannelMode(t *testing.T) {
 func TestUserMode(t *testing.T) {
 	i, ids := stdIRCServer()
 
-	// User modes are not yet implemented.
 	mustMatchMsg(t,
 		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("MODE sECuRE +i")),
-		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE sECuRE :+")
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE sECuRE :+i")
+
+	mustMatchMsg(t,
+		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("MODE sECuRE -i")),
+		":robustirc.net 502 xeen :Can't change mode for other users")
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("OPER xeen foo")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 381 xeen :You are now an IRC operator"),
+			irc.ParseMessage(":robustirc.net MODE xeen :+o"),
+		})
+
+	mustMatchMsg(t,
+		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("MODE sECuRE -i")),
+		":xeen!baz@robust/0x13b5aa0a2bcfb8af MODE sECuRE :-i")
 }
 
 func TestBans(t *testing.T) {
@@ -1674,4 +1688,39 @@ func TestIson(t *testing.T) {
 	mustMatchMsg(t,
 		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("ISON nope nada nein")),
 		":robustirc.net 303 xeen :")
+}
+
+func TestInvisible(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	mustMatchMsg(t,
+		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("PRIVMSG sECuRE :before invisible")),
+		":xeen!baz@robust/0x13b5aa0a2bcfb8af PRIVMSG sECuRE :before invisible")
+
+	mustMatchMsg(t,
+		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("MODE sECuRE +i")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE sECuRE :+i")
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("PRIVMSG sECuRE :after invisible")),
+		nil)
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("NOTICE sECuRE :after invisible")),
+		nil)
+
+	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #common"))
+	i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("JOIN #common"))
+
+	mustMatchMsg(t,
+		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("PRIVMSG sECuRE :common channel")),
+		":xeen!baz@robust/0x13b5aa0a2bcfb8af PRIVMSG sECuRE :common channel")
+
+	mustMatchMsg(t,
+		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("NOTICE sECuRE :common channel")),
+		":xeen!baz@robust/0x13b5aa0a2bcfb8af NOTICE sECuRE :common channel")
+
+	mustMatchMsg(t,
+		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("MODE sECuRE -i")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE sECuRE :-i")
 }

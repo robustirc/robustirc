@@ -583,6 +583,20 @@ func (i *IRCServer) cmdPrivmsg(s *Session, reply *Replyctx, msg *irc.Message) {
 		return
 	}
 
+	if session.modes['i'] {
+		// To message invisible users, you must share a channel with them.
+		common := false
+		for channelname := range session.Channels {
+			if _, ok := s.Channels[channelname]; ok {
+				common = true
+				break
+			}
+		}
+		if !common {
+			return
+		}
+	}
+
 	i.sendUser(session, reply, &irc.Message{
 		Prefix:        &s.ircPrefix,
 		Command:       msg.Command,
@@ -786,20 +800,58 @@ func (i *IRCServer) cmdMode(s *Session, reply *Replyctx, msg *irc.Message) {
 			}))
 		return
 	}
-	if NickToLower(channelname) == NickToLower(s.Nick) {
-		modestr := "+"
-		for mode := 'A'; mode < 'z'; mode++ {
-			if s.modes[mode] {
-				modestr += string(mode)
-			}
-		}
-		i.sendServices(reply,
+
+	nick := NickToLower(channelname)
+	if session, ok := i.nicks[nick]; ok {
+		if nick != NickToLower(s.Nick) &&
+			!s.Operator {
 			i.sendUser(s, reply, &irc.Message{
-				Prefix:   &s.ircPrefix,
-				Command:  irc.MODE,
+				Prefix:   i.ServerPrefix,
+				Command:  irc.ERR_USERSDONTMATCH,
 				Params:   []string{s.Nick},
-				Trailing: modestr,
-			}))
+				Trailing: "Can't change mode for other users",
+			})
+			return
+		}
+		modes := normalizeModes(msg)
+
+		if len(modes) == 0 {
+			modestr := "+"
+			for mode := 'A'; mode < 'z'; mode++ {
+				if session.modes[mode] {
+					modestr += string(mode)
+				}
+			}
+			i.sendServices(reply,
+				i.sendUser(s, reply, &irc.Message{
+					Prefix:   &s.ircPrefix,
+					Command:  irc.MODE,
+					Params:   []string{session.Nick},
+					Trailing: modestr,
+				}))
+
+		} else {
+			for _, mode := range modes {
+				char := mode.Mode[1]
+				newvalue := (mode.Mode[0] == '+')
+				switch char {
+				case 'i':
+					session.modes[char] = newvalue
+				}
+			}
+
+			// It would be nice to send the confirmation to s as well
+			// (in case s != session), but at least irssi gets
+			// confused and applies the mode change to the current
+			// user, not the destination user.
+			i.sendServices(reply,
+				i.sendUser(session, reply, &irc.Message{
+					Prefix:   &s.ircPrefix,
+					Command:  irc.MODE,
+					Params:   []string{session.Nick},
+					Trailing: modeCmds(modes).IRCParams()[0],
+				}))
+		}
 		return
 	}
 	i.sendUser(s, reply, &irc.Message{
