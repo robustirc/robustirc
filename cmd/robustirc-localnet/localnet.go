@@ -46,6 +46,9 @@ PostMessageCooloff = "0"
 
   [[IRC.Services]]
     Password = "mypass"
+
+[TrustedBridges]
+  "1234567890abcdef1234567890abcdef" = "localnet-bridge"
 `
 
 func main() {

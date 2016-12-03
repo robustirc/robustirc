@@ -257,10 +257,11 @@ func (l *localnet) StartBridge() {
 	for _, port := range l.Ports {
 		servers = append(servers, fmt.Sprintf("localhost:%d", port))
 	}
+	network := strings.Join(servers, ",")
 
 	args := []string{
 		"-tls_ca_file=" + filepath.Join(l.dir, "cert.pem"),
-		"-network=" + strings.Join(servers, ","),
+		"-network=" + network,
 	}
 
 	tempdir, err := ioutil.TempDir("", "robustirc-bridge-")
@@ -270,6 +271,12 @@ func (l *localnet) StartBridge() {
 	if err := l.RecordResource("tempdir", tempdir); err != nil {
 		log.Panicf("Could not record tempdir: %v", err)
 	}
+
+	authPath := filepath.Join(tempdir, "auth")
+	if err := ioutil.WriteFile(authPath, []byte(fmt.Sprintf("%s:%s", network, "1234567890abcdef1234567890abcdef")), 0600); err != nil {
+		log.Panicf("Could not write auth file: %v", err)
+	}
+	args = append(args, fmt.Sprintf("-bridge_auth=%s", authPath))
 
 	log.Printf("Starting %q\n", "robustirc-bridge "+strings.Join(args, " "))
 	cmd := exec.Command("robustirc-bridge", args...)
