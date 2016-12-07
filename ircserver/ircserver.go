@@ -71,10 +71,28 @@ var (
 		},
 		[]string{"command"},
 	)
+
+	captchasVerified = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Subsystem: "captcha",
+			Name:      "captchas_verified",
+			Help:      "Number of CAPTCHAs successfully verified",
+		},
+	)
+
+	captchasFailed = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Subsystem: "captcha",
+			Name:      "captchas_failed",
+			Help:      "Number of non-empty CAPTCHAs which failed verification",
+		},
+	)
 )
 
 func init() {
 	prometheus.MustRegister(messagesProcessed)
+	prometheus.MustRegister(captchasVerified)
+	prometheus.MustRegister(captchasFailed)
 }
 
 // lcChan is a lower-case channel name, e.g. “#chaos-hd”, even when the user
@@ -841,6 +859,17 @@ func (i *IRCServer) verifyCaptcha(s *Session, captcha string) error {
 		return errors.New("no captcha specified")
 	}
 
+	if err := i.verifyCaptchaNonEmpty(s, captcha); err != nil {
+		captchasFailed.Inc()
+		return err
+	}
+
+	captchasVerified.Inc()
+	s.LastSolvedCaptcha = s.LastActivity
+	return nil
+}
+
+func (i *IRCServer) verifyCaptchaNonEmpty(s *Session, captcha string) error {
 	parts := strings.Split(captcha, ".")
 	if got, want := len(parts), 3; got != want {
 		return fmt.Errorf("Unexpected number of challenge parts: got %d, want %d", got, want)
@@ -889,8 +918,6 @@ func (i *IRCServer) verifyCaptcha(s *Session, captcha string) error {
 	if s.LastActivity.Sub(time.Unix(0, lastActivity)) > 5*time.Minute {
 		return errors.New("challenge too old")
 	}
-
-	s.LastSolvedCaptcha = s.LastActivity
 
 	return nil
 }

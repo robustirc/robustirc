@@ -8,10 +8,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sorcix/irc"
 )
 
 var (
+	captchaChallengesSent = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Subsystem: "captcha",
+			Name:      "challenges_sent",
+			Help:      "Number of CAPTCHA challenges generated and sent to users",
+		},
+	)
+
 	Commands = make(map[string]*ircCommand)
 )
 
@@ -25,6 +34,8 @@ type ircCommand struct {
 }
 
 func init() {
+	prometheus.MustRegister(captchaChallengesSent)
+
 	// Keep this list ordered the same way the functions below are ordered.
 	Commands["PING"] = &ircCommand{
 		Func: (*IRCServer).cmdPing,
@@ -169,6 +180,7 @@ func (i *IRCServer) maybeLogin(s *Session, reply *Replyctx, msg *irc.Message) {
 				Params:   []string{s.Nick},
 				Trailing: "To login, please go to " + captchaUrl,
 			})
+			captchaChallengesSent.Inc()
 			return
 		}
 	}
@@ -414,6 +426,7 @@ func (i *IRCServer) cmdJoin(s *Session, reply *Replyctx, msg *irc.Message) {
 					Params:   []string{s.Nick, c.name},
 					Trailing: "Cannot join channel (+x). Please go to " + captchaUrl,
 				})
+				captchaChallengesSent.Inc()
 				continue
 			}
 		}
