@@ -90,6 +90,7 @@ type lcNick string
 type Session struct {
 	Id                types.RobustId
 	auth              string
+	loggedIn          bool
 	Nick              string
 	Username          string
 	Realname          string
@@ -133,10 +134,6 @@ type Session struct {
 	// deleted gets set by DeleteSession and used by SendMessages. Refer to the
 	// DeleteSession comment.
 	deleted bool
-}
-
-func (s *Session) loggedIn() bool {
-	return s.Nick != "" && s.Username != ""
 }
 
 // updateIrcPrefix MUST be called whenever the Nick field changes.
@@ -397,6 +394,7 @@ func extractPassword(password, prefix string) string {
 			!strings.HasPrefix(part, "network=") &&
 			!strings.HasPrefix(part, "session=") &&
 			!strings.HasPrefix(part, "oper=") &&
+			!strings.HasPrefix(part, "captcha=") &&
 			extracted != "" {
 			extracted = extracted + ":" + part
 		}
@@ -440,7 +438,7 @@ func (i *IRCServer) ProcessMessage(id types.RobustId, session types.RobustId, me
 
 	messagesProcessed.WithLabelValues(command).Inc()
 
-	if !s.loggedIn() && !s.Server &&
+	if !s.loggedIn && !s.Server &&
 		command != irc.NICK &&
 		command != irc.USER &&
 		command != irc.PASS &&
@@ -802,6 +800,12 @@ func (i *IRCServer) captchaConfigured() bool {
 	i.ConfigMu.RLock()
 	defer i.ConfigMu.RUnlock()
 	return i.Config.CaptchaURL != "" && i.Config.CaptchaHMACSecret != nil
+}
+
+func (i *IRCServer) captchaRequiredForLogin() bool {
+	i.ConfigMu.RLock()
+	defer i.ConfigMu.RUnlock()
+	return i.Config.CaptchaRequiredForLogin
 }
 
 func (i *IRCServer) generateCaptchaURL(s *Session, purpose string) string {

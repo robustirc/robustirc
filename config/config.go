@@ -86,6 +86,10 @@ type Network struct {
 	// the -hmac_secret_key flag for the robustirc/captchasrv
 	// instance.
 	CaptchaHMACSecret HexString
+
+	// CaptchaRequiredForLogin forces users to solve a captcha to
+	// solve before they can login to the IRC network.
+	CaptchaRequiredForLogin bool
 }
 
 var DefaultConfig = Network{

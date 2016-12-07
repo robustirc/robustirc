@@ -12,6 +12,17 @@ message Timestamp {
   bool is_zero = 2;
 }
 
+// Bool represents a boolean which can either be unset, true or
+// false. This quirk is necessary because proto3 does not distinguish
+// the default value (false) from a field not being set, which would
+// not allow us to do upgrades from older versions of RobustIRC to
+// newer versions of RobustIRC which introduce a new boolean field.
+enum Bool {
+  UNSET = 0;
+  TRUE = 1;
+  FALSE = 2;
+}
+
 // Snapshot contains the entire state of an IRCServer object, so that
 // a new IRCServer object can be created with exactly the same state.
 message Snapshot {
@@ -41,6 +52,7 @@ message Snapshot {
     IRCPrefix irc_prefix = 18;
     Timestamp last_non_ping = 19;
     Timestamp last_solved_captcha = 20;
+    Bool logged_in = 21;
   }
   repeated Session sessions = 1;
 
@@ -88,6 +100,7 @@ message Snapshot {
     map<string, string> trusted_bridges = 5;
     string captcha_url = 6;
     string captcha_hmac_secret = 7;
+    bool captcha_required_for_login = 8;
   }
   Config config = 5;
 

@@ -150,7 +150,31 @@ func (i *IRCServer) cmdPing(s *Session, reply *Replyctx, msg *irc.Message) {
 
 // login is called by either cmdNick or cmdUser, depending on which message the
 // client sends last.
-func (i *IRCServer) login(s *Session, reply *Replyctx, msg *irc.Message) {
+func (i *IRCServer) maybeLogin(s *Session, reply *Replyctx, msg *irc.Message) {
+	if s.loggedIn {
+		return
+	}
+
+	if s.Nick == "" || s.Username == "" {
+		return
+	}
+
+	if i.captchaRequiredForLogin() {
+		captcha := extractPassword(s.Pass, "captcha")
+		if err := i.verifyCaptcha(s, captcha); err != nil {
+			captchaUrl := i.generateCaptchaURL(s, fmt.Sprintf("login:%d:", s.LastActivity.UnixNano()))
+			i.sendUser(s, reply, &irc.Message{
+				Prefix:   i.ServerPrefix,
+				Command:  irc.NOTICE,
+				Params:   []string{s.Nick},
+				Trailing: "To login, please go to " + captchaUrl,
+			})
+			return
+		}
+	}
+
+	s.loggedIn = true
+
 	i.sendUser(s, reply, &irc.Message{
 		Prefix:   i.ServerPrefix,
 		Command:  irc.RPL_WELCOME,
@@ -256,7 +280,7 @@ func (i *IRCServer) cmdNick(s *Session, reply *Replyctx, msg *irc.Message) {
 
 	dest := "*"
 	onlyCapsChanged := false // Whether the nick change only changes capitalization.
-	if s.loggedIn() {
+	if s.loggedIn {
 		dest = s.Nick
 		onlyCapsChanged = NickToLower(nick) == NickToLower(dest)
 	}
@@ -295,7 +319,6 @@ func (i *IRCServer) cmdNick(s *Session, reply *Replyctx, msg *irc.Message) {
 		delete(i.svsholds, NickToLower(nick))
 	}
 
-	loggedIn := s.loggedIn()
 	oldNick := NickToLower(s.Nick)
 	s.Nick = nick
 	i.nicks[NickToLower(s.Nick)] = s
@@ -322,22 +345,16 @@ func (i *IRCServer) cmdNick(s *Session, reply *Replyctx, msg *irc.Message) {
 		return
 	}
 
-	if !loggedIn && s.loggedIn() {
-		i.login(s, reply, msg)
-	}
+	i.maybeLogin(s, reply, msg)
 }
 
 func (i *IRCServer) cmdUser(s *Session, reply *Replyctx, msg *irc.Message) {
-	loggedIn := s.loggedIn()
 	// We keep the username (so that bans are more effective) and realname
 	// (some people actually set it and look at it).
 	s.Username = msg.Params[0]
 	s.Realname = msg.Trailing
 	s.updateIrcPrefix()
-
-	if !loggedIn && s.loggedIn() {
-		i.login(s, reply, msg)
-	}
+	i.maybeLogin(s, reply, msg)
 }
 
 func (i *IRCServer) cmdJoin(s *Session, reply *Replyctx, msg *irc.Message) {
@@ -542,7 +559,7 @@ func (i *IRCServer) cmdPart(s *Session, reply *Replyctx, msg *irc.Message) {
 
 func (i *IRCServer) cmdQuit(s *Session, reply *Replyctx, msg *irc.Message) {
 	i.DeleteSession(s, reply.msgid)
-	if s.loggedIn() {
+	if s.loggedIn {
 		i.sendServices(reply,
 			i.sendCommonChannels(s, reply, &irc.Message{
 				Prefix:        &s.ircPrefix,
@@ -1251,9 +1268,12 @@ func (i *IRCServer) cmdPass(s *Session, reply *Replyctx, msg *irc.Message) {
 		!strings.HasPrefix(s.Pass, "services=") &&
 		!strings.HasPrefix(s.Pass, "network=") &&
 		!strings.HasPrefix(s.Pass, "oper=") &&
-		!strings.HasPrefix(s.Pass, "session=") {
+		!strings.HasPrefix(s.Pass, "session=") &&
+		!strings.HasPrefix(s.Pass, "captcha=") {
 		s.Pass = "nickserv=" + s.Pass
 	}
+
+	i.maybeLogin(s, reply, msg)
 }
 
 func (i *IRCServer) cmdWhois(s *Session, reply *Replyctx, msg *irc.Message) {

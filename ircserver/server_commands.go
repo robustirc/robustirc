@@ -360,7 +360,7 @@ func (i *IRCServer) cmdServer(s *Session, reply *Replyctx, msg *irc.Message) {
 		session := i.nicks[lcNick(nick)]
 		// Skip sessions that are not yet logged in, sessions that represent a
 		// server connection and subsessions of a server connection.
-		if !session.loggedIn() || session.Server || session.Id.Reply != 0 {
+		if !session.loggedIn || session.Server || session.Id.Reply != 0 {
 			continue
 		}
 		modestr := "+"

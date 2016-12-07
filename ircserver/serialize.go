@@ -47,9 +47,14 @@ func (i *IRCServer) Marshal(lastIncludedIndex uint64) ([]byte, error) {
 				modes = append(modes, string(mode))
 			}
 		}
+		loggedIn := pb.Bool_FALSE
+		if session.loggedIn {
+			loggedIn = pb.Bool_TRUE
+		}
 		sessions = append(sessions, &pb.Snapshot_Session{
 			Id:                 &pb.RobustId{Id: id.Id, Reply: id.Reply},
 			Auth:               session.auth,
+			LoggedIn:           loggedIn,
 			Nick:               session.Nick,
 			Username:           session.Username,
 			Realname:           session.Realname,
@@ -134,11 +139,12 @@ func (i *IRCServer) Marshal(lastIncludedIndex uint64) ([]byte, error) {
 			Operators: operators,
 			Services:  services,
 		},
-		SessionExpiration:  i.Config.SessionExpiration.String(),
-		PostMessageCooloff: i.Config.PostMessageCooloff.String(),
-		TrustedBridges:     i.Config.TrustedBridges,
-		CaptchaUrl:         i.Config.CaptchaURL,
-		CaptchaHmacSecret:  i.Config.CaptchaHMACSecret.String(),
+		SessionExpiration:       i.Config.SessionExpiration.String(),
+		PostMessageCooloff:      i.Config.PostMessageCooloff.String(),
+		TrustedBridges:          i.Config.TrustedBridges,
+		CaptchaUrl:              i.Config.CaptchaURL,
+		CaptchaHmacSecret:       i.Config.CaptchaHMACSecret.String(),
+		CaptchaRequiredForLogin: i.Config.CaptchaRequiredForLogin,
 	}
 	snapshot := pb.Snapshot{
 		Sessions:          sessions,
@@ -173,9 +179,20 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 		for _, mode := range s.Modes {
 			modes[mode[0]] = true
 		}
+		loggedIn := false
+		switch s.LoggedIn {
+		case pb.Bool_UNSET:
+			// loggedIn was added before we introduced passwords, so
+			// we can determine the desired value by looking at s.Nick
+			// and s.Username:
+			loggedIn = s.Nick != "" && s.Username != ""
+		case pb.Bool_TRUE:
+			loggedIn = true
+		}
 		newSession := &Session{
 			Id:                 types.RobustId{Id: s.Id.Id, Reply: s.Id.Reply},
 			auth:               s.Auth,
+			loggedIn:           loggedIn,
 			Nick:               s.Nick,
 			Username:           s.Username,
 			Realname:           s.Realname,
@@ -280,11 +297,12 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 			Operators: operators,
 			Services:  services,
 		},
-		SessionExpiration:  config.Duration(sessionExpiration),
-		PostMessageCooloff: config.Duration(postMessageCooloff),
-		TrustedBridges:     snapshot.Config.TrustedBridges,
-		CaptchaURL:         snapshot.Config.CaptchaUrl,
-		CaptchaHMACSecret:  hmacSecret,
+		SessionExpiration:       config.Duration(sessionExpiration),
+		PostMessageCooloff:      config.Duration(postMessageCooloff),
+		TrustedBridges:          snapshot.Config.TrustedBridges,
+		CaptchaURL:              snapshot.Config.CaptchaUrl,
+		CaptchaHMACSecret:       hmacSecret,
+		CaptchaRequiredForLogin: snapshot.Config.CaptchaRequiredForLogin,
 	}
 
 	return snapshot.LastIncludedIndex, nil

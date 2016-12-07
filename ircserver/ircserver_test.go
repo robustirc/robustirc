@@ -16,7 +16,7 @@ import (
 )
 
 func stdIRCServer() (*IRCServer, map[string]types.RobustId) {
-	i := NewIRCServer("", "robustirc.net", time.Now())
+	i := NewIRCServer("", "robustirc.net", time.Unix(0, 1481144012969203276))
 	i.Config = config.Network{
 		IRC: config.IRC{
 			Operators: []config.IRCOp{
@@ -58,6 +58,8 @@ func stdIRCServer() (*IRCServer, map[string]types.RobustId) {
 // 	ircserver_test.go:291:     :robustirc.net 301 s[E]CuRE mero :upgrading server
 // 	ircserver_test.go:293: ProcessMessage() return value does not match expectation: got [:s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :you there? :robustirc.net 301 s[E]CuRE mero :upgrading server], want [:s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :yo there? :robustirc.net 301 s[E]CuRE mero :upgrading server]
 func mustMatchIrcmsgs(t *testing.T, got *Replyctx, want []*irc.Message) {
+	// TODO: mark mustMatchIrcmsgs as a helper function once
+	// https://github.com/golang/go/issues/4899 is addressed.
 	failed := len(got.Messages) != len(want)
 	for idx := 0; !failed && idx < len(want); idx++ {
 		failed = got.Messages[idx].Data != want[idx].String()
@@ -94,7 +96,7 @@ func TestSessionInitialization(t *testing.T) {
 		t.Fatalf("GetSession(%v) did not return a session", id)
 	}
 
-	if s.loggedIn() {
+	if s.loggedIn {
 		t.Fatalf("session.loggedIn() true before sending NICK")
 	}
 
@@ -118,7 +120,7 @@ func TestSessionInitialization(t *testing.T) {
 		t.Fatalf("session.Nick: got %q, want %q", s.Nick, "secure")
 	}
 
-	if !s.loggedIn() {
+	if !s.loggedIn {
 		t.Fatalf("session.loggedIn() still false after sending NICK and USER")
 	}
 
@@ -137,7 +139,7 @@ func TestSessionInitialization(t *testing.T) {
 		t.Fatalf("GetSession(%v) did not return a session", id)
 	}
 
-	if sSecond.loggedIn() {
+	if sSecond.loggedIn {
 		t.Fatalf("session.loggedIn() true before sending NICK")
 	}
 
@@ -158,7 +160,7 @@ func TestSessionInitialization(t *testing.T) {
 		t.Fatalf("session.Nick: got %q, want %q", s.Nick, "secure")
 	}
 
-	if !sSecond.loggedIn() {
+	if !sSecond.loggedIn {
 		t.Fatalf("session.loggedIn() still false after sending NICK and USER")
 	}
 }
@@ -566,7 +568,7 @@ func TestInvalidNickPlumbing(t *testing.T) {
 		t.Fatalf("GetSession(%v) did not return a session", id)
 	}
 
-	if s.loggedIn() {
+	if s.loggedIn {
 		t.Fatalf("session.loggedIn() true before sending NICK")
 	}
 
@@ -1870,5 +1872,67 @@ func TestCaptchaJoin(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 331 xeen #test :No topic is set"),
 			irc.ParseMessage(":robustirc.net 353 xeen = #test :@mero @sECuRE xeen"),
 			irc.ParseMessage(":robustirc.net 366 xeen #test :End of /NAMES list."),
+		})
+}
+
+func TestCaptchaLogin(t *testing.T) {
+	i, _ := stdIRCServer()
+
+	i.Config.CaptchaURL = "http://localhost"
+	hmacSecret, _ := hex.DecodeString("6c6bb74d790942c92bde6b07e223e59d0f0aa75394625a0f98a69095296c7d85")
+	i.Config.CaptchaHMACSecret = hmacSecret
+	i.Config.CaptchaRequiredForLogin = true
+
+	id := types.RobustId{Id: 1420228218166687919}
+	i.CreateSession(id, "authbytes")
+
+	s, err := i.GetSession(id)
+	if err != nil {
+		t.Fatalf("GetSession(%v) did not return a session", id)
+	}
+
+	if s.loggedIn {
+		t.Fatalf("session.loggedIn() true before sending NICK")
+	}
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("NICK attacker")),
+		[]*irc.Message{})
+
+	captchaRequiredMsgs := []*irc.Message{
+		irc.ParseMessage(":robustirc.net NOTICE attacker :To login, please go to http://localhost/#bG9naW46MTQyMDIyODIxODE2NjY4NzkxOTo=.YXV0aGJ5dGU=.tB+/UIcedHdT4YZwRaDOwu4wBJ9e0RMqo0RrCg/pc6s="),
+	}
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("USER attacker a a :a")),
+		captchaRequiredMsgs)
+
+	// Invalid password
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("PASS :foo")),
+		captchaRequiredMsgs)
+
+	// Invalid captcha password
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("PASS :captcha=foo")),
+		captchaRequiredMsgs)
+
+	u, err := url.Parse(i.generateCaptchaURL(s, fmt.Sprintf("okay:login:%d:", id.Id+1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("PASS :captcha="+u.Fragment)),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 001 attacker :Welcome to RobustIRC!"),
+			irc.ParseMessage(":robustirc.net 002 attacker :Your host is robustirc.net"),
+			irc.ParseMessage(":robustirc.net 003 attacker :This server was created 2016-12-07 20:53:32.969203276 +0000 UTC"),
+			irc.ParseMessage(":robustirc.net 004 attacker :robustirc.net v1 i nstix"),
+			irc.ParseMessage(":robustirc.net 005 CHANTYPES=# CHANNELLEN=32 NICKLEN=30 MODES=1 PREFIX=(o)@ KNOCK :are supported by this server"),
+			irc.ParseMessage("NICK attacker 1 1 attacker robust/0x13b5aa0a2bcfb8af robustirc.net 0 + :a"),
+			irc.ParseMessage(":robustirc.net 375 attacker :- robustirc.net Message of the day -"),
+			irc.ParseMessage(":robustirc.net 372 attacker :- No MOTD configured yet."),
+			irc.ParseMessage(":robustirc.net 376 attacker :End of MOTD command"),
 		})
 }
