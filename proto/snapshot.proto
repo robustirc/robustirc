@@ -40,6 +40,7 @@ message Snapshot {
     uint64 last_client_message_id = 17;
     IRCPrefix irc_prefix = 18;
     Timestamp last_non_ping = 19;
+    Timestamp last_solved_captcha = 20;
   }
   repeated Session sessions = 1;
 
@@ -85,6 +86,8 @@ message Snapshot {
     string session_expiration = 3;
     string post_message_cooloff = 4;
     map<string, string> trusted_bridges = 5;
+    string captcha_url = 6;
+    string captcha_hmac_secret = 7;
   }
   Config config = 5;
 

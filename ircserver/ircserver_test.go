@@ -1,6 +1,9 @@
 package ircserver
 
 import (
+	"encoding/hex"
+	"fmt"
+	"net/url"
 	"testing"
 	"time"
 
@@ -894,11 +897,11 @@ func TestChannelMode(t *testing.T) {
 		":robustirc.net 441 mero nobody #test :They aren't on that channel")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("MODE #test +x sECuRE")),
-		":robustirc.net 472 mero x :is unknown mode char to me")
+		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("MODE #test +y sECuRE")),
+		":robustirc.net 472 mero y :is unknown mode char to me")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("MODE #nonexistant +x sECuRE")),
+		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("MODE #nonexistant +y sECuRE")),
 		":robustirc.net 442 mero #nonexistant :You're not on that channel")
 
 	mustMatchIrcmsgs(t,
@@ -1759,4 +1762,113 @@ func TestDefaultChannelModes(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 366 xeen #foobar :End of /NAMES list."),
 		})
 
+}
+
+func TestCaptchaJoin(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	i.UpdateLastClientMessageID(&types.RobustMessage{
+		Session: ids["mero"],
+		Id:      types.RobustId{Id: time.Unix(0, ids["mero"].Id).Add(1 * time.Minute).UnixNano()},
+		Type:    types.RobustIRCFromClient,
+	})
+
+	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #test"))
+
+	mustMatchMsg(t,
+		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("MODE #test +x")),
+		":robustirc.net NOTICE sECuRE :Cannot set mode +x, no CaptchaURL/CaptchaHMACSecret configured")
+
+	i.Config.CaptchaURL = "http://localhost"
+	hmacSecret, _ := hex.DecodeString("6c6bb74d790942c92bde6b07e223e59d0f0aa75394625a0f98a69095296c7d85")
+	i.Config.CaptchaHMACSecret = hmacSecret
+
+	mustMatchMsg(t,
+		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("MODE #test +x")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE #test +x")
+
+	for _, message := range []string{
+		// Verify joining the channel without a key does not work.
+		"JOIN #test",
+		// Verify invalid keys don’t get us into the channel.
+		"JOIN #test invalid",
+		// Verify the captcha challenge itself doesn’t get us into the channel.
+		"JOIN #test am9pbjoxNDIwMjI4Mjc4MTY2Njg3OTE4OiN0ZXN0.YXV0aC1tZXI=.MQi3m1acLjBq9Kcgr59BkLOs7zfUw+co0XYVJh0MKtY=",
+	} {
+		mustMatchIrcmsgs(t,
+			i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage(message)),
+			[]*irc.Message{
+				irc.ParseMessage(":robustirc.net NOTICE mero :To join #test, please go to http://localhost/#am9pbjoxNDIwMjI4Mjc4MTY2Njg3OTE4OiN0ZXN0.YXV0aC1tZXI=.MQi3m1acLjBq9Kcgr59BkLOs7zfUw+co0XYVJh0MKtY="),
+				irc.ParseMessage(":robustirc.net 473 mero #test :Cannot join channel (+x). Please go to http://localhost/#am9pbjoxNDIwMjI4Mjc4MTY2Njg3OTE4OiN0ZXN0.YXV0aC1tZXI=.MQi3m1acLjBq9Kcgr59BkLOs7zfUw+co0XYVJh0MKtY="),
+			})
+	}
+
+	// Verify a solved captcha gets us into the channel.
+	s, _ := i.GetSession(ids["mero"])
+	u, err := url.Parse(i.generateCaptchaURL(s, fmt.Sprintf("okay:join:%d:#test", ids["mero"].Id+1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #test "+u.Fragment)),
+		[]*irc.Message{
+			irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae JOIN :#test"),
+			irc.ParseMessage(":robustirc.net SJOIN 1 #test :mero"),
+			irc.ParseMessage(":robustirc.net 324 mero #test +ntx"),
+			irc.ParseMessage(":robustirc.net 331 mero #test :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 mero = #test :@sECuRE mero"),
+			irc.ParseMessage(":robustirc.net 366 mero #test :End of /NAMES list."),
+		})
+
+	// Verify a solved captcha also gets us into other channels, for 1 minute.
+	for _, name := range []string{"#second", "#third"} {
+		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN "+name))
+		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage(fmt.Sprintf("MODE %s +x", name)))
+	}
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #second")),
+		[]*irc.Message{
+			irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae JOIN :#second"),
+			irc.ParseMessage(":robustirc.net SJOIN 1 #second :mero"),
+			irc.ParseMessage(":robustirc.net 324 mero #second +ntx"),
+			irc.ParseMessage(":robustirc.net 331 mero #second :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 mero = #second :@sECuRE mero"),
+			irc.ParseMessage(":robustirc.net 366 mero #second :End of /NAMES list."),
+		})
+
+	i.UpdateLastClientMessageID(&types.RobustMessage{
+		Session: ids["mero"],
+		Id:      types.RobustId{Id: time.Unix(0, ids["mero"].Id).Add(2 * time.Minute).UnixNano()},
+		Type:    types.RobustIRCFromClient,
+	})
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #third")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net NOTICE mero :To join #third, please go to http://localhost/#am9pbjoxNDIwMjI4MzM4MTY2Njg3OTE4OiN0aGlyZA==.YXV0aC1tZXI=.P4k2eEfS52KzS/DDZwDrwNEUvLt0hLZQffBymuTUDVA="),
+			irc.ParseMessage(":robustirc.net 473 mero #third :Cannot join channel (+x). Please go to http://localhost/#am9pbjoxNDIwMjI4MzM4MTY2Njg3OTE4OiN0aGlyZA==.YXV0aC1tZXI=.P4k2eEfS52KzS/DDZwDrwNEUvLt0hLZQffBymuTUDVA="),
+		})
+
+	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("MODE #test +o mero"))
+
+	// Verify invites override captchas
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("INVITE xeen #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 341 mero xeen #test"),
+			irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae INVITE xeen :#test"),
+			irc.ParseMessage(":robustirc.net NOTICE #test :mero invited xeen into the channel."),
+		})
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("JOIN #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":xeen!baz@robust/0x13b5aa0a2bcfb8af JOIN :#test"),
+			irc.ParseMessage(":robustirc.net SJOIN 1 #test :xeen"),
+			irc.ParseMessage(":robustirc.net 324 xeen #test +ntx"),
+			irc.ParseMessage(":robustirc.net 331 xeen #test :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 xeen = #test :@mero @sECuRE xeen"),
+			irc.ParseMessage(":robustirc.net 366 xeen #test :End of /NAMES list."),
+		})
 }

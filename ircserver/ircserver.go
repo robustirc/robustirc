@@ -8,11 +8,16 @@
 package ircserver
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log"
 	"math"
+	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -83,16 +88,17 @@ type lcChan string
 type lcNick string
 
 type Session struct {
-	Id           types.RobustId
-	auth         string
-	Nick         string
-	Username     string
-	Realname     string
-	Channels     map[lcChan]bool
-	LastActivity time.Time
-	LastNonPing  time.Time
-	Operator     bool
-	AwayMsg      string
+	Id                types.RobustId
+	auth              string
+	Nick              string
+	Username          string
+	Realname          string
+	Channels          map[lcChan]bool
+	LastActivity      time.Time
+	LastNonPing       time.Time
+	LastSolvedCaptcha time.Time
+	Operator          bool
+	AwayMsg           string
 
 	// throttlingExponent starts at 0 and is increased on every
 	// subsequent message until 2^throttlingExponent ≥
@@ -790,4 +796,97 @@ func (i *IRCServer) TrustedBridge(authHeader string) string {
 	i.ConfigMu.RLock()
 	defer i.ConfigMu.RUnlock()
 	return i.Config.TrustedBridges[authHeader]
+}
+
+func (i *IRCServer) captchaConfigured() bool {
+	i.ConfigMu.RLock()
+	defer i.ConfigMu.RUnlock()
+	return i.Config.CaptchaURL != "" && i.Config.CaptchaHMACSecret != nil
+}
+
+func (i *IRCServer) generateCaptchaURL(s *Session, purpose string) string {
+	challenge := []byte(s.auth[:8])
+
+	i.ConfigMu.RLock()
+	defer i.ConfigMu.RUnlock()
+
+	mac := hmac.New(sha256.New, i.Config.CaptchaHMACSecret)
+	mac.Write([]byte(purpose))
+	mac.Write(challenge)
+	parts := strings.Join([]string{
+		base64.StdEncoding.EncodeToString([]byte(purpose)),
+		base64.StdEncoding.EncodeToString(challenge),
+		base64.StdEncoding.EncodeToString(mac.Sum(nil)),
+	}, ".")
+
+	u, _ := url.Parse(i.Config.CaptchaURL)
+	if u.Path == "" {
+		u.Path = "/"
+	}
+	u.Fragment = parts
+	return u.String()
+}
+
+func (i *IRCServer) verifyCaptcha(s *Session, captcha string) error {
+	// Don’t bother users with captchas for one minute after solving one.
+	if s.LastActivity.Sub(s.LastSolvedCaptcha) < 1*time.Minute {
+		return nil
+	}
+
+	if captcha == "" {
+		return errors.New("no captcha specified")
+	}
+
+	parts := strings.Split(captcha, ".")
+	if got, want := len(parts), 3; got != want {
+		return fmt.Errorf("Unexpected number of challenge parts: got %d, want %d", got, want)
+	}
+
+	decoded := make([][]byte, 3)
+	var err error
+	for idx, part := range parts {
+		decoded[idx], err = base64.StdEncoding.DecodeString(part)
+		if err != nil {
+			return err
+		}
+	}
+
+	purpose := decoded[0]
+	challenge := decoded[1]
+	vmac := decoded[2]
+
+	if !strings.HasPrefix(string(purpose), "okay:") {
+		return errors.New("challenge purpose does not start with okay: (replay?)")
+	}
+
+	i.ConfigMu.RLock()
+	defer i.ConfigMu.RUnlock()
+
+	mac := hmac.New(sha256.New, i.Config.CaptchaHMACSecret)
+	mac.Write(purpose)
+	mac.Write(challenge)
+	if !hmac.Equal(vmac, mac.Sum(nil)) {
+		return errors.New("captcha could not be verified")
+	}
+
+	// purpose is okay:<command>:<lastactivity>:<argument>
+	// e.g. okay:join:123:#robustirc
+	// or okay:login:123:
+	purposeparts := strings.Split(string(purpose), ":")
+	if got, want := len(purposeparts), 4; got != want {
+		return fmt.Errorf("Unexpected number of purpose parts: got %d, want %d", got, want)
+	}
+
+	lastActivity, err := strconv.ParseInt(purposeparts[2], 10, 64)
+	if err != nil {
+		return err
+	}
+
+	if s.LastActivity.Sub(time.Unix(0, lastActivity)) > 5*time.Minute {
+		return errors.New("challenge too old")
+	}
+
+	s.LastSolvedCaptcha = s.LastActivity
+
+	return nil
 }

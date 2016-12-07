@@ -1,6 +1,7 @@
 package ircserver
 
 import (
+	"encoding/hex"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -55,6 +56,7 @@ func (i *IRCServer) Marshal(lastIncludedIndex uint64) ([]byte, error) {
 			Channels:           channels,
 			LastActivity:       timeToTimestamp(session.LastActivity),
 			LastNonPing:        timeToTimestamp(session.LastNonPing),
+			LastSolvedCaptcha:  timeToTimestamp(session.LastSolvedCaptcha),
 			Operator:           session.Operator,
 			AwayMsg:            session.AwayMsg,
 			ThrottlingExponent: int64(session.throttlingExponent),
@@ -135,6 +137,8 @@ func (i *IRCServer) Marshal(lastIncludedIndex uint64) ([]byte, error) {
 		SessionExpiration:  i.Config.SessionExpiration.String(),
 		PostMessageCooloff: i.Config.PostMessageCooloff.String(),
 		TrustedBridges:     i.Config.TrustedBridges,
+		CaptchaUrl:         i.Config.CaptchaURL,
+		CaptchaHmacSecret:  i.Config.CaptchaHMACSecret.String(),
 	}
 	snapshot := pb.Snapshot{
 		Sessions:          sessions,
@@ -178,6 +182,7 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 			Channels:           channels,
 			LastActivity:       timestampToTime(s.LastActivity),
 			LastNonPing:        timestampToTime(s.LastNonPing),
+			LastSolvedCaptcha:  timestampToTime(s.LastSolvedCaptcha),
 			Operator:           s.Operator,
 			AwayMsg:            s.AwayMsg,
 			throttlingExponent: int(s.ThrottlingExponent),
@@ -265,6 +270,10 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
+	hmacSecret, err := hex.DecodeString(snapshot.Config.CaptchaHmacSecret)
+	if err != nil {
+		return 0, err
+	}
 	i.Config = config.Network{
 		Revision: snapshot.Config.Revision,
 		IRC: config.IRC{
@@ -274,6 +283,8 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 		SessionExpiration:  config.Duration(sessionExpiration),
 		PostMessageCooloff: config.Duration(postMessageCooloff),
 		TrustedBridges:     snapshot.Config.TrustedBridges,
+		CaptchaURL:         snapshot.Config.CaptchaUrl,
+		CaptchaHMACSecret:  hmacSecret,
 	}
 
 	return snapshot.LastIncludedIndex, nil

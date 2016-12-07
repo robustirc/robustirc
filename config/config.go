@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -22,6 +23,27 @@ func (d Duration) MarshalText() ([]byte, error) {
 
 func (d Duration) String() string {
 	return time.Duration(d).String()
+}
+
+type HexString []byte
+
+func (hs *HexString) UnmarshalText(text []byte) error {
+	dst := make([]byte, hex.DecodedLen(len(text)))
+	_, err := hex.Decode(dst, text)
+	if err == nil {
+		*hs = append([]byte{}, dst...)
+	}
+	return err
+}
+
+func (hs HexString) MarshalText() ([]byte, error) {
+	result := make([]byte, hex.EncodedLen(len(hs)))
+	hex.Encode(result, hs)
+	return result, nil
+}
+
+func (hs HexString) String() string {
+	return hex.EncodeToString(hs)
 }
 
 type IRCOp struct {
@@ -56,6 +78,14 @@ type Network struct {
 	// name. For all bridges which send a configured header, the
 	// X-Forwarded-For header is respected.
 	TrustedBridges map[string]string
+
+	// CaptchaURL points to an instance of robustirc/captchasrv
+	CaptchaURL string
+	// CaptchaHMACSecret is a 32 byte secret key (use e.g. openssl
+	// rand -hex 32 to generate) which must match the key specified in
+	// the -hmac_secret_key flag for the robustirc/captchasrv
+	// instance.
+	CaptchaHMACSecret HexString
 }
 
 var DefaultConfig = Network{

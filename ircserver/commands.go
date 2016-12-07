@@ -176,7 +176,7 @@ func (i *IRCServer) login(s *Session, reply *Replyctx, msg *irc.Message) {
 		Prefix:   i.ServerPrefix,
 		Command:  irc.RPL_MYINFO,
 		Params:   []string{s.Nick},
-		Trailing: i.ServerPrefix.Name + " v1 i nsti",
+		Trailing: i.ServerPrefix.Name + " v1 i nstix",
 	})
 
 	// send ISUPPORT as per:
@@ -341,7 +341,15 @@ func (i *IRCServer) cmdUser(s *Session, reply *Replyctx, msg *irc.Message) {
 }
 
 func (i *IRCServer) cmdJoin(s *Session, reply *Replyctx, msg *irc.Message) {
-	for _, channelname := range strings.Split(msg.Params[0], ",") {
+	var keys []string
+	if len(msg.Params) > 1 {
+		keys = strings.Split(msg.Params[1], ",")
+	}
+	for idx, channelname := range strings.Split(msg.Params[0], ",") {
+		var key string
+		if idx <= len(keys)-1 {
+			key = keys[idx]
+		}
 		if !IsValidChannel(channelname) {
 			i.sendUser(s, reply, &irc.Message{
 				Prefix:   i.ServerPrefix,
@@ -374,9 +382,26 @@ func (i *IRCServer) cmdJoin(s *Session, reply *Replyctx, msg *irc.Message) {
 				Trailing: "Cannot join channel (+i)",
 			})
 			continue
+		} else if c.modes['x'] && !s.invitedTo[ChanToLower(channelname)] {
+			if err := i.verifyCaptcha(s, key); err != nil {
+				captchaUrl := i.generateCaptchaURL(s, fmt.Sprintf("join:%d:%s", s.LastActivity.UnixNano(), c.name))
+				i.sendUser(s, reply, &irc.Message{
+					Prefix:   i.ServerPrefix,
+					Command:  irc.NOTICE,
+					Params:   []string{s.Nick},
+					Trailing: "To join " + c.name + ", please go to " + captchaUrl,
+				})
+				i.sendUser(s, reply, &irc.Message{
+					Prefix:   i.ServerPrefix,
+					Command:  irc.ERR_INVITEONLYCHAN,
+					Params:   []string{s.Nick, c.name},
+					Trailing: "Cannot join channel (+x). Please go to " + captchaUrl,
+				})
+				continue
+			}
 		}
 		// Invites are only valid once.
-		if c.modes['i'] {
+		if c.modes['i'] || c.modes['x'] {
 			delete(s.invitedTo, ChanToLower(channelname))
 		}
 		if _, ok := c.nicks[NickToLower(s.Nick)]; ok {
@@ -748,6 +773,18 @@ func (i *IRCServer) cmdMode(s *Session, reply *Replyctx, msg *irc.Message) {
 				switch char {
 				case 't', 's', 'i', 'n':
 					c.modes[char] = newvalue
+
+				case 'x':
+					if i.captchaConfigured() {
+						c.modes[char] = newvalue
+					} else {
+						i.sendUser(s, reply, &irc.Message{
+							Prefix:   i.ServerPrefix,
+							Command:  irc.NOTICE,
+							Params:   []string{s.Nick},
+							Trailing: "Cannot set mode +x, no CaptchaURL/CaptchaHMACSecret configured",
+						})
+					}
 
 				case 'o':
 					nick := mode.Param
