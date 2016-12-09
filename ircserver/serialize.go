@@ -145,6 +145,8 @@ func (i *IRCServer) Marshal(lastIncludedIndex uint64) ([]byte, error) {
 		CaptchaUrl:              i.Config.CaptchaURL,
 		CaptchaHmacSecret:       i.Config.CaptchaHMACSecret.String(),
 		CaptchaRequiredForLogin: i.Config.CaptchaRequiredForLogin,
+		MaxSessions:             i.Config.MaxSessions,
+		MaxChannels:             i.Config.MaxChannels,
 	}
 	snapshot := pb.Snapshot{
 		Sessions:          sessions,
@@ -303,6 +305,8 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 		CaptchaURL:              snapshot.Config.CaptchaUrl,
 		CaptchaHMACSecret:       hmacSecret,
 		CaptchaRequiredForLogin: snapshot.Config.CaptchaRequiredForLogin,
+		MaxSessions:             snapshot.Config.MaxSessions,
+		MaxChannels:             snapshot.Config.MaxChannels,
 	}
 
 	return snapshot.LastIncludedIndex, nil

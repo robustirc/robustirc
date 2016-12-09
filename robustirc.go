@@ -258,7 +258,13 @@ func applyMessageWait(msg *types.RobustMessage, timeout time.Duration) error {
 	if err != nil {
 		return err
 	}
-	return f.Error()
+	if err := f.Error(); err != nil {
+		return err
+	}
+	if err, ok := f.Response().(error); ok {
+		return err
+	}
+	return nil
 }
 
 // Copied from src/net/http/server.go

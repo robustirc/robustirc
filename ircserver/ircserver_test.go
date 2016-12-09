@@ -87,6 +87,7 @@ func mustMatchMsg(t *testing.T, got *Replyctx, want string) {
 
 func TestSessionInitialization(t *testing.T) {
 	i := NewIRCServer("", "robustirc.net", time.Now())
+	i.Config = config.Network{}
 
 	id := types.RobustId{Id: time.Now().UnixNano()}
 	i.CreateSession(id, "authbytes")
@@ -1935,4 +1936,42 @@ func TestCaptchaLogin(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 372 attacker :- No MOTD configured yet."),
 			irc.ParseMessage(":robustirc.net 376 attacker :End of MOTD command"),
 		})
+}
+
+func TestSessionLimit(t *testing.T) {
+	i := NewIRCServer("", "robustirc.net", time.Now())
+	i.Config = config.Network{
+		MaxSessions: 1,
+	}
+
+	if err := i.CreateSession(types.RobustId{}, "authbytes"); err != nil {
+		t.Fatalf("Could not create session: %v", err)
+	}
+
+	if err := i.CreateSession(types.RobustId{}, "authbytes"); err == nil {
+		t.Fatal("Unexpectedly could create second session")
+	}
+}
+
+func TestChannelLimit(t *testing.T) {
+	i, ids := stdIRCServer()
+	i.Config = config.Network{
+		MaxChannels: 1,
+	}
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("JOIN #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":xeen!baz@robust/0x13b5aa0a2bcfb8af JOIN :#test"),
+			irc.ParseMessage(":robustirc.net MODE #test +nt"),
+			irc.ParseMessage(":robustirc.net SJOIN 1 #test :@xeen"),
+			irc.ParseMessage(":robustirc.net 324 xeen #test +nt"),
+			irc.ParseMessage(":robustirc.net 331 xeen #test :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 xeen = #test :@xeen"),
+			irc.ParseMessage(":robustirc.net 366 xeen #test :End of /NAMES list."),
+		})
+
+	mustMatchMsg(t,
+		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("JOIN #second")),
+		":robustirc.net 403 xeen #second :No such channel")
 }

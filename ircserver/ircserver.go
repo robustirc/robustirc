@@ -58,6 +58,9 @@ var (
 	// ErrNoSuchSession is returned when the session definitely does not exist.
 	ErrNoSuchSession = errors.New("No such session")
 
+	// ErrSessionLimitReached is returned when the number of sessions exceeds the configured limit.
+	ErrSessionLimitReached = errors.New("MaxSessions limit reached")
+
 	// CursorEOF is returned by a logCursor when there are no more messages.
 	CursorEOF = errors.New("No more messages")
 )
@@ -307,7 +310,12 @@ func (i *IRCServer) UpdateLastClientMessageID(msg *types.RobustMessage) error {
 }
 
 // CreateSession creates a new session (equivalent to an IRC connection).
-func (i *IRCServer) CreateSession(id types.RobustId, auth string) {
+func (i *IRCServer) CreateSession(id types.RobustId, auth string) error {
+	i.ConfigMu.RLock()
+	defer i.ConfigMu.RUnlock()
+	if uint64(len(i.sessions)) >= i.Config.MaxSessions && i.Config.MaxSessions > 0 {
+		return ErrSessionLimitReached
+	}
 	i.sessions[id] = &Session{
 		Id:           id,
 		auth:         auth,
@@ -318,6 +326,7 @@ func (i *IRCServer) CreateSession(id types.RobustId, auth string) {
 		LastNonPing:  time.Unix(0, id.Id),
 		svid:         "0",
 	}
+	return nil
 }
 
 // DeleteSession deletes the specified session. Called from the IRC server
@@ -920,4 +929,10 @@ func (i *IRCServer) verifyCaptchaNonEmpty(s *Session, captcha string) error {
 	}
 
 	return nil
+}
+
+func (i *IRCServer) channelLimit() uint64 {
+	i.ConfigMu.RLock()
+	defer i.ConfigMu.RUnlock()
+	return i.Config.MaxChannels
 }

@@ -34,7 +34,7 @@ type FSM struct {
 	lastSnapshotState map[uint64][]byte
 }
 
-func applyRobustMessage(msg *types.RobustMessage, i *ircserver.IRCServer) {
+func applyRobustMessage(msg *types.RobustMessage, i *ircserver.IRCServer) error {
 	switch msg.Type {
 	case types.RobustMessageOfDeath:
 		// To prevent the message from being accepted again.
@@ -42,7 +42,7 @@ func applyRobustMessage(msg *types.RobustMessage, i *ircserver.IRCServer) {
 		log.Printf("Skipped message of death with msgid %d.\n", msg.Id.Id)
 
 	case types.RobustCreateSession:
-		i.CreateSession(msg.Id, msg.Data)
+		return i.CreateSession(msg.Id, msg.Data)
 	case types.RobustDeleteSession:
 		if _, err := i.GetSession(msg.Session); err == nil {
 			// TODO(secure): overwrite QUIT messages for services with an faq entry explaining that they are not robust yet.
@@ -70,6 +70,7 @@ func applyRobustMessage(msg *types.RobustMessage, i *ircserver.IRCServer) {
 			i.Config.Revision = msg.Revision
 		}
 	}
+	return nil
 }
 
 func (fsm *FSM) Apply(l *raft.Log) interface{} {
@@ -112,11 +113,11 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		}
 	}()
 
-	applyRobustMessage(&msg, ircServer)
+	err := applyRobustMessage(&msg, ircServer)
 
 	appliedMessages.WithLabelValues(msg.Type.String()).Inc()
 
-	return nil
+	return err
 }
 
 // Snapshot returns a raftSnapshot, containing a snapshot of the

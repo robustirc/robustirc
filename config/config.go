@@ -90,6 +90,9 @@ type Network struct {
 	// CaptchaRequiredForLogin forces users to solve a captcha to
 	// solve before they can login to the IRC network.
 	CaptchaRequiredForLogin bool
+
+	MaxSessions uint64
+	MaxChannels uint64
 }
 
 var DefaultConfig = Network{

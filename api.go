@@ -562,6 +562,10 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request, ps httprouter.P
 			maybeProxyToLeader(w, r, nopCloser{bytes.NewBuffer(nil)})
 			return
 		}
+		if err == ircserver.ErrSessionLimitReached {
+			http.Error(w, err.Error(), http.StatusTooManyRequests)
+			return
+		}
 		http.Error(w, fmt.Sprintf("Apply(): %v", err), http.StatusInternalServerError)
 		return
 	}

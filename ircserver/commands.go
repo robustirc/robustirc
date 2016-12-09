@@ -391,6 +391,16 @@ func (i *IRCServer) cmdJoin(s *Session, reply *Replyctx, msg *irc.Message) {
 		var modesmsg *irc.Message
 		c, ok := i.channels[ChanToLower(channelname)]
 		if !ok {
+			if got, limit := uint64(len(i.channels)), i.channelLimit(); got >= limit && limit > 0 {
+				i.sendUser(s, reply, &irc.Message{
+					Prefix:   i.ServerPrefix,
+					Command:  irc.ERR_NOSUCHCHANNEL,
+					Params:   []string{s.Nick, channelname},
+					Trailing: "No such channel",
+				})
+				continue
+			}
+
 			c = &channel{
 				name:  channelname,
 				nicks: make(map[lcNick]*[maxChanMemberStatus]bool),
