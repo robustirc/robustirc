@@ -306,25 +306,14 @@ func updateLastContact() {
 }
 
 func pingMessage() *types.RobustMessage {
-	pingmsg := &types.RobustMessage{
-		Type: types.RobustPing,
-	}
-
 	peers, err := peerStore.Peers()
 	if err != nil {
-		log.Fatalf("Could not get peers: %v (Peer file corrupted on disk?)\n", err)
+		log.Fatalf("Could not get peers: %v (Peer file corrupted on disk?)", err)
 	}
-	leader := node.Leader()
-	if leader != "" {
-		pingmsg.Servers = append(pingmsg.Servers, leader)
+	return &types.RobustMessage{
+		Type:    types.RobustPing,
+		Servers: peers,
 	}
-	for _, peer := range peers {
-		if peer != leader {
-			pingmsg.Servers = append(pingmsg.Servers, peer)
-		}
-	}
-
-	return pingmsg
 }
 
 func setGetMessagesRequests(remoteAddr string, stats GetMessagesStats) {
