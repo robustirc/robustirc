@@ -28,6 +28,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/kardianos/osext"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/robustirc/bridge/tlsutil"
 	"github.com/robustirc/rafthttp"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/outputstream"
@@ -584,7 +585,7 @@ func main() {
 	// Manually create the net.TCPListener so that joinMaster() does not run
 	// into connection refused errors (the master will try to contact the
 	// node before acknowledging the join).
-	kpr, err := NewKeypairReloader(*tlsCertPath, *tlsKeyPath)
+	kpr, err := tlsutil.NewKeypairReloader(*tlsCertPath, *tlsKeyPath)
 	if err != nil {
 		log.Fatal(err)
 	}
