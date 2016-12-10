@@ -579,6 +579,11 @@ func main() {
 
 	privaterouter := httprouter.New()
 	privaterouter.Handler("GET", "/", exitOnRecoverHandleFunc(handleStatus))
+	privaterouter.Handler("GET", "/status", exitOnRecoverHandleFunc(handleStatus))
+	privaterouter.Handler("GET", "/status/getmessage", exitOnRecoverHandleFunc(handleStatusGetMessage))
+	privaterouter.Handler("GET", "/status/sessions", exitOnRecoverHandleFunc(handleStatusSessions))
+	privaterouter.Handler("GET", "/status/irclog", exitOnRecoverHandleFunc(handleStatusIrclog))
+	privaterouter.Handler("GET", "/status/state", exitOnRecoverHandleFunc(handleStatusState))
 	privaterouter.Handler("GET", "/irclog", exitOnRecoverHandleFunc(handleIrclog))
 	privaterouter.Handler("POST", "/raft/*rest", exitOnRecoverHandler(transport))
 	privaterouter.Handler("POST", "/join", exitOnRecoverHandleFunc(handleJoin))

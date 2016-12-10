@@ -1,0 +1,63 @@
+{{ template "templates/header" . }}
+			<div class="row">
+				<div class="col-sm-6">
+					<h2>Node status</h2>
+					<table class="table">
+						<tbody>
+							<tr>
+								<th>State</th>
+								<td>{{ .State }}</td>
+							</tr>
+							<tr>
+								<th>Leader</th>
+								<td><a href="https://{{ .Leader }}">{{ .Leader }}</a></td>
+							</tr>
+							<tr>
+								<td class="col-sm-2 field-label"><label>Peers:</label></td>
+								<td class="col-sm-10"><ul class="list-unstyled">
+								{{ range .Peers }}
+									<li><a href="https://{{ . }}">{{ . }}</a></li>
+								{{ end }}
+								</ul></td>
+							</tr>
+						</tbody>
+					</table>
+
+					<h2>Config</h2>
+					<table class="table table-condensed table-striped">
+						<tr>
+							<th>SessionExpiration</th>
+							<td>{{.NetConfig.SessionExpiration}}</td>
+						</tr>
+						<tr>
+							<th>PostMessageCooloff</th>
+							<td>{{.NetConfig.PostMessageCooloff}}</td>
+						</tr>
+						{{ range .NetConfig.IRC.Operators }}
+						<tr>
+							<th>IRC.Operators</th>
+							<td>{{.Name}}/&lt;hidden&gt;</td>
+						</tr>
+						{{ end }}
+						{{ range $auth, $name := .NetConfig.TrustedBridges }}
+						<tr>
+							<th>TrustedBridge</th>
+							<td>{{ $name }}</td>
+						</tr>
+						{{ end }}
+					</table>
+				</div>
+
+				<div class="col-sm-6">
+					<h2>Raft Stats</h2>
+					<table class="table table-condensed table-striped">
+					{{ range $key, $val := .Stats }}
+						<tr>
+							<th>{{ $key }}</th>
+							<td>{{ $val }}</td>
+						</tr>
+					{{ end }}
+					</table>
+				</div>
+			</div>
+{{ template "templates/footer" . }}

@@ -1,0 +1,36 @@
+{{ template "templates/header" . }}
+			<div class="row">
+				<h2>Active GetMessage requests <span class="badge" style="vertical-align: middle">{{ .GetMessageRequests | len }}</span></h2>
+				<form action="/kill" method="post">
+				<input type="submit" value="Kill selected sessions">
+				<table class="table table-striped" data-toggle="table" data-sort-name="id">
+					<thead>
+						<tr>
+							<th></th>
+							<th data-field="id" data-sortable="true">Session ID</th>
+							<th data-field="nick" data-sortable="true">Nick</th>
+							<th data-field="remoteaddr" data-sortable="true">RemoteAddr</th>
+							<th data-field="started" data-sortable="true">Started</th>
+							<th data-field="useragent" data-sortable="true">User Agent</th>
+						</tr>
+					</thead>
+					<tbody>
+					{{ range $key, $val := .GetMessageRequests }}
+						<tr>
+							<td style="text-align: center"><input type="checkbox" style="position: static" name="session" value="{{ $val.Session.Id }}"></td>
+							<td><code>{{ $val.Session.Id | printf "0x%x" }}</code></td>
+							<td>{{ $val.NickWithFallback }}</td>
+							{{ if ne $val.TrustedBridge "" }}
+							<td><span title="{{ $key }}">{{ $val.TrustedBridge }}</span> → {{ $val.ForwardedFor }}</td>
+							{{ else }}
+							<td><span title="{{ $val.ForwardedFor }} (UNTRUSTED!)">{{ $key }}</span></td>
+							{{ end }}
+							<td>{{ $val.StartedAndRelative }}</td>
+							<td>{{ $val.UserAgent }}</td>
+						</tr>
+					{{ end }}
+					</tbody>
+				</table>
+				</form>
+			</div>
+{{ template "templates/footer" . }}

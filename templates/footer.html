@@ -1,0 +1,30 @@
+		</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js" integrity="sha256-hVVnYaiADRTO2PzUGmuLJr8BLUSjGIZsDYGmIJLv2b8=" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-table/1.11.0/bootstrap-table.min.js" integrity="sha256-eXHLyyVI+v6X1wbfg9NB05IWqOqY4E9185nHZgeDIhg=" crossorigin="anonymous"></script>
+<script type="text/javascript">
+var lastChecked;
+
+$(document).ready(function() {
+	var boxes = $('input[type=checkbox]');
+	boxes.click(function(e) {
+		if (lastChecked === undefined) {
+			lastChecked = this;
+			return;
+		}
+
+		if (e.shiftKey) {
+			var first = boxes.index(this);
+			var last = boxes.index(lastChecked);
+
+			var selected = boxes.slice(
+				Math.min(first, last),
+				Math.max(first, last) + 1)
+			selected.prop('checked', lastChecked.checked);
+		}
+
+		lastChecked = this;
+	});
+});
+</script>
+	</body>
+</html>

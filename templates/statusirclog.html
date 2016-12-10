@@ -1,0 +1,28 @@
+{{ template "templates/header" . }}
+			<div class="row">
+			    <a name="irclog"></a>
+				<h2>IRC Log Entries (index={{ .First }} to index={{ .Last}})</h2>
+				<a href="/?offset={{ .PrevOffset }}#irclog">Prev</a>
+				<a href="/?offset={{ .NextOffset }}#irclog">Next</a>
+				<table class="table table-striped">
+					<thead>
+						<tr>
+							<th>Index</th>
+							<th>Term</th>
+							<th>Type</th>
+							<th>Data</th>
+						</tr>
+					</thead>
+					<tbody>
+					{{ range .Entries }}
+						<tr>
+							<td class="col-sm-1">{{ .Index }}</td>
+							<td class="col-sm-1">{{ .Term }}</td>
+							<td class="col-sm-1">{{ .Type }}</td>
+							<td class="col-sm-8"><code>{{ .Data | printf "%s" }}</code></td>
+						</tr>
+					{{ end }}
+					</tbody>
+                </table>
+			</div>
+{{ template "templates/footer" . }}

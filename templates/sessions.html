@@ -1,0 +1,34 @@
+{{ template "templates/header" . }}
+			<div class="row">
+				<h2>Active Sessions <span class="badge" style="vertical-align: middle">{{ .Sessions | len }}</span></h2>
+				<form action="/kill" method="post">
+				<input type="submit" value="Kill selected sessions">
+				<table class="table table-striped" data-toggle="table" data-sort-name="id">
+					<thead>
+						<tr>
+							<th></th>
+							<th data-field="id" data-sortable="true">Session ID</th>
+							<th data-field="lastactivity" data-sortable="true">Last Activity</th>
+							<th data-field="nick" data-sortable="true">Nick</th>
+							<th data-field="channels" data-sortable="true">Channels</th>
+						</tr>
+					</thead>
+					<tbody>
+						{{ range .Sessions }}
+						<tr>
+							<td class="col-sm-1" style="text-align: center"><input type="checkbox" name="session" value="{{ .Id.Id }}"> <a href="/irclog?sessionid={{ .Id.Id | printf "0x%x" }}"><span class="glyphicon glyphicon-list"></span></a></td>
+							<td class="col-sm-2"><code>{{ .Id.Id | printf "0x%x" }}</code></td>
+							<td class="col-sm-2">{{ .LastActivity }}</code></td>
+							<td class="col-sm-2">{{ .Nick }}</td>
+							<td class="col-sm-7">
+							{{ range $key, $val := .Channels }}
+							{{ $key }},
+							{{ end }}
+							</td>
+						</tr>
+						{{ end }}
+					</tbody>
+				</table>
+				</form>
+			</div>
+{{ template "templates/footer" . }}
