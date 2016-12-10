@@ -311,9 +311,7 @@ func (i *IRCServer) UpdateLastClientMessageID(msg *types.RobustMessage) error {
 
 // CreateSession creates a new session (equivalent to an IRC connection).
 func (i *IRCServer) CreateSession(id types.RobustId, auth string) error {
-	i.ConfigMu.RLock()
-	defer i.ConfigMu.RUnlock()
-	if uint64(len(i.sessions)) >= i.Config.MaxSessions && i.Config.MaxSessions > 0 {
+	if got, limit := uint64(len(i.sessions)), i.SessionLimit(); got >= limit && limit > 0 {
 		return ErrSessionLimitReached
 	}
 	i.sessions[id] = &Session{
@@ -679,7 +677,18 @@ func (i *IRCServer) GetSessions() map[types.RobustId]Session {
 
 // NumSessions returns the current number of sessions.
 func (i *IRCServer) NumSessions() int {
+	i.sessionsMu.RLock()
+	defer i.sessionsMu.RUnlock()
 	return len(i.sessions)
+}
+
+// NumSessions returns the current number of channels.
+func (i *IRCServer) NumChannels() int {
+	// TODO: replace this with a more appropriate lock
+	i.sessionsMu.RLock()
+	defer i.sessionsMu.RUnlock()
+
+	return len(i.channels)
 }
 
 func (i *IRCServer) outputToRobustMessages(msgs []outputstream.Message) []*types.RobustMessage {
@@ -931,7 +940,13 @@ func (i *IRCServer) verifyCaptchaNonEmpty(s *Session, captcha string) error {
 	return nil
 }
 
-func (i *IRCServer) channelLimit() uint64 {
+func (i *IRCServer) SessionLimit() uint64 {
+	i.ConfigMu.RLock()
+	defer i.ConfigMu.RUnlock()
+	return i.Config.MaxSessions
+}
+
+func (i *IRCServer) ChannelLimit() uint64 {
 	i.ConfigMu.RLock()
 	defer i.ConfigMu.RUnlock()
 	return i.Config.MaxChannels

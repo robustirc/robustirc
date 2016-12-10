@@ -130,6 +130,39 @@ var (
 		},
 	)
 
+	sessionLimitGauge = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Subsystem: "irc",
+			Name:      "session_limit",
+			Help:      "Maximum Number of IRC sessions",
+		},
+		func() float64 {
+			return float64(ircServer.SessionLimit())
+		},
+	)
+
+	channelsGauge = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Subsystem: "irc",
+			Name:      "channels",
+			Help:      "Number of IRC channels",
+		},
+		func() float64 {
+			return float64(ircServer.NumChannels())
+		},
+	)
+
+	channelLimitGauge = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Subsystem: "irc",
+			Name:      "channel_limit",
+			Help:      "Maximum Number of IRC channels",
+		},
+		func() float64 {
+			return float64(ircServer.ChannelLimit())
+		},
+	)
+
 	appliedMessages = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "applied_messages",
@@ -150,6 +183,9 @@ var (
 func init() {
 	prometheus.MustRegister(isLeaderGauge)
 	prometheus.MustRegister(sessionsGauge)
+	prometheus.MustRegister(sessionLimitGauge)
+	prometheus.MustRegister(channelsGauge)
+	prometheus.MustRegister(channelLimitGauge)
 	prometheus.MustRegister(appliedMessages)
 	prometheus.MustRegister(secondsInState)
 }
