@@ -11,7 +11,8 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 <html>
 	<head>
 		<title>Status of RobustIRC node {{ .Addr }}</title>
-		<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap.min.css">
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha256-916EbMg70RQy9LHiGkXzG8hSg9EdNy97GazNG/aiY1w=" crossorigin="anonymous" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-table/1.11.0/bootstrap-table.min.css" integrity="sha256-eU4xmpfQx1HSi5q1q2rHNcMEzTNJov7r2Wr/6zF3ANc=" crossorigin="anonymous" />
 	</head>
 	<body>
 		<div class="container">
@@ -83,14 +84,14 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 
 			<div class="row">
 				<h2>Active GetMessage requests <span class="badge" style="vertical-align: middle">{{ .GetMessageRequests | len }}</span></h2>
-				<table class="table table-striped">
+				<table class="table table-striped" data-toggle="table" data-sort-name="id">
 					<thead>
 						<tr>
-							<th>Session ID</th>
-							<th>Nick</th>
-							<th>RemoteAddr</th>
-							<th>Started</th>
-							<th>User Agent</th>
+							<th data-field="id" data-sortable="true">Session ID</th>
+							<th data-field="nick" data-sortable="true">Nick</th>
+							<th data-field="remoteaddr" data-sortable="true">RemoteAddr</th>
+							<th data-field="started" data-sortable="true">Started</th>
+							<th data-field="useragent" data-sortable="true">User Agent</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -113,14 +114,14 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 
 			<div class="row">
 				<h2>Active Sessions <span class="badge" style="vertical-align: middle">{{ .Sessions | len }}</span></h2>
-				<table class="table table-striped">
+				<table class="table table-striped" data-toggle="table" data-sort-name="id">
 					<thead>
 						<tr>
 							<th></th>
-							<th>Session ID</th>
-							<th>Last Activity</th>
-							<th>Nick</th>
-							<th>Channels</th>
+							<th data-field="id" data-sortable="true">Session ID</th>
+							<th data-field="lastactivity" data-sortable="true">Last Activity</th>
+							<th data-field="nick" data-sortable="true">Nick</th>
+							<th data-field="channels" data-sortable="true">Channels</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -177,6 +178,8 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 			  </pre>
 			</div>
 		</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js" integrity="sha256-hVVnYaiADRTO2PzUGmuLJr8BLUSjGIZsDYGmIJLv2b8=" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-table/1.11.0/bootstrap-table.min.js" integrity="sha256-eXHLyyVI+v6X1wbfg9NB05IWqOqY4E9185nHZgeDIhg=" crossorigin="anonymous"></script>
 	</body>
 </html>
 `))
