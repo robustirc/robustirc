@@ -588,6 +588,7 @@ func main() {
 	privaterouter.Handler("POST", "/quit", exitOnRecoverHandleFunc(handleQuit))
 	privaterouter.Handler("GET", "/config", exitOnRecoverHandleFunc(handleGetConfig))
 	privaterouter.Handler("POST", "/config", exitOnRecoverHandleFunc(handlePostConfig))
+	privaterouter.Handler("POST", "/kill", exitOnRecoverHandleFunc(handleKill))
 	privaterouter.Handler("GET", "/metrics", exitOnRecoverHandler(prometheus.Handler()))
 
 	publicrouter := httprouter.New()

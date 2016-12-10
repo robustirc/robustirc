@@ -689,3 +689,39 @@ func handlePostConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func handleKill(w http.ResponseWriter, r *http.Request) {
+	var body bytes.Buffer
+	r.Body = nopCloser{io.TeeReader(r.Body, &body)}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if node.State() != raft.Leader {
+		maybeProxyToLeader(w, r, nopCloser{&body})
+		return
+	}
+
+	for _, sessionid := range r.Form["session"] {
+		id, err := strconv.ParseInt(sessionid, 0, 64)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		msg := &types.RobustMessage{
+			Session: types.RobustId{Id: id},
+			Type:    types.RobustDeleteSession,
+			Data:    "killed",
+		}
+		if err := applyMessageWait(msg, 10*time.Second); err != nil {
+			if err == raft.ErrNotLeader {
+				maybeProxyToLeader(w, r, nopCloser{&body})
+				return
+			}
+			http.Error(w, fmt.Sprintf("Apply(): %v", err), http.StatusInternalServerError)
+			return
+		}
+		fmt.Fprintf(w, "killed %d\n", id)
+	}
+}

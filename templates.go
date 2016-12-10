@@ -84,9 +84,12 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 
 			<div class="row">
 				<h2>Active GetMessage requests <span class="badge" style="vertical-align: middle">{{ .GetMessageRequests | len }}</span></h2>
+				<form action="/kill" method="post">
+				<input type="submit" value="Kill selected sessions">
 				<table class="table table-striped" data-toggle="table" data-sort-name="id">
 					<thead>
 						<tr>
+							<th></th>
 							<th data-field="id" data-sortable="true">Session ID</th>
 							<th data-field="nick" data-sortable="true">Nick</th>
 							<th data-field="remoteaddr" data-sortable="true">RemoteAddr</th>
@@ -97,6 +100,7 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 					<tbody>
 					{{ range $key, $val := .GetMessageRequests }}
 						<tr>
+							<td style="text-align: center"><input type="checkbox" style="position: static" name="session" value="{{ $val.Session.Id }}"></td>
 							<td><code>{{ $val.Session.Id | printf "0x%x" }}</code></td>
 							<td>{{ $val.NickWithFallback }}</td>
 							{{ if ne $val.TrustedBridge "" }}
@@ -110,10 +114,13 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 					{{ end }}
 					</tbody>
 				</table>
+				</form>
 			</div>
 
 			<div class="row">
 				<h2>Active Sessions <span class="badge" style="vertical-align: middle">{{ .Sessions | len }}</span></h2>
+				<form action="/kill" method="post">
+				<input type="submit" value="Kill selected sessions">
 				<table class="table table-striped" data-toggle="table" data-sort-name="id">
 					<thead>
 						<tr>
@@ -127,7 +134,7 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 					<tbody>
 						{{ range .Sessions }}
 						<tr>
-							<td class="col-sm-1" style="text-align: center"><a href="/irclog?sessionid={{ .Id.Id | printf "0x%x" }}"><span class="glyphicon glyphicon-list"></span></a></td>
+							<td class="col-sm-1" style="text-align: center"><input type="checkbox" name="session" value="{{ .Id.Id }}"> <a href="/irclog?sessionid={{ .Id.Id | printf "0x%x" }}"><span class="glyphicon glyphicon-list"></span></a></td>
 							<td class="col-sm-2"><code>{{ .Id.Id | printf "0x%x" }}</code></td>
 							<td class="col-sm-2">{{ .LastActivity }}</code></td>
 							<td class="col-sm-2">{{ .Nick }}</td>
@@ -140,6 +147,7 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 						{{ end }}
 					</tbody>
 				</table>
+				</form>
 			</div>
 
 			<div class="row">
@@ -180,6 +188,31 @@ var statusTpl = template.Must(template.New("status").Parse(`<!DOCTYPE html>
 		</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js" integrity="sha256-hVVnYaiADRTO2PzUGmuLJr8BLUSjGIZsDYGmIJLv2b8=" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-table/1.11.0/bootstrap-table.min.js" integrity="sha256-eXHLyyVI+v6X1wbfg9NB05IWqOqY4E9185nHZgeDIhg=" crossorigin="anonymous"></script>
+<script type="text/javascript">
+var lastChecked;
+
+$(document).ready(function() {
+	var boxes = $('input[type=checkbox]');
+	boxes.click(function(e) {
+		if (lastChecked === undefined) {
+			lastChecked = this;
+			return;
+		}
+
+		if (e.shiftKey) {
+			var first = boxes.index(this);
+			var last = boxes.index(lastChecked);
+
+			var selected = boxes.slice(
+				Math.min(first, last),
+				Math.max(first, last) + 1)
+			selected.prop('checked', lastChecked.checked);
+		}
+
+		lastChecked = this;
+	});
+});
+</script>
 	</body>
 </html>
 `))
