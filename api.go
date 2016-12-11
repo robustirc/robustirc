@@ -338,6 +338,22 @@ func copyGetMessagesRequests() map[string]GetMessagesStats {
 	return result
 }
 
+func parseLastSeen(lastSeenStr string) (first int64, last int64, err error) {
+	parts := strings.Split(lastSeenStr, ".")
+	if got, want := len(parts), 2; got != want {
+		return 0, 0, fmt.Errorf("Unexpected number of parts: got %d, want %d", got, want)
+	}
+	first, err = strconv.ParseInt(parts[0], 0, 64)
+	if err != nil {
+		return 0, 0, err
+	}
+	last, err = strconv.ParseInt(parts[1], 0, 64)
+	if err != nil {
+		return 0, 0, err
+	}
+	return first, last, nil
+}
+
 func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Avoid sessionOrProxy() because GetMessages can be answered on any raft
 	// node, it’s a read-only request.
@@ -363,26 +379,11 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	defer deleteGetMessagesRequests(remoteAddr)
 
 	lastSeen := ircServer.GetStartId(session)
-	lastSeenStr := r.FormValue("lastseen")
-	if lastSeenStr != "0.0" && lastSeenStr != "" {
-		parts := strings.Split(lastSeenStr, ".")
-		if len(parts) != 2 {
-			log.Printf("cannot parse %q\n", lastSeenStr)
-			http.Error(w, fmt.Sprintf("Malformed lastseen value (%q)", lastSeenStr),
-				http.StatusInternalServerError)
-			return
-		}
-		first, err := strconv.ParseInt(parts[0], 0, 64)
+	if ls := r.FormValue("lastseen"); ls != "0.0" && ls != "" {
+		first, last, err := parseLastSeen(ls)
 		if err != nil {
-			log.Printf("cannot parse %q\n", lastSeenStr)
-			http.Error(w, fmt.Sprintf("Malformed lastseen value (%q)", lastSeenStr),
-				http.StatusInternalServerError)
-			return
-		}
-		last, err := strconv.ParseInt(parts[1], 0, 64)
-		if err != nil {
-			log.Printf("cannot parse %q\n", lastSeenStr)
-			http.Error(w, fmt.Sprintf("Malformed lastseen value (%q)", lastSeenStr),
+			log.Printf("cannot parse %q: %v\n", ls, err)
+			http.Error(w, fmt.Sprintf("Malformed lastseen value (%q)", ls),
 				http.StatusInternalServerError)
 			return
 		}
