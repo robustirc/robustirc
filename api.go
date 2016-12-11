@@ -354,6 +354,19 @@ func parseLastSeen(lastSeenStr string) (first int64, last int64, err error) {
 	return first, last, nil
 }
 
+func pingTicker(ctx context.Context, msgs chan<- []*types.RobustMessage) {
+	ticker := time.NewTicker(pingInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			msgs <- []*types.RobustMessage{pingMessage()}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
 func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Avoid sessionOrProxy() because GetMessages can be answered on any raft
 	// node, it’s a read-only request.
@@ -367,6 +380,7 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		return
 	}
 
+	rctx := r.Context()
 	remoteAddr := r.RemoteAddr
 	setGetMessagesRequests(remoteAddr, GetMessagesStats{
 		Session:       session,
@@ -400,22 +414,10 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	var lastFlush time.Time
 	willFlush := false
 	msgschan := make(chan []*types.RobustMessage)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(rctx)
+	go pingTicker(rctx, msgschan)
 	go func() {
 		var msgs []*types.RobustMessage
-		pingDone := make(chan bool)
-		go func() {
-			pingTicker := time.NewTicker(pingInterval)
-			for {
-				select {
-				case <-pingTicker.C:
-					msgschan <- []*types.RobustMessage{pingMessage()}
-				case <-pingDone:
-					pingTicker.Stop()
-					return
-				}
-			}
-		}()
 
 		// With the following output messages stored for a session:
 		// Id                  Reply
@@ -434,7 +436,6 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 
 		for {
 			if ctx.Err() != nil {
-				pingDone <- true
 				close(msgschan)
 				return
 			}
