@@ -13,11 +13,10 @@ import (
 )
 
 func (api *HTTP) handleDeleteSession(w http.ResponseWriter, r *http.Request, session types.RobustId) {
-	type deleteSessionRequest struct {
+	var req struct {
 		Quitmessage string
 	}
 
-	var req deleteSessionRequest
 	var body bytes.Buffer
 	rd := io.TeeReader(r.Body, &body)
 	if err := json.NewDecoder(rd).Decode(&req); err != nil {

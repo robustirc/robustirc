@@ -16,11 +16,9 @@ func (api *HTTP) handlePart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type partRequest struct {
+	var req struct {
 		Addr string
 	}
-	var req partRequest
-
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Println("Could not decode request:", err)
 		http.Error(w, fmt.Sprintf("Could not decode your request"), 400)

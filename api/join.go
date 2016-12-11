@@ -16,11 +16,9 @@ func (api *HTTP) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type joinRequest struct {
+	var req struct {
 		Addr string
 	}
-	var req joinRequest
-
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Println("Could not decode request:", err)
 		http.Error(w, fmt.Sprintf("Could not decode your request"), 400)

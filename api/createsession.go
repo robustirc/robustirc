@@ -48,13 +48,15 @@ func (api *HTTP) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	type createSessionReply struct {
+	if err := json.NewEncoder(w).Encode(struct {
 		Sessionid   string
 		Sessionauth string
 		Prefix      string
-	}
-
-	if err := json.NewEncoder(w).Encode(createSessionReply{sessionid, sessionauth, api.network}); err != nil {
+	}{
+		Sessionid:   sessionid,
+		Sessionauth: sessionauth,
+		Prefix:      api.network,
+	}); err != nil {
 		log.Printf("Could not send /session reply: %v\n", err)
 	}
 }

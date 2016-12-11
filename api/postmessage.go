@@ -20,12 +20,10 @@ func (api *HTTP) handlePostMessage(w http.ResponseWriter, r *http.Request, sessi
 	until := api.ircServer.ThrottleUntil(session)
 	time.Sleep(until.Sub(time.Now()))
 
-	type postMessageRequest struct {
+	var req struct {
 		Data            string
 		ClientMessageId uint64
 	}
-
-	var req postMessageRequest
 
 	// We limit the amount of bytes read to 2048 to prevent reading overly long
 	// requests in the first place. The IRC line length limit is 512 bytes, so
