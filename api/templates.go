@@ -7,10 +7,10 @@ import (
 	"html/template"
 )
 
-var Templates = template.New("all")
+var templates = template.New("all")
 
 func init() {
-	template.Must(Templates.New("templates/header").Parse(`<!-- vim:ts=2:sw=2:et
+	template.Must(templates.New("templates/header").Parse(`<!-- vim:ts=2:sw=2:et
 -->
 <!DOCTYPE html>
 <html>
@@ -75,7 +75,7 @@ func init() {
 
   <div class="container">
 `))
-	template.Must(Templates.New("templates/footer").Parse(`		</div>
+	template.Must(templates.New("templates/footer").Parse(`		</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js" integrity="sha256-hVVnYaiADRTO2PzUGmuLJr8BLUSjGIZsDYGmIJLv2b8=" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-table/1.11.0/bootstrap-table.min.js" integrity="sha256-eXHLyyVI+v6X1wbfg9NB05IWqOqY4E9185nHZgeDIhg=" crossorigin="anonymous"></script>
 <script type="text/javascript">
@@ -106,7 +106,7 @@ $(document).ready(function() {
 	</body>
 </html>
 `))
-	template.Must(Templates.New("templates/status").Parse(`{{ template "templates/header" . }}
+	template.Must(templates.New("templates/status").Parse(`{{ template "templates/header" . }}
 			<div class="row">
 				<div class="col-sm-6">
 					<h2>Node status</h2>
@@ -170,7 +170,7 @@ $(document).ready(function() {
 			</div>
 {{ template "templates/footer" . }}
 `))
-	template.Must(Templates.New("templates/getmessage").Parse(`{{ template "templates/header" . }}
+	template.Must(templates.New("templates/getmessage").Parse(`{{ template "templates/header" . }}
 			<div class="row">
 				<h2>Active GetMessage requests <span class="badge" style="vertical-align: middle">{{ .GetMessageRequests | len }}</span></h2>
 				<form action="/kill" method="post">
@@ -207,7 +207,7 @@ $(document).ready(function() {
 			</div>
 {{ template "templates/footer" . }}
 `))
-	template.Must(Templates.New("templates/sessions").Parse(`{{ template "templates/header" . }}
+	template.Must(templates.New("templates/sessions").Parse(`{{ template "templates/header" . }}
 			<div class="row">
 				<h2>Active Sessions <span class="badge" style="vertical-align: middle">{{ .Sessions | len }}</span></h2>
 				<form action="/kill" method="post">
@@ -242,7 +242,7 @@ $(document).ready(function() {
 			</div>
 {{ template "templates/footer" . }}
 `))
-	template.Must(Templates.New("templates/state").Parse(`{{ template "templates/header" . }}
+	template.Must(templates.New("templates/state").Parse(`{{ template "templates/header" . }}
 			<div class="row">
 			  <a name="state"></a>
 			  <h2>Server State</h2>
@@ -253,7 +253,7 @@ $(document).ready(function() {
 			</div>
 {{ template "templates/footer" . }}
 `))
-	template.Must(Templates.New("templates/statusirclog").Parse(`{{ template "templates/header" . }}
+	template.Must(templates.New("templates/statusirclog").Parse(`{{ template "templates/header" . }}
 			<div class="row">
 			    <a name="irclog"></a>
 				<h2>IRC Log Entries (index={{ .First }} to index={{ .Last}})</h2>
@@ -282,7 +282,7 @@ $(document).ready(function() {
 			</div>
 {{ template "templates/footer" . }}
 `))
-	template.Must(Templates.New("templates/irclog").Parse(`<!DOCTYPE html>
+	template.Must(templates.New("templates/irclog").Parse(`<!DOCTYPE html>
 <html>
 	<head>
 		<title>IRC log</title>

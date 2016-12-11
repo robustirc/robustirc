@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/raft"
 )
 
-func (api *HTTP) HandlePart(w http.ResponseWriter, r *http.Request) {
+func (api *HTTP) handlePart(w http.ResponseWriter, r *http.Request) {
 	log.Println("Part request from", r.RemoteAddr)
 	if api.raftNode.State() != raft.Leader {
 		api.maybeProxyToLeader(w, r, r.Body)

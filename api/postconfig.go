@@ -34,7 +34,7 @@ func (api *HTTP) applyConfig(revision uint64, body string) error {
 	return api.applyMessageWait(msg, 10*time.Second)
 }
 
-func (api *HTTP) HandlePostConfig(w http.ResponseWriter, r *http.Request) {
+func (api *HTTP) handlePostConfig(w http.ResponseWriter, r *http.Request) {
 	revision, err := strconv.ParseUint(r.Header.Get("X-RobustIRC-Config-Revision"), 0, 64)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

@@ -8,7 +8,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-func (api *HTTP) HandleGetConfig(w http.ResponseWriter, r *http.Request) {
+func (api *HTTP) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 
 	i := api.ircServer

@@ -9,19 +9,13 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
-	"github.com/julienschmidt/httprouter"
 	"github.com/robustirc/robustirc/types"
 )
 
 // handlePostMessage is called by the robustirc-bridge whenever a message should be
 // posted. The handler blocks until either the data was written or an error
 // occurred. If successful, it returns the unique id of the message.
-func (api *HTTP) HandlePostMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	session, err := api.sessionOrProxy(w, r, ps)
-	if err != nil {
-		return
-	}
-
+func (api *HTTP) handlePostMessage(w http.ResponseWriter, r *http.Request, session types.RobustId) {
 	// Don’t throttle server-to-server connections (services)
 	until := api.ircServer.ThrottleUntil(session)
 	time.Sleep(until.Sub(time.Now()))

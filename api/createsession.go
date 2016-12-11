@@ -10,17 +10,11 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
-	"github.com/julienschmidt/httprouter"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/types"
 )
 
-func (api *HTTP) HandleCreateSession(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	if ps[0].Value != "session" {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
-
+func (api *HTTP) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if api.raftNode.State() != raft.Leader {
 		api.maybeProxyToLeader(w, r, nopCloser{bytes.NewBuffer(nil)})
 		return

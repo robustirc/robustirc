@@ -57,11 +57,11 @@ import (
 	"html/template"
 )
 
-var Templates = template.New("all")
+var templates = template.New("all")
 
 func init() {
 	{{ range $i, $t := .Templates -}}
-	template.Must(Templates.New("{{ $t.Name }}").Parse({{ $t.ContentLiteral }}))
+	template.Must(templates.New("{{ $t.Name }}").Parse({{ $t.ContentLiteral }}))
 	{{ end -}}
 }
 `))

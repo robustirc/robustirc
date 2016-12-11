@@ -10,17 +10,21 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/hashicorp/raft"
-	"github.com/julienschmidt/httprouter"
 	"github.com/kardianos/osext"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/robustirc/rafthttp"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/types"
+	"github.com/stapelberg/glog"
 )
 
 const pingInterval = 20 * time.Second
@@ -47,33 +51,57 @@ func executableHash() string {
 	return fmt.Sprintf("%.16x", h.Sum(nil))
 }
 
+// exitOnRecover is used to circumvent the recover handler that net/http
+// installs. We need to exit in order to get restarted by the init
+// system/supervisor and get into a clean state again.
+func exitOnRecover() {
+	if r := recover(); r != nil {
+		// This mimics go/src/net/http/server.go.
+		const size = 64 << 10
+		buf := make([]byte, size)
+		buf = buf[:runtime.Stack(buf, false)]
+		glog.Errorf("http: panic serving: %v\n%s", r, buf)
+		glog.Flush()
+		os.Exit(1)
+	}
+}
+
 // HTTP provides an HTTP API to RobustIRC, including HTTP handlers for
 // interactive use (e.g. status pages).
 type HTTP struct {
-	ircServer *ircserver.IRCServer
-	raftNode  *raft.Raft
-	peerStore *raft.JSONPeers
-	ircStore  *raft_store.LevelDBStore
-	network   string
-	raftDir   string
-	peerAddr  string
+	ircServer       *ircserver.IRCServer
+	raftNode        *raft.Raft
+	peerStore       *raft.JSONPeers
+	ircStore        *raft_store.LevelDBStore
+	transport       *rafthttp.HTTPTransport
+	network         string
+	networkPassword string
+	raftDir         string
+	peerAddr        string
 	// getMessagesRequests contains information about each GetMessages
 	// request to be exposed on the HTTP status handler.
 	getMessagesRequests   map[string]GetMessagesStats
 	getMessagesRequestsMu sync.RWMutex
 }
 
-func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, peerStore *raft.JSONPeers, ircStore *raft_store.LevelDBStore, network string, raftDir string, peerAddr string) *HTTP {
-	return &HTTP{
+func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, peerStore *raft.JSONPeers, ircStore *raft_store.LevelDBStore, transport *rafthttp.HTTPTransport, network string, networkPassword string, raftDir string, peerAddr string, mux *http.ServeMux) *HTTP {
+	api := &HTTP{
 		ircServer:           ircServer,
 		raftNode:            raftNode,
 		peerStore:           peerStore,
 		ircStore:            ircStore,
+		transport:           transport,
 		network:             network,
+		networkPassword:     networkPassword,
 		raftDir:             raftDir,
 		peerAddr:            peerAddr,
 		getMessagesRequests: make(map[string]GetMessagesStats),
 	}
+
+	mux.HandleFunc("/robustirc/v1/", api.dispatchPublic)
+	mux.HandleFunc("/", api.dispatchPrivate)
+
+	return api
 }
 
 var (
@@ -143,6 +171,134 @@ func setNodeProxy(leader string, proxy *httputil.ReverseProxy) {
 	nodeProxies[leader] = proxy
 }
 
+func (api *HTTP) dispatchPrivate(w http.ResponseWriter, r *http.Request) {
+	defer exitOnRecover()
+
+	username, password, ok := r.BasicAuth()
+	if !ok || username != "robustirc" || password != api.networkPassword {
+		w.Header().Set("WWW-Authenticate", `Basic realm="robustirc"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		switch r.URL.Path {
+		case "/":
+			fallthrough
+		case "/status":
+			api.handleStatus(w, r)
+			return
+
+		case "/status/getmessage":
+			api.handleStatusGetMessage(w, r)
+			return
+
+		case "/status/sessions":
+			api.handleStatusSessions(w, r)
+			return
+
+		case "/status/irclog":
+			api.handleStatusIrclog(w, r)
+			return
+
+		case "/status/state":
+			api.handleStatusState(w, r)
+			return
+
+		case "/irclog":
+			api.handleIrclog(w, r)
+			return
+
+		case "/snapshot":
+			api.handleSnapshot(w, r)
+			return
+
+		case "/leader":
+			api.handleLeader(w, r)
+			return
+
+		case "/config":
+			api.handleGetConfig(w, r)
+			return
+
+		case "/metrics":
+			prometheus.Handler().ServeHTTP(w, r)
+			return
+		}
+
+	case http.MethodPost:
+		if strings.HasPrefix(r.URL.Path, "/raft/") {
+			api.transport.ServeHTTP(w, r)
+			return
+		}
+
+		switch r.URL.Path {
+		case "/join":
+			api.handleJoin(w, r)
+			return
+
+		case "/part":
+			api.handlePart(w, r)
+			return
+
+		case "/quit":
+			api.handleQuit(w, r)
+			return
+
+		case "/config":
+			api.handlePostConfig(w, r)
+			return
+
+		case "/kill":
+			api.handleKill(w, r)
+			return
+		}
+	}
+
+	http.Error(w, "Not found", http.StatusNotFound)
+}
+
+func (api *HTTP) dispatchPublic(w http.ResponseWriter, r *http.Request) {
+	defer exitOnRecover()
+
+	rest := r.URL.Path[len("/robustirc/v1/"):]
+	switch r.Method {
+	case http.MethodPost:
+		if rest == "session" {
+			api.handleCreateSession(w, r)
+			return
+		}
+
+		if strings.HasSuffix(rest, "/message") {
+			// Verify there are no slashes in what should be the session ID
+			if sessionId := rest[:len(rest)-len("/message")]; strings.Index(sessionId, "/") == -1 {
+				if session, err := api.sessionOrProxy(w, r, sessionId); err == nil {
+					api.handlePostMessage(w, r, session)
+				}
+				return
+			}
+		}
+
+	case http.MethodGet:
+		if strings.HasSuffix(rest, "/messages") {
+			if sessionId := rest[:len(rest)-len("/messages")]; strings.Index(sessionId, "/") == -1 {
+				api.handleGetMessages(w, r, sessionId)
+			}
+		}
+
+	case http.MethodDelete:
+		if sessionId := rest; strings.Index(sessionId, "/") == -1 {
+			if session, err := api.sessionOrProxy(w, r, sessionId); err == nil {
+				api.handleDeleteSession(w, r, session)
+			}
+			return
+		}
+	}
+
+	http.Error(w, "Not found", http.StatusNotFound)
+}
+
 // applyMessage applies the specified message to the network via Raft.
 func (api *HTTP) applyMessage(msg *types.RobustMessage, timeout time.Duration) (raft.ApplyFuture, error) {
 	applyMu.Lock()
@@ -206,10 +362,10 @@ func (api *HTTP) maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body
 	p.ServeHTTP(w, r)
 }
 
-func (api *HTTP) session(r *http.Request, ps httprouter.Params) (types.RobustId, error) {
+func (api *HTTP) session(r *http.Request, sessionId string) (types.RobustId, error) {
 	var sessionid types.RobustId
 
-	id, err := strconv.ParseInt(ps[0].Value, 0, 64)
+	id, err := strconv.ParseInt(sessionId, 0, 64)
 	if err != nil {
 		return sessionid, fmt.Errorf("invalid session: %v", err)
 	}
@@ -232,8 +388,8 @@ func (api *HTTP) session(r *http.Request, ps httprouter.Params) (types.RobustId,
 	return sessionid, nil
 }
 
-func (api *HTTP) sessionOrProxy(w http.ResponseWriter, r *http.Request, ps httprouter.Params) (types.RobustId, error) {
-	sessionid, err := api.session(r, ps)
+func (api *HTTP) sessionOrProxy(w http.ResponseWriter, r *http.Request, sessionId string) (types.RobustId, error) {
+	sessionid, err := api.session(r, sessionId)
 	if err == ircserver.ErrSessionNotYetSeen && api.raftNode.State() != raft.Leader {
 		// The session might exist on the leader, so we must proxy.
 		api.maybeProxyToLeader(w, r, r.Body)

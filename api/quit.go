@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-func (api *HTTP) HandleQuit(w http.ResponseWriter, r *http.Request) {
+func (api *HTTP) handleQuit(w http.ResponseWriter, r *http.Request) {
 	if r.FormValue("deletestate") == "yes" {
 		f, err := os.Create(filepath.Join(api.raftDir, "deletestate"))
 		if err != nil {

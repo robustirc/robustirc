@@ -20,8 +20,8 @@ import (
 
 //go:generate go run gentmpl.go -package=api templates/header templates/footer templates/status templates/getmessage templates/sessions templates/state templates/statusirclog templates/irclog
 
-func (api *HTTP) HandleStatusGetMessage(w http.ResponseWriter, req *http.Request) {
-	if err := Templates.ExecuteTemplate(w, "templates/getmessage", struct {
+func (api *HTTP) handleStatusGetMessage(w http.ResponseWriter, req *http.Request) {
+	if err := templates.ExecuteTemplate(w, "templates/getmessage", struct {
 		Addr               string
 		GetMessageRequests map[string]GetMessagesStats
 		CurrentLink        string
@@ -37,8 +37,8 @@ func (api *HTTP) HandleStatusGetMessage(w http.ResponseWriter, req *http.Request
 	}
 }
 
-func (api *HTTP) HandleStatusSessions(w http.ResponseWriter, req *http.Request) {
-	if err := Templates.ExecuteTemplate(w, "templates/sessions", struct {
+func (api *HTTP) handleStatusSessions(w http.ResponseWriter, req *http.Request) {
+	if err := templates.ExecuteTemplate(w, "templates/sessions", struct {
 		Addr               string
 		Sessions           map[types.RobustId]ircserver.Session
 		CurrentLink        string
@@ -54,7 +54,7 @@ func (api *HTTP) HandleStatusSessions(w http.ResponseWriter, req *http.Request) 
 	}
 }
 
-func (api *HTTP) HandleStatusState(w http.ResponseWriter, req *http.Request) {
+func (api *HTTP) handleStatusState(w http.ResponseWriter, req *http.Request) {
 	textState := "state serialization failed"
 	state, err := api.ircServer.Marshal(0)
 	if err != nil {
@@ -70,7 +70,7 @@ func (api *HTTP) HandleStatusState(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	if err := Templates.ExecuteTemplate(w, "templates/state", struct {
+	if err := templates.ExecuteTemplate(w, "templates/state", struct {
 		Addr               string
 		ServerState        string
 		CurrentLink        string
@@ -88,7 +88,7 @@ func (api *HTTP) HandleStatusState(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (api *HTTP) HandleStatusIrclog(w http.ResponseWriter, req *http.Request) {
+func (api *HTTP) handleStatusIrclog(w http.ResponseWriter, req *http.Request) {
 	lo, err := api.ircStore.FirstIndex()
 	if err != nil {
 		log.Printf("Could not get first index: %v", err)
@@ -144,7 +144,7 @@ func (api *HTTP) HandleStatusIrclog(w http.ResponseWriter, req *http.Request) {
 		prevOffset = 1
 	}
 
-	if err := Templates.ExecuteTemplate(w, "templates/statusirclog", struct {
+	if err := templates.ExecuteTemplate(w, "templates/statusirclog", struct {
 		Addr               string
 		First              uint64
 		Last               uint64
@@ -170,7 +170,7 @@ func (api *HTTP) HandleStatusIrclog(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (api *HTTP) HandleStatus(res http.ResponseWriter, req *http.Request) {
+func (api *HTTP) handleStatus(res http.ResponseWriter, req *http.Request) {
 	p, _ := api.peerStore.Peers()
 
 	// robustirc-rollingrestart wants a machine-readable version of the status.
@@ -236,13 +236,13 @@ func (api *HTTP) HandleStatus(res http.ResponseWriter, req *http.Request) {
 		CurrentLink:        "/status",
 	}
 
-	if err := Templates.ExecuteTemplate(res, "templates/status", args); err != nil {
+	if err := templates.ExecuteTemplate(res, "templates/status", args); err != nil {
 		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
 
-func (api *HTTP) HandleIrclog(w http.ResponseWriter, r *http.Request) {
+func (api *HTTP) handleIrclog(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.FormValue("sessionid"), 0, 64)
 	if err != nil || id == 0 {
 		http.Error(w, "Invalid session", http.StatusBadRequest)
@@ -294,7 +294,7 @@ func (api *HTTP) HandleIrclog(w http.ResponseWriter, r *http.Request) {
 		session,
 		messages,
 	}
-	if err := Templates.ExecuteTemplate(w, "templates/irclog", args); err != nil {
+	if err := templates.ExecuteTemplate(w, "templates/irclog", args); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

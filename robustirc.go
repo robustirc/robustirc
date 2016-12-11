@@ -2,9 +2,7 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha1"
 	"crypto/tls"
-	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -15,7 +13,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
 	"strings"
@@ -23,7 +20,6 @@ import (
 
 	"golang.org/x/net/http2"
 
-	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robustirc/bridge/tlsutil"
 	"github.com/robustirc/rafthttp"
@@ -34,7 +30,6 @@ import (
 	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/timesafeguard"
 
-	auth "github.com/abbot/go-http-auth"
 	"github.com/armon/go-metrics"
 	metrics_prometheus "github.com/armon/go-metrics/prometheus"
 	"github.com/hashicorp/raft"
@@ -265,42 +260,6 @@ func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
 	return tc, nil
 }
 
-// exitOnRecover is used to circumvent the recover handler that net/http
-// installs. We need to exit in order to get restarted by the init
-// system/supervisor and get into a clean state again.
-func exitOnRecover() {
-	if r := recover(); r != nil {
-		// This mimics go/src/net/http/server.go.
-		const size = 64 << 10
-		buf := make([]byte, size)
-		buf = buf[:runtime.Stack(buf, false)]
-		glog.Errorf("http: panic serving: %v\n%s", r, buf)
-		glog.Flush()
-		os.Exit(1)
-	}
-}
-
-func exitOnRecoverHandleFunc(h func(http.ResponseWriter, *http.Request)) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer exitOnRecover()
-		h(w, r)
-	})
-}
-
-func exitOnRecoverHandler(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer exitOnRecover()
-		h.ServeHTTP(w, r)
-	})
-}
-
-func exitOnRecoverHandle(h httprouter.Handle) httprouter.Handle {
-	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-		defer exitOnRecover()
-		h(w, r, ps)
-	}
-}
-
 func printDefault(f *flag.Flag) {
 	format := "  -%s=%s: %s\n"
 	if getter, ok := f.Value.(flag.Getter); ok {
@@ -390,9 +349,6 @@ func main() {
 	if *networkPassword == "" {
 		log.Fatalf("-network_password not set. You MUST protect your network.\n")
 	}
-	digest := sha1.New()
-	digest.Write([]byte(*networkPassword))
-	passwordHash := "{SHA}" + base64.StdEncoding.EncodeToString(digest.Sum(nil))
 
 	if *network == "" {
 		log.Fatalf("-network_name not set, but required.\n")
@@ -528,51 +484,12 @@ func main() {
 		node,
 		peerStore,
 		ircStore,
+		transport,
 		*network,
+		*networkPassword,
 		*raftDir,
-		*peerAddr)
-
-	privaterouter := httprouter.New()
-	privaterouter.Handler("GET", "/", exitOnRecoverHandleFunc(api.HandleStatus))
-	privaterouter.Handler("GET", "/status", exitOnRecoverHandleFunc(api.HandleStatus))
-	privaterouter.Handler("GET", "/status/getmessage", exitOnRecoverHandleFunc(api.HandleStatusGetMessage))
-	privaterouter.Handler("GET", "/status/sessions", exitOnRecoverHandleFunc(api.HandleStatusSessions))
-	privaterouter.Handler("GET", "/status/irclog", exitOnRecoverHandleFunc(api.HandleStatusIrclog))
-	privaterouter.Handler("GET", "/status/state", exitOnRecoverHandleFunc(api.HandleStatusState))
-	privaterouter.Handler("GET", "/irclog", exitOnRecoverHandleFunc(api.HandleIrclog))
-	privaterouter.Handler("POST", "/raft/*rest", exitOnRecoverHandler(transport))
-	privaterouter.Handler("POST", "/join", exitOnRecoverHandleFunc(api.HandleJoin))
-	privaterouter.Handler("POST", "/part", exitOnRecoverHandleFunc(api.HandlePart))
-	privaterouter.Handler("GET", "/snapshot", exitOnRecoverHandleFunc(api.HandleSnapshot))
-	privaterouter.Handler("GET", "/leader", exitOnRecoverHandleFunc(api.HandleLeader))
-	privaterouter.Handler("POST", "/quit", exitOnRecoverHandleFunc(api.HandleQuit))
-	privaterouter.Handler("GET", "/config", exitOnRecoverHandleFunc(api.HandleGetConfig))
-	privaterouter.Handler("POST", "/config", exitOnRecoverHandleFunc(api.HandlePostConfig))
-	privaterouter.Handler("POST", "/kill", exitOnRecoverHandleFunc(api.HandleKill))
-	privaterouter.Handler("GET", "/metrics", exitOnRecoverHandler(prometheus.Handler()))
-
-	publicrouter := httprouter.New()
-	publicrouter.Handle("POST", "/robustirc/v1/:sessionid", exitOnRecoverHandle(api.HandleCreateSession))
-	publicrouter.Handle("POST", "/robustirc/v1/:sessionid/message", exitOnRecoverHandle(api.HandlePostMessage))
-	publicrouter.Handle("GET", "/robustirc/v1/:sessionid/messages", exitOnRecoverHandle(api.HandleGetMessages))
-	publicrouter.Handle("DELETE", "/robustirc/v1/:sessionid", exitOnRecoverHandle(api.HandleDeleteSession))
-
-	a := auth.NewBasicAuthenticator("robustirc", func(user, realm string) string {
-		if user == "robustirc" {
-			return passwordHash
-		}
-		return ""
-	})
-
-	http.Handle("/robustirc/", publicrouter)
-
-	http.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if username := a.CheckAuth(r); username == "" {
-			a.RequireAuth(w, r)
-		} else {
-			privaterouter.ServeHTTP(w, r)
-		}
-	}))
+		*peerAddr,
+		http.DefaultServeMux)
 
 	srv := http.Server{Addr: *listen}
 	if err := http2.ConfigureServer(&srv, nil); err != nil {

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
-	"github.com/julienschmidt/httprouter"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/types"
 	"github.com/stapelberg/glog"
@@ -120,10 +119,10 @@ func (api *HTTP) getMessages(ctx context.Context, lastSeen types.RobustId, msgsc
 	}
 }
 
-func (api *HTTP) HandleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessionId string) {
 	// Avoid sessionOrProxy() because GetMessages can be answered on any raft
 	// node, it’s a read-only request.
-	session, err := api.session(r, ps)
+	session, err := api.session(r, sessionId)
 	if err != nil {
 		if err == ircserver.ErrSessionNotYetSeen {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -156,7 +155,7 @@ func (api *HTTP) HandleGetMessages(w http.ResponseWriter, r *http.Request, ps ht
 	willFlush := false
 	msgschan := make(chan []*types.RobustMessage)
 
-	sessionId := strconv.FormatInt(session.Id, 10)
+	sessionId = strconv.FormatInt(session.Id, 10)
 	ctx, cancel := context.WithCancel(r.Context())
 	// Cancel the helper goroutines we are about to start when this
 	// request handler returns.

@@ -12,7 +12,7 @@ import (
 	"github.com/robustirc/robustirc/types"
 )
 
-func (api *HTTP) HandleKill(w http.ResponseWriter, r *http.Request) {
+func (api *HTTP) handleKill(w http.ResponseWriter, r *http.Request) {
 	var body bytes.Buffer
 	r.Body = nopCloser{io.TeeReader(r.Body, &body)}
 	if err := r.ParseForm(); err != nil {

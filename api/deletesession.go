@@ -9,16 +9,10 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
-	"github.com/julienschmidt/httprouter"
 	"github.com/robustirc/robustirc/types"
 )
 
-func (api *HTTP) HandleDeleteSession(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	session, err := api.sessionOrProxy(w, r, ps)
-	if err != nil {
-		return
-	}
-
+func (api *HTTP) handleDeleteSession(w http.ResponseWriter, r *http.Request, session types.RobustId) {
 	type deleteSessionRequest struct {
 		Quitmessage string
 	}
