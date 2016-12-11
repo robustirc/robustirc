@@ -193,9 +193,9 @@ $(document).ready(function() {
 							<td><code>{{ $val.Session.Id | printf "0x%x" }}</code></td>
 							<td>{{ $val.NickWithFallback }}</td>
 							{{ if ne $val.TrustedBridge "" }}
-							<td><span title="{{ $key }}">{{ $val.TrustedBridge }}</span> → {{ $val.ForwardedFor }}</td>
+							<td><span title="{{ $val.RemoteAddr }}">{{ $val.TrustedBridge }}</span> → {{ $val.ForwardedFor }}</td>
 							{{ else }}
-							<td><span title="{{ $val.ForwardedFor }} (UNTRUSTED!)">{{ $key }}</span></td>
+							<td><span title="{{ $val.ForwardedFor }} (UNTRUSTED!)">{{ $val.RemoteAddr }}</span></td>
 							{{ end }}
 							<td>{{ $val.StartedAndRelative }}</td>
 							<td>{{ $val.UserAgent }}</td>

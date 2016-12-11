@@ -53,12 +53,14 @@ var (
 
 // GetMessageStats encapsulates information about a GetMessages request.
 type GetMessagesStats struct {
+	RemoteAddr    string
 	Session       types.RobustId
 	Nick          string
 	Started       time.Time
 	UserAgent     string
 	ForwardedFor  string
 	TrustedBridge string
+	cancel        func(superseded bool)
 }
 
 func (stats GetMessagesStats) NickWithFallback() string {
@@ -316,16 +318,19 @@ func pingMessage() *types.RobustMessage {
 	}
 }
 
-func setGetMessagesRequests(remoteAddr string, stats GetMessagesStats) {
+func setGetMessagesRequests(sessionId string, stats GetMessagesStats) {
 	getMessagesRequestsMu.Lock()
 	defer getMessagesRequestsMu.Unlock()
-	getMessagesRequests[remoteAddr] = stats
+	if old, ok := getMessagesRequests[sessionId]; ok {
+		old.cancel(true)
+	}
+	getMessagesRequests[sessionId] = stats
 }
 
-func deleteGetMessagesRequests(remoteAddr string) {
+func deleteGetMessagesRequests(sessionId string) {
 	getMessagesRequestsMu.Lock()
 	defer getMessagesRequestsMu.Unlock()
-	delete(getMessagesRequests, remoteAddr)
+	delete(getMessagesRequests, sessionId)
 }
 
 func copyGetMessagesRequests() map[string]GetMessagesStats {
@@ -354,15 +359,67 @@ func parseLastSeen(lastSeenStr string) (first int64, last int64, err error) {
 	return first, last, nil
 }
 
-func pingTicker(ctx context.Context, msgs chan<- []*types.RobustMessage) {
+func pingTicker(ctx context.Context, msgschan chan<- []*types.RobustMessage) {
 	ticker := time.NewTicker(pingInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			msgs <- []*types.RobustMessage{pingMessage()}
+			msgschan <- []*types.RobustMessage{pingMessage()}
 		case <-ctx.Done():
 			return
+		}
+	}
+}
+
+func getMessages(ctx context.Context, lastSeen types.RobustId, msgschan chan<- []*types.RobustMessage) {
+	var msgs []*types.RobustMessage
+
+	// With the following output messages stored for a session:
+	// Id                  Reply
+	// 1431542836610113945.1
+	// 1431542836610113945.2     |lastSeen|
+	// 1431542836610113945.3
+	// 1431542836691955391.1
+	// …when resuming, GetNext(1431542836610113945.2) will return
+	// 1431542836691955391.*, skipping the remaining messages with
+	// Id=1431542836610113945.
+	// Hence, we need to Get(1431542836610113945.2) to send
+	// 1431542836610113945.3 and following to the client.
+	if msgs, ok := ircServer.Get(lastSeen); ok && int(lastSeen.Reply) < len(msgs) {
+		select {
+		case <-ctx.Done():
+			return
+		case msgschan <- msgs[lastSeen.Reply:]:
+		}
+	}
+
+	for {
+		if msgs = ircServer.GetNext(ctx, lastSeen); len(msgs) == 0 {
+			if ctx.Err() != nil {
+				return
+			}
+			continue
+		}
+		// This check prevents replaying old messages in the scenario where
+		// the client has seen newer messages than the server, for example
+		// because the server is currently recovering from a snapshot after
+		// being restarted, or because the server’s network connection to
+		// the rest of the network is currently slow.
+		if msgs[0].Id.Id < lastSeen.Id {
+			glog.Warningf("lastSeen (%d) more recent than GetNext() result %d\n", lastSeen.Id, msgs[0].Id.Id)
+			glog.Warningf("This should only happen while the server is recovering from a snapshot\n")
+			glog.Warningf("The message in question is %v\n", msgs[0])
+			// Prevent busylooping while new messages are applied.
+			time.Sleep(250 * time.Millisecond)
+			continue
+		}
+
+		lastSeen = msgs[0].Id
+		select {
+		case <-ctx.Done():
+			return
+		case msgschan <- msgs:
 		}
 	}
 }
@@ -379,18 +436,6 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		}
 		return
 	}
-
-	rctx := r.Context()
-	remoteAddr := r.RemoteAddr
-	setGetMessagesRequests(remoteAddr, GetMessagesStats{
-		Session:       session,
-		Nick:          ircServer.GetNick(session),
-		Started:       time.Now(),
-		UserAgent:     r.Header.Get("User-Agent"),
-		ForwardedFor:  r.Header.Get("X-Forwarded-For"),
-		TrustedBridge: ircServer.TrustedBridge(r.Header.Get("X-Bridge-Auth")),
-	})
-	defer deleteGetMessagesRequests(remoteAddr)
 
 	lastSeen := ircServer.GetStartId(session)
 	if ls := r.FormValue("lastseen"); ls != "0.0" && ls != "" {
@@ -414,61 +459,50 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	var lastFlush time.Time
 	willFlush := false
 	msgschan := make(chan []*types.RobustMessage)
-	ctx, cancel := context.WithCancel(rctx)
-	go pingTicker(rctx, msgschan)
-	go func() {
-		var msgs []*types.RobustMessage
 
-		// With the following output messages stored for a session:
-		// Id                  Reply
-		// 1431542836610113945.1
-		// 1431542836610113945.2     |lastSeen|
-		// 1431542836610113945.3
-		// 1431542836691955391.1
-		// …when resuming, GetNext(1431542836610113945.2) will return
-		// 1431542836691955391.*, skipping the remaining messages with
-		// Id=1431542836610113945.
-		// Hence, we need to Get(1431542836610113945.2) to send
-		// 1431542836610113945.3 and following to the client.
-		if msgs, ok := ircServer.Get(lastSeen); ok && int(lastSeen.Reply) < len(msgs) {
-			msgschan <- msgs[lastSeen.Reply:]
+	sessionId := strconv.FormatInt(session.Id, 10)
+	ctx, cancel := context.WithCancel(r.Context())
+	// Cancel the helper goroutines we are about to start when this
+	// request handler returns.
+	wasSuperseded := false
+	cancelAll := func(superseded bool) {
+		if superseded {
+			// cancelAll will be called after the context cancellation
+			// via defer, so save that this GetMessages request was
+			// superseded.
+			wasSuperseded = true
 		}
-
-		for {
-			if ctx.Err() != nil {
-				close(msgschan)
-				return
-			}
-			msgs = ircServer.GetNext(ctx, lastSeen)
-			if len(msgs) == 0 {
-				continue
-			}
-			// This check prevents replaying old messages in the scenario where
-			// the client has seen newer messages than the server, for example
-			// because the server is currently recovering from a snapshot after
-			// being restarted, or because the server’s network connection to
-			// the rest of the network is currently slow.
-			if msgs[0].Id.Id < lastSeen.Id {
-				glog.Warningf("lastSeen (%d) more recent than GetNext() result %d\n", lastSeen.Id, msgs[0].Id.Id)
-				glog.Warningf("This should only happen while the server is recovering from a snapshot\n")
-				glog.Warningf("The message in question is %v\n", msgs[0])
-				// Prevent busylooping while new messages are applied.
-				time.Sleep(250 * time.Millisecond)
-				continue
-			}
-
-			lastSeen = msgs[0].Id
-			msgschan <- msgs
-		}
-	}()
-	defer func() {
 		cancel()
+		// Wake up the getMessages goroutine from its GetNext call
+		// to quickly free up resources.
 		ircServer.InterruptGetNext()
-		for _ = range msgschan {
+
+		if !wasSuperseded {
+			deleteGetMessagesRequests(sessionId)
 		}
-	}()
+	}
+
+	setGetMessagesRequests(sessionId, GetMessagesStats{
+		RemoteAddr:    r.RemoteAddr,
+		Session:       session,
+		Nick:          ircServer.GetNick(session),
+		Started:       time.Now(),
+		UserAgent:     r.Header.Get("User-Agent"),
+		ForwardedFor:  r.Header.Get("X-Forwarded-For"),
+		TrustedBridge: ircServer.TrustedBridge(r.Header.Get("X-Bridge-Auth")),
+		cancel:        cancelAll,
+	})
+
+	defer cancelAll(false)
+
+	go pingTicker(ctx, msgschan)
+	go getMessages(ctx, lastSeen, msgschan)
+
 	for {
 		select {
+		case <-ctx.Done():
+			return
+
 		case msgs := <-msgschan:
 			for _, msg := range msgs {
 				if msg.Type != types.RobustPing && !msg.InterestingFor[session.Id] {
