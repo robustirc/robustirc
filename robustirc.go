@@ -3,13 +3,11 @@ package main
 import (
 	"bytes"
 	"crypto/sha1"
-	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -26,16 +24,15 @@ import (
 	"golang.org/x/net/http2"
 
 	"github.com/julienschmidt/httprouter"
-	"github.com/kardianos/osext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robustirc/bridge/tlsutil"
 	"github.com/robustirc/rafthttp"
+	"github.com/robustirc/robustirc/api"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/outputstream"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/timesafeguard"
-	"github.com/robustirc/robustirc/types"
 
 	auth "github.com/abbot/go-http-auth"
 	"github.com/armon/go-metrics"
@@ -47,7 +44,6 @@ import (
 )
 
 const (
-	pingInterval           = 20 * time.Second
 	expireSessionsInterval = 10 * time.Second
 )
 
@@ -99,8 +95,6 @@ var (
 	peerStore *raft.JSONPeers
 	ircStore  *raft_store.LevelDBStore
 	ircServer *ircserver.IRCServer
-
-	executablehash = executableHash()
 
 	// Version is overwritten by Makefile.
 	Version = "unknown"
@@ -235,26 +229,6 @@ func joinMaster(addr string, peerStore *raft.JSONPeers) []string {
 	return p
 }
 
-func executableHash() string {
-	path, err := osext.Executable()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	h := sha256.New()
-	f, err := os.Open(path)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-
-	if _, err := io.Copy(h, f); err != nil {
-		log.Fatal(err)
-	}
-
-	return fmt.Sprintf("%.16x", h.Sum(nil))
-}
-
 // XXX(1.0): delete this function as users are expected to have upgraded.
 func deleteOldCompactionDatabases(tmpdir string) error {
 	dir, err := os.Open(tmpdir)
@@ -272,34 +246,6 @@ func deleteOldCompactionDatabases(tmpdir string) error {
 				return err
 			}
 		}
-	}
-	return nil
-}
-
-// applyMessage applies the specified message to the network via Raft.
-func applyMessage(msg *types.RobustMessage, timeout time.Duration) (raft.ApplyFuture, error) {
-	applyMu.Lock()
-	defer applyMu.Unlock()
-
-	msg.Id = ircServer.NewRobustMessageId()
-	msgbytes, err := json.Marshal(msg)
-	if err != nil {
-		return nil, err
-	}
-
-	return node.Apply(msgbytes, timeout), nil
-}
-
-func applyMessageWait(msg *types.RobustMessage, timeout time.Duration) error {
-	f, err := applyMessage(msg, timeout)
-	if err != nil {
-		return err
-	}
-	if err := f.Error(); err != nil {
-		return err
-	}
-	if err, ok := f.Response().(error); ok {
-		return err
 	}
 	return nil
 }
@@ -577,30 +523,39 @@ func main() {
 		}
 	}()
 
+	api := api.NewHTTP(
+		ircServer,
+		node,
+		peerStore,
+		ircStore,
+		*network,
+		*raftDir,
+		*peerAddr)
+
 	privaterouter := httprouter.New()
-	privaterouter.Handler("GET", "/", exitOnRecoverHandleFunc(handleStatus))
-	privaterouter.Handler("GET", "/status", exitOnRecoverHandleFunc(handleStatus))
-	privaterouter.Handler("GET", "/status/getmessage", exitOnRecoverHandleFunc(handleStatusGetMessage))
-	privaterouter.Handler("GET", "/status/sessions", exitOnRecoverHandleFunc(handleStatusSessions))
-	privaterouter.Handler("GET", "/status/irclog", exitOnRecoverHandleFunc(handleStatusIrclog))
-	privaterouter.Handler("GET", "/status/state", exitOnRecoverHandleFunc(handleStatusState))
-	privaterouter.Handler("GET", "/irclog", exitOnRecoverHandleFunc(handleIrclog))
+	privaterouter.Handler("GET", "/", exitOnRecoverHandleFunc(api.HandleStatus))
+	privaterouter.Handler("GET", "/status", exitOnRecoverHandleFunc(api.HandleStatus))
+	privaterouter.Handler("GET", "/status/getmessage", exitOnRecoverHandleFunc(api.HandleStatusGetMessage))
+	privaterouter.Handler("GET", "/status/sessions", exitOnRecoverHandleFunc(api.HandleStatusSessions))
+	privaterouter.Handler("GET", "/status/irclog", exitOnRecoverHandleFunc(api.HandleStatusIrclog))
+	privaterouter.Handler("GET", "/status/state", exitOnRecoverHandleFunc(api.HandleStatusState))
+	privaterouter.Handler("GET", "/irclog", exitOnRecoverHandleFunc(api.HandleIrclog))
 	privaterouter.Handler("POST", "/raft/*rest", exitOnRecoverHandler(transport))
-	privaterouter.Handler("POST", "/join", exitOnRecoverHandleFunc(handleJoin))
-	privaterouter.Handler("POST", "/part", exitOnRecoverHandleFunc(handlePart))
-	privaterouter.Handler("GET", "/snapshot", exitOnRecoverHandleFunc(handleSnapshot))
-	privaterouter.Handler("GET", "/leader", exitOnRecoverHandleFunc(handleLeader))
-	privaterouter.Handler("POST", "/quit", exitOnRecoverHandleFunc(handleQuit))
-	privaterouter.Handler("GET", "/config", exitOnRecoverHandleFunc(handleGetConfig))
-	privaterouter.Handler("POST", "/config", exitOnRecoverHandleFunc(handlePostConfig))
-	privaterouter.Handler("POST", "/kill", exitOnRecoverHandleFunc(handleKill))
+	privaterouter.Handler("POST", "/join", exitOnRecoverHandleFunc(api.HandleJoin))
+	privaterouter.Handler("POST", "/part", exitOnRecoverHandleFunc(api.HandlePart))
+	privaterouter.Handler("GET", "/snapshot", exitOnRecoverHandleFunc(api.HandleSnapshot))
+	privaterouter.Handler("GET", "/leader", exitOnRecoverHandleFunc(api.HandleLeader))
+	privaterouter.Handler("POST", "/quit", exitOnRecoverHandleFunc(api.HandleQuit))
+	privaterouter.Handler("GET", "/config", exitOnRecoverHandleFunc(api.HandleGetConfig))
+	privaterouter.Handler("POST", "/config", exitOnRecoverHandleFunc(api.HandlePostConfig))
+	privaterouter.Handler("POST", "/kill", exitOnRecoverHandleFunc(api.HandleKill))
 	privaterouter.Handler("GET", "/metrics", exitOnRecoverHandler(prometheus.Handler()))
 
 	publicrouter := httprouter.New()
-	publicrouter.Handle("POST", "/robustirc/v1/:sessionid", exitOnRecoverHandle(handleCreateSession))
-	publicrouter.Handle("POST", "/robustirc/v1/:sessionid/message", exitOnRecoverHandle(handlePostMessage))
-	publicrouter.Handle("GET", "/robustirc/v1/:sessionid/messages", exitOnRecoverHandle(handleGetMessages))
-	publicrouter.Handle("DELETE", "/robustirc/v1/:sessionid", exitOnRecoverHandle(handleDeleteSession))
+	publicrouter.Handle("POST", "/robustirc/v1/:sessionid", exitOnRecoverHandle(api.HandleCreateSession))
+	publicrouter.Handle("POST", "/robustirc/v1/:sessionid/message", exitOnRecoverHandle(api.HandlePostMessage))
+	publicrouter.Handle("GET", "/robustirc/v1/:sessionid/messages", exitOnRecoverHandle(api.HandleGetMessages))
+	publicrouter.Handle("DELETE", "/robustirc/v1/:sessionid", exitOnRecoverHandle(api.HandleDeleteSession))
 
 	a := auth.NewBasicAuthenticator("robustirc", func(user, realm string) string {
 		if user == "robustirc" {
@@ -678,7 +633,7 @@ func main() {
 			}
 
 			for _, msg := range ircServer.ExpireSessions() {
-				if err := applyMessageWait(msg, 10*time.Second); err != nil {
+				if err := api.ApplyMessageWait(msg, 10*time.Second); err != nil {
 					log.Printf("Apply(): %v", err)
 				}
 			}
