@@ -144,10 +144,6 @@ type Session struct {
 
 	Server bool
 
-	// The current IRC message id at the time when the session was started.
-	// This is used in handleGetMessages to skip uninteresting messages.
-	startId types.RobustId
-
 	// The last ClientMessageId we got.
 	lastClientMessageId uint64
 
@@ -317,7 +313,6 @@ func (i *IRCServer) CreateSession(id types.RobustId, auth string) error {
 	i.sessions[id] = &Session{
 		Id:           id,
 		auth:         auth,
-		startId:      i.output.LastSeen(),
 		Channels:     make(map[lcChan]bool),
 		invitedTo:    make(map[lcChan]bool),
 		LastActivity: time.Unix(0, id.Id),
@@ -614,17 +609,6 @@ func (i *IRCServer) GetNick(sessionid types.RobustId) string {
 		return s.Nick
 	}
 	return ""
-}
-
-// GetStartId returns the first message id that could possibly be interesting
-// for |sessionid| or the zero id.
-func (i *IRCServer) GetStartId(sessionid types.RobustId) types.RobustId {
-	i.sessionsMu.RLock()
-	defer i.sessionsMu.RUnlock()
-	if s, ok := i.sessions[sessionid]; ok {
-		return s.startId
-	}
-	return types.RobustId{}
 }
 
 // ThrottleUntil returns the last activity of |sessionid| or the zero time.

@@ -47,7 +47,7 @@ message Snapshot {
     string svid = 13;
     string pass = 14;
     bool server = 15;
-    RobustId start_id = 16;
+    reserved 16;
     uint64 last_client_message_id = 17;
     IRCPrefix irc_prefix = 18;
     Timestamp last_non_ping = 19;

@@ -132,7 +132,7 @@ func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessi
 		return
 	}
 
-	lastSeen := api.ircServer.GetStartId(session)
+	lastSeen := session
 	if ls := r.FormValue("lastseen"); ls != "0.0" && ls != "" {
 		first, last, err := parseLastSeen(ls)
 		if err != nil {
