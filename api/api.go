@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robustirc/rafthttp"
 	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/outputstream"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/types"
@@ -73,6 +74,7 @@ type HTTP struct {
 	raftNode        *raft.Raft
 	peerStore       *raft.JSONPeers
 	ircStore        *raft_store.LevelDBStore
+	output          *outputstream.OutputStream
 	transport       *rafthttp.HTTPTransport
 	network         string
 	networkPassword string
@@ -84,12 +86,13 @@ type HTTP struct {
 	getMessagesRequestsMu sync.RWMutex
 }
 
-func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, peerStore *raft.JSONPeers, ircStore *raft_store.LevelDBStore, transport *rafthttp.HTTPTransport, network string, networkPassword string, raftDir string, peerAddr string, mux *http.ServeMux) *HTTP {
+func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, peerStore *raft.JSONPeers, ircStore *raft_store.LevelDBStore, output *outputstream.OutputStream, transport *rafthttp.HTTPTransport, network string, networkPassword string, raftDir string, peerAddr string, mux *http.ServeMux) *HTTP {
 	api := &HTTP{
 		ircServer:           ircServer,
 		raftNode:            raftNode,
 		peerStore:           peerStore,
 		ircStore:            ircStore,
+		output:              output,
 		transport:           transport,
 		network:             network,
 		networkPassword:     networkPassword,

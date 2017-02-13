@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/types"
 
@@ -16,7 +14,7 @@ import (
 )
 
 func stdIRCServer() (*IRCServer, map[string]types.RobustId) {
-	i := NewIRCServer("", "robustirc.net", time.Unix(0, 1481144012969203276))
+	i := NewIRCServer("robustirc.net", time.Unix(0, 1481144012969203276))
 	i.Config = config.Network{
 		IRC: config.IRC{
 			Operators: []config.IRCOp{
@@ -86,7 +84,7 @@ func mustMatchMsg(t *testing.T, got *Replyctx, want string) {
 }
 
 func TestSessionInitialization(t *testing.T) {
-	i := NewIRCServer("", "robustirc.net", time.Now())
+	i := NewIRCServer("robustirc.net", time.Now())
 	i.Config = config.Network{}
 
 	id := types.RobustId{Id: time.Now().UnixNano()}
@@ -167,7 +165,7 @@ func TestSessionInitialization(t *testing.T) {
 }
 
 func welcomeMustContain(t *testing.T, passMsg, privMsg string) {
-	i := NewIRCServer("", "robustirc.net", time.Now())
+	i := NewIRCServer("robustirc.net", time.Now())
 	i.Config = config.Network{
 		IRC: config.IRC{
 			Operators: []config.IRCOp{
@@ -235,54 +233,6 @@ func TestNickServAuth(t *testing.T) {
 		":robustirc.net 381 secure :You are now an IRC operator")
 }
 
-// TestPlumbing exercises the code paths for storing messages in outputstream
-// and getting them from multiple sessions.
-func TestPlumbing(t *testing.T) {
-	i, ids := stdIRCServer()
-
-	msgid := types.RobustId{Id: time.Now().UnixNano()}
-	replies := i.ProcessMessage(msgid, ids["secure"], irc.ParseMessage("JOIN #test"))
-	i.SendMessages(replies, ids["secure"], msgid.Id)
-	got, ok := i.Get(msgid)
-	if !ok {
-		t.Fatalf("_, ok := Get(%d); got false, want true", msgid.Id)
-	}
-	if len(got) != len(replies.Messages) {
-		t.Fatalf("len(got): got %d, want %d", len(got), len(replies.Messages))
-	}
-	if got[0].Data != string(replies.Messages[0].Data) {
-		t.Fatalf("message 0: got %v, want %v", got[0].Data, string(replies.Messages[0].Data))
-	}
-
-	nextid := types.RobustId{Id: time.Now().UnixNano()}
-	replies = i.ProcessMessage(nextid, ids["secure"], irc.ParseMessage("JOIN #foobar"))
-	i.SendMessages(replies, ids["secure"], nextid.Id)
-	got = i.GetNext(context.TODO(), msgid)
-	if !ok {
-		t.Fatalf("_, ok := Get(%d); got false, want true", msgid.Id)
-	}
-	if len(got) != len(replies.Messages) {
-		t.Fatalf("len(got): got %d, want %d", len(got), len(replies.Messages))
-	}
-	if got[0].Data != replies.Messages[0].Data {
-		t.Fatalf("message 0: got %v, want %v", got[0].Data, replies.Messages[0].Data)
-	}
-
-	if got[0].InterestingFor[ids["mero"].Id] {
-		t.Fatalf("sMero interestedIn JOIN to #foobar, expected false")
-	}
-
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #baz"))
-
-	msgid = types.RobustId{Id: time.Now().UnixNano()}
-	replies = i.ProcessMessage(msgid, ids["secure"], irc.ParseMessage("JOIN #baz"))
-	i.SendMessages(replies, ids["secure"], msgid.Id)
-	got, _ = i.Get(msgid)
-	if !got[0].InterestingFor[ids["mero"].Id] {
-		t.Fatalf("sMero not interestedIn JOIN to #baz, expected true")
-	}
-}
-
 func mustMatchInterestedMsgs(t *testing.T, i *IRCServer, msg *irc.Message, msgs []*types.RobustMessage, sessions []types.RobustId, want []bool) {
 	if len(want) != len(sessions) {
 		panic("bug: len(want) != len(sessions)")
@@ -317,12 +267,23 @@ func mustMatchInterestedMsgs(t *testing.T, i *IRCServer, msg *irc.Message, msgs 
 	}
 }
 
+func robustMessagesFromReply(replies *Replyctx) []*types.RobustMessage {
+	converted := make([]*types.RobustMessage, len(replies.Messages))
+	for idx, msg := range replies.Messages {
+		converted[idx] = &types.RobustMessage{
+			Id:             msg.Id,
+			Type:           types.RobustIRCToClient,
+			Data:           msg.Data,
+			InterestingFor: msg.InterestingFor,
+		}
+	}
+	return converted
+}
+
 func mustMatchInterested(t *testing.T, i *IRCServer, sessionid types.RobustId, msg *irc.Message, sessions []types.RobustId, want []bool) {
 	msgid := types.RobustId{Id: time.Now().UnixNano()}
 	replies := i.ProcessMessage(msgid, sessionid, msg)
-	i.SendMessages(replies, sessionid, msgid.Id)
-	msgs, _ := i.Get(msgid)
-	mustMatchInterestedMsgs(t, i, msg, msgs, sessions, want)
+	mustMatchInterestedMsgs(t, i, msg, robustMessagesFromReply(replies), sessions, want)
 }
 
 func TestInterestedIn(t *testing.T) {
@@ -400,13 +361,11 @@ func TestInterestedInDelayed(t *testing.T) {
 	msg := irc.ParseMessage("NICK secore")
 	msgid := types.RobustId{Id: time.Now().UnixNano()}
 	replies := i.ProcessMessage(msgid, ids["secure"], msg)
-	i.SendMessages(replies, ids["secure"], msgid.Id)
-	msgs, _ := i.Get(msgid)
 
 	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("PART #test"))
 
 	mustMatchInterestedMsgs(t, i,
-		msg, msgs,
+		msg, robustMessagesFromReply(replies),
 		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{true, true, false})
 }
@@ -420,8 +379,7 @@ func TestInterestedInInvite(t *testing.T) {
 	msg := irc.ParseMessage("INVITE xeen #test")
 	msgid := types.RobustId{Id: time.Now().UnixNano()}
 	replies := i.ProcessMessage(msgid, ids["secure"], msg)
-	i.SendMessages(replies, ids["secure"], msgid.Id)
-	msgs, _ := i.Get(msgid)
+	msgs := robustMessagesFromReply(replies)
 
 	mustMatchIrcmsgs(t,
 		&Replyctx{Messages: msgs},
@@ -463,8 +421,7 @@ func TestInterestedInKill(t *testing.T) {
 	msg := irc.ParseMessage("KILL secure :bleh")
 	msgid := types.RobustId{Id: time.Now().UnixNano()}
 	replies := i.ProcessMessage(msgid, ids["mero"], msg)
-	i.SendMessages(replies, ids["mero"], msgid.Id)
-	msgs, _ := i.Get(msgid)
+	msgs := robustMessagesFromReply(replies)
 
 	mustMatchIrcmsgs(t,
 		replies,
@@ -689,10 +646,7 @@ func TestKill(t *testing.T) {
 			irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae KILL sECuRE :ircd!robust/0x13b5aa0a2bcfb8ae!mero (die now, will you?)"),
 			irc.ParseMessage("ERROR :Closing Link: sECuRE[robust/0x13b5aa0a2bcfb8ad] (Killed (mero (die now, will you?)))"),
 		})
-	// SendMessages will actually delete the session, as it may still be
-	// required within SendMessages to determine where a message should be sent
-	// to (the QUIT message itself, notably).
-	i.SendMessages(replies, ids["secure"], time.Now().UnixNano())
+	i.MaybeDeleteSession(ids["secure"])
 
 	if _, err := i.GetSession(ids["secure"]); err == nil {
 		t.Fatalf("GetSession(%v) returned a session after KILL", ids["secure"])
@@ -1939,7 +1893,7 @@ func TestCaptchaLogin(t *testing.T) {
 }
 
 func TestSessionLimit(t *testing.T) {
-	i := NewIRCServer("", "robustirc.net", time.Now())
+	i := NewIRCServer("robustirc.net", time.Now())
 	i.Config = config.Network{
 		MaxSessions: 1,
 	}

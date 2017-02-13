@@ -452,8 +452,7 @@ func TestServerSvsjoin(t *testing.T) {
 	msg := irc.ParseMessage(":NickServ SVSJOIN xeen #TEST")
 	msgid := types.RobustId{Id: time.Now().UnixNano()}
 	reply := i.ProcessMessage(msgid, ids["services"], msg)
-	i.SendMessages(reply, ids["services"], msgid.Id)
-	msgs, _ := i.Get(msgid)
+	msgs := robustMessagesFromReply(reply)
 
 	mustMatchIrcmsgs(t,
 		&Replyctx{Messages: msgs},

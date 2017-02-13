@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/outputstream"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/types"
 	"github.com/sorcix/irc"
@@ -34,7 +35,29 @@ type FSM struct {
 	lastSnapshotState map[uint64][]byte
 }
 
-func applyRobustMessage(msg *types.RobustMessage, i *ircserver.IRCServer) error {
+// sendMessages appends the specified batch of messages to the output,
+// marking them as a response to the incoming message with id 'id' and
+// associating them with session 'session'. IRC clients will
+// eventually receive these messages by calling GetNext.
+func sendMessages(reply *ircserver.Replyctx, session types.RobustId, id int64, o *outputstream.OutputStream) {
+	if len(reply.Messages) == 0 || o == nil {
+		return
+	}
+
+	converted := make([]outputstream.Message, len(reply.Messages))
+	for idx, msg := range reply.Messages {
+		converted[idx] = outputstream.Message{
+			Id:             msg.Id,
+			Data:           msg.Data,
+			InterestingFor: msg.InterestingFor,
+		}
+	}
+	if err := o.Add(converted); err != nil {
+		log.Panicf("Could not add messages to outputstream: %v\n", err)
+	}
+}
+
+func applyRobustMessage(msg *types.RobustMessage, i *ircserver.IRCServer, o *outputstream.OutputStream) error {
 	switch msg.Type {
 	case types.RobustMessageOfDeath:
 		// To prevent the message from being accepted again.
@@ -47,7 +70,9 @@ func applyRobustMessage(msg *types.RobustMessage, i *ircserver.IRCServer) error 
 		if _, err := i.GetSession(msg.Session); err == nil {
 			// TODO(secure): overwrite QUIT messages for services with an faq entry explaining that they are not robust yet.
 			reply := i.ProcessMessage(msg.Id, msg.Session, irc.ParseMessage("QUIT :"+string(msg.Data)))
-			i.SendMessages(reply, msg.Session, msg.Id.Id)
+			i.SetLastProcessed(types.RobustId{Id: msg.Id.Id})
+			sendMessages(reply, msg.Session, msg.Id.Id, o)
+			i.MaybeDeleteSession(msg.Session)
 		}
 
 	case types.RobustIRCFromClient:
@@ -58,7 +83,9 @@ func applyRobustMessage(msg *types.RobustMessage, i *ircserver.IRCServer) error 
 		} else {
 			ircmsg := irc.ParseMessage(msg.Data)
 			reply := i.ProcessMessage(msg.Id, msg.Session, ircmsg)
-			i.SendMessages(reply, msg.Session, msg.Session.Id)
+			i.SetLastProcessed(types.RobustId{Id: msg.Session.Id})
+			sendMessages(reply, msg.Session, msg.Session.Id, o)
+			i.MaybeDeleteSession(msg.Session)
 		}
 
 	case types.RobustConfig:
@@ -113,7 +140,7 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		}
 	}()
 
-	err := applyRobustMessage(&msg, ircServer)
+	err := applyRobustMessage(&msg, ircServer, outputStream)
 
 	appliedMessages.WithLabelValues(msg.Type.String()).Inc()
 
@@ -154,8 +181,7 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 
 	compactionEnd := compactionStart.Add(-7 * 24 * time.Hour)
 
-	tmpServer := ircserver.NewIRCServer("", "testnetwork", time.Now())
-	defer tmpServer.Close()
+	tmpServer := ircserver.NewIRCServer("testnetwork", time.Now())
 	if oldState, ok := fsm.lastSnapshotState[first-1]; !ok {
 		if first == 1 {
 			// This is the first snapshot which this RobustIRC network
@@ -206,11 +232,11 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 			break
 		}
 
-		applyRobustMessage(&parsed, tmpServer)
+		applyRobustMessage(&parsed, tmpServer, nil)
 
 		if !fsm.skipDeletionForCanary {
 			// TODO: make the following more efficient, we can whack out the entire range at once.
-			if err := ircServer.Delete(parsed.Id); err != nil {
+			if err := outputStream.Delete(parsed.Id); err != nil {
 				log.Panicf("Could not delete outputstream message: %v\n", err)
 			}
 			fsm.ircstore.DeleteRange(i, i)
@@ -254,10 +280,15 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 		log.Fatal(err)
 	}
 	fsm.ircstore = ircStore
-	if err := ircServer.Close(); err != nil {
+	if err := outputStream.Close(); err != nil {
 		glog.Error(err)
 	}
-	ircServer = ircserver.NewIRCServer(*raftDir, *network, time.Now())
+
+	ircServer = ircserver.NewIRCServer(*network, time.Now())
+	outputStream, err = outputstream.NewOutputStream(*raftDir)
+	if err != nil {
+		log.Fatal(err)
+	}
 	decoder := json.NewDecoder(snap)
 	for {
 		var entry raft.Log

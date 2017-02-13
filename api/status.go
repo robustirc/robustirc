@@ -271,9 +271,9 @@ func (api *HTTP) handleIrclog(w http.ResponseWriter, r *http.Request) {
 		if msg.Session.Id == session.Id {
 			messages = append(messages, &msg)
 		}
-		output, ok := api.ircServer.Get(msg.Id)
+		output, ok := api.output.Get(msg.Id)
 		if ok {
-			for _, msg := range output {
+			for _, msg := range outputToRobustMessages(output) {
 				if !msg.InterestingFor[session.Id] {
 					continue
 				}

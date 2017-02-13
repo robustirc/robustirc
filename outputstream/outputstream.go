@@ -88,7 +88,7 @@ func NewOutputStream(tmpdir string) (*OutputStream, error) {
 		messagesCache: make(map[uint64]*messageBatch),
 	}
 	os.newMessage = sync.NewCond(&os.messagesMu)
-	return os, os.Reset()
+	return os, os.reset()
 }
 
 func (o *OutputStream) Close() error {
@@ -102,7 +102,7 @@ func (o *OutputStream) Close() error {
 }
 
 // Reset deletes all messages.
-func (os *OutputStream) Reset() error {
+func (os *OutputStream) reset() error {
 	var key [8]byte
 
 	os.messagesMu.Lock()

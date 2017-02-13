@@ -12,6 +12,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/outputstream"
 	"github.com/robustirc/robustirc/types"
 	"github.com/stapelberg/glog"
 )
@@ -67,8 +68,21 @@ func (api *HTTP) pingTicker(ctx context.Context, msgschan chan<- []*types.Robust
 	}
 }
 
+func outputToRobustMessages(msgs []outputstream.Message) []*types.RobustMessage {
+	result := make([]*types.RobustMessage, len(msgs))
+	for idx, msg := range msgs {
+		result[idx] = &types.RobustMessage{
+			Id:             msg.Id,
+			Type:           types.RobustIRCToClient,
+			Data:           msg.Data,
+			InterestingFor: msg.InterestingFor,
+		}
+	}
+	return result
+}
+
 func (api *HTTP) getMessages(ctx context.Context, lastSeen types.RobustId, msgschan chan<- []*types.RobustMessage) {
-	var msgs []*types.RobustMessage
+	var msgs []outputstream.Message
 
 	// With the following output messages stored for a session:
 	// Id                  Reply
@@ -81,16 +95,16 @@ func (api *HTTP) getMessages(ctx context.Context, lastSeen types.RobustId, msgsc
 	// Id=1431542836610113945.
 	// Hence, we need to Get(1431542836610113945.2) to send
 	// 1431542836610113945.3 and following to the client.
-	if msgs, ok := api.ircServer.Get(lastSeen); ok && int(lastSeen.Reply) < len(msgs) {
+	if msgs, ok := api.output.Get(lastSeen); ok && int(lastSeen.Reply) < len(msgs) {
 		select {
 		case <-ctx.Done():
 			return
-		case msgschan <- msgs[lastSeen.Reply:]:
+		case msgschan <- outputToRobustMessages(msgs[lastSeen.Reply:]):
 		}
 	}
 
 	for {
-		if msgs = api.ircServer.GetNext(ctx, lastSeen); len(msgs) == 0 {
+		if msgs = api.output.GetNext(ctx, lastSeen); len(msgs) == 0 {
 			if ctx.Err() != nil {
 				return
 			}
@@ -114,7 +128,7 @@ func (api *HTTP) getMessages(ctx context.Context, lastSeen types.RobustId, msgsc
 		select {
 		case <-ctx.Done():
 			return
-		case msgschan <- msgs:
+		case msgschan <- outputToRobustMessages(msgs):
 		}
 	}
 }
@@ -170,7 +184,7 @@ func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessi
 		cancel()
 		// Wake up the getMessages goroutine from its GetNext call
 		// to quickly free up resources.
-		api.ircServer.InterruptGetNext()
+		api.output.InterruptGetNext()
 
 		if !wasSuperseded {
 			api.deleteGetMessagesRequests(sessionId)

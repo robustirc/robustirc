@@ -116,7 +116,7 @@ func canary(fsm raft.FSM, statePath string) {
 		if ircmsg.Command == irc.PING || ircmsg.Command == irc.PONG {
 			continue
 		}
-		vmsgs, _ := ircServer.Get(nmsg.Id)
+		vmsgs, _ := outputStream.Get(nmsg.Id)
 		cm := canaryMessageState{
 			Id:        idx,
 			Session:   nmsg.Session.Id,

@@ -10,13 +10,19 @@ import (
 
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/outputstream"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/types"
 	"github.com/sorcix/irc"
 )
 
 func createIrcServer(tempdir string) (*raft_store.LevelDBStore, *raft_store.LevelDBStore, FSM, error) {
-	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	var err error
+	outputStream, err = outputstream.NewOutputStream("")
+	if err != nil {
+		return nil, nil, FSM{}, err
+	}
 	flag.Set("raftdir", tempdir)
 
 	logstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "raftlog"), false)
@@ -94,15 +100,12 @@ func TestSerialization(t *testing.T) {
 		fsm.Apply(log)
 	}
 
-	msg, ok := ircServer.Get(types.RobustId{Id: 10})
+	msg, ok := outputStream.Get(types.RobustId{Id: 10})
 	if !ok {
 		t.Fatalf("JOIN message did not result in any output")
 	}
 	joinFound := false
 	for _, msg := range msg {
-		if msg.Type != types.RobustIRCToClient {
-			continue
-		}
 		ircmsg := irc.ParseMessage(string(msg.Data))
 		if ircmsg.Command != irc.JOIN {
 			continue

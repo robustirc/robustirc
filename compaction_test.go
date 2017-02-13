@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/outputstream"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/types"
 	"github.com/stapelberg/glog"
@@ -106,7 +107,9 @@ func restore(fsm raft.FSM, fss raft.SnapshotStore, numLogs uint64) error {
 // makes sure the state matches expectations. The other test functions directly
 // test what should be compacted.
 func TestCompaction(t *testing.T) {
-	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
+	var err error
+	outputStream, err = outputstream.NewOutputStream("")
 
 	tempdir, err := ioutil.TempDir("", "robust-test-")
 	if err != nil {
@@ -170,7 +173,7 @@ func TestCompaction(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 
 	if err := restore(&fsm, fss, uint64(len(logs))); err != nil {
 		t.Fatal(err)
@@ -196,7 +199,7 @@ func TestCompaction(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ircServer = ircserver.NewIRCServer("", "testnetwork", time.Now())
+	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 
 	if err := restore(&fsm, fss, uint64(len(logs))); err != nil {
 		t.Fatal(err)
