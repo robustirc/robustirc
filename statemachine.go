@@ -17,8 +17,8 @@ import (
 	"github.com/robustirc/robustirc/outputstream"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/types"
-	"github.com/sorcix/irc"
 	"github.com/stapelberg/glog"
+	"github.com/stapelberg/irc"
 )
 
 type FSM struct {

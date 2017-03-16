@@ -125,7 +125,7 @@ func TestMessageOfDeath(t *testing.T) {
 	go func() {
 		for msg := range session.Messages {
 			if !strings.HasPrefix(msg, ":mod!1@") ||
-				!strings.HasSuffix(msg, " JOIN :#mod") {
+				!strings.HasSuffix(msg, " JOIN #mod") {
 				continue
 			}
 			select {
