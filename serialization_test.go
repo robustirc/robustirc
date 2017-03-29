@@ -13,7 +13,7 @@ import (
 	"github.com/robustirc/robustirc/outputstream"
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/types"
-	"github.com/stapelberg/irc"
+	"gopkg.in/sorcix/irc.v2"
 )
 
 func createIrcServer(tempdir string) (*raft_store.LevelDBStore, *raft_store.LevelDBStore, FSM, error) {

@@ -25,7 +25,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/types"
-	"github.com/stapelberg/irc"
+	"gopkg.in/sorcix/irc.v2"
 )
 
 const (

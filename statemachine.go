@@ -18,7 +18,7 @@ import (
 	"github.com/robustirc/robustirc/raft_store"
 	"github.com/robustirc/robustirc/types"
 	"github.com/stapelberg/glog"
-	"github.com/stapelberg/irc"
+	"gopkg.in/sorcix/irc.v2"
 )
 
 type FSM struct {

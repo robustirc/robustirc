@@ -17,7 +17,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/types"
-	"github.com/stapelberg/irc"
+	"gopkg.in/sorcix/irc.v2"
 
 	pb "github.com/robustirc/robustirc/proto"
 )

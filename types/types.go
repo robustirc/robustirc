@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stapelberg/irc"
+	"gopkg.in/sorcix/irc.v2"
 )
 
 type RobustId struct {
