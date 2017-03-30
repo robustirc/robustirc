@@ -7,8 +7,8 @@ import (
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/outputstream"
 	"github.com/robustirc/robustirc/types"
-	"gopkg.in/sorcix/irc.v2"
 	"golang.org/x/net/context"
+	"gopkg.in/sorcix/irc.v2"
 )
 
 // TestPlumbing exercises the code paths for storing messages in outputstream
