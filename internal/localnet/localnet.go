@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/robustirc/internal/health"
-	"github.com/robustirc/robustirc/util"
+	"github.com/robustirc/internal/robustnet"
 )
 
 func help(binary string) error {
@@ -129,7 +129,7 @@ func (l *localnet) Servers() []string {
 }
 
 func (l *localnet) SetConfig(config string) error {
-	return util.SetNetworkConfig(l.Servers(), config, l.NetworkPassword)
+	return robustnet.SetConfig(l.Servers(), config, l.NetworkPassword)
 }
 
 func (l *localnet) StartIRCServer(singlenode bool) (*exec.Cmd, string, string) {
