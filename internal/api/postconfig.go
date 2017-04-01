@@ -11,7 +11,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/internal/config"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 )
 
 func (api *HTTP) configRevision() uint64 {
@@ -26,8 +26,8 @@ func (api *HTTP) applyConfig(revision uint64, body string) error {
 		return fmt.Errorf("Revision mismatch (got %d, want %d). Try again.", got, want)
 	}
 
-	msg := &types.RobustMessage{
-		Type:     types.RobustConfig,
+	msg := &robust.Message{
+		Type:     robust.Config,
 		Data:     body,
 		Revision: revision + 1,
 	}

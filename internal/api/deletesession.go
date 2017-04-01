@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 )
 
-func (api *HTTP) handleDeleteSession(w http.ResponseWriter, r *http.Request, session types.RobustId) {
+func (api *HTTP) handleDeleteSession(w http.ResponseWriter, r *http.Request, session robust.Id) {
 	var req struct {
 		Quitmessage string
 	}
@@ -29,9 +29,9 @@ func (api *HTTP) handleDeleteSession(w http.ResponseWriter, r *http.Request, ses
 		return
 	}
 
-	msg := &types.RobustMessage{
+	msg := &robust.Message{
 		Session: session,
-		Type:    types.RobustDeleteSession,
+		Type:    robust.DeleteSession,
 		Data:    req.Quitmessage,
 	}
 	if err := api.applyMessageWait(msg, 10*time.Second); err != nil {

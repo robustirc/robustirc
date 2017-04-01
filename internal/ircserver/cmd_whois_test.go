@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 
 	"gopkg.in/sorcix/irc.v2"
 )
@@ -13,8 +13,8 @@ func TestIdle(t *testing.T) {
 	i, ids := stdIRCServer()
 
 	joinTime := time.Now()
-	msg := types.RobustMessage{
-		Id:      types.RobustId{Id: joinTime.UnixNano()},
+	msg := robust.Message{
+		Id:      robust.Id{Id: joinTime.UnixNano()},
 		Session: ids["mero"],
 		Data:    "JOIN #test",
 	}
@@ -31,8 +31,8 @@ func TestIdle(t *testing.T) {
 	}
 
 	pingTime := time.Now()
-	msg = types.RobustMessage{
-		Id:      types.RobustId{Id: pingTime.UnixNano()},
+	msg = robust.Message{
+		Id:      robust.Id{Id: pingTime.UnixNano()},
 		Session: ids["mero"],
 		Data:    "PING :foo",
 	}
@@ -52,11 +52,11 @@ func TestWhois(t *testing.T) {
 	i, ids := stdIRCServer()
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("WHOIS bero")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("WHOIS bero")),
 		":robustirc.net 401 sECuRE bero :No such nick/channel")
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 311 sECuRE mero foo robust/0x13b5aa0a2bcfb8ae * :Axel Wagner"),
 			irc.ParseMessage(":robustirc.net 312 sECuRE mero robustirc.net :RobustIRC"),
@@ -64,10 +64,10 @@ func TestWhois(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 318 sECuRE mero :End of /WHOIS list"),
 		})
 
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("OPER mero foo"))
+	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("OPER mero foo"))
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 311 sECuRE mero foo robust/0x13b5aa0a2bcfb8ae * :Axel Wagner"),
 			irc.ParseMessage(":robustirc.net 312 sECuRE mero robustirc.net :RobustIRC"),
@@ -76,10 +76,10 @@ func TestWhois(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 318 sECuRE mero :End of /WHOIS list"),
 		})
 
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("AWAY :cleaning dishes"))
+	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("AWAY :cleaning dishes"))
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 311 sECuRE mero foo robust/0x13b5aa0a2bcfb8ae * :Axel Wagner"),
 			irc.ParseMessage(":robustirc.net 312 sECuRE mero robustirc.net :RobustIRC"),
@@ -89,12 +89,12 @@ func TestWhois(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 318 sECuRE mero :End of /WHOIS list"),
 		})
 
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #second"))
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #test"))
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #second"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #second"))
+	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #second"))
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 311 sECuRE mero foo robust/0x13b5aa0a2bcfb8ae * :Axel Wagner"),
 			irc.ParseMessage(":robustirc.net 319 sECuRE mero :#second @#test"),
@@ -105,10 +105,10 @@ func TestWhois(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 318 sECuRE mero :End of /WHOIS list"),
 		})
 
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("MODE #test +s"))
+	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("MODE #test +s"))
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 311 sECuRE mero foo robust/0x13b5aa0a2bcfb8ae * :Axel Wagner"),
 			irc.ParseMessage(":robustirc.net 319 sECuRE mero :#second"),
@@ -119,10 +119,10 @@ func TestWhois(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 318 sECuRE mero :End of /WHOIS list"),
 		})
 
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test"))
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 311 sECuRE mero foo robust/0x13b5aa0a2bcfb8ae * :Axel Wagner"),
 			irc.ParseMessage(":robustirc.net 319 sECuRE mero :#second @#test"),
@@ -133,11 +133,11 @@ func TestWhois(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 318 sECuRE mero :End of /WHOIS list"),
 		})
 
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("PART #test"))
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("OPER mero foo"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("PART #test"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("OPER mero foo"))
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 311 sECuRE mero foo robust/0x13b5aa0a2bcfb8ae * :Axel Wagner"),
 			irc.ParseMessage(":robustirc.net 319 sECuRE mero :#second @#test"),
@@ -152,7 +152,7 @@ func TestWhois(t *testing.T) {
 	sMero.modes['r'] = true
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("WHOIS mero")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 311 sECuRE mero foo robust/0x13b5aa0a2bcfb8ae * :Axel Wagner"),
 			irc.ParseMessage(":robustirc.net 319 sECuRE mero :#second @#test"),

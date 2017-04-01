@@ -11,7 +11,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/internal/ircserver"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 )
 
 func (api *HTTP) handleCreateSession(w http.ResponseWriter, r *http.Request) {
@@ -27,8 +27,8 @@ func (api *HTTP) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	sessionauth := fmt.Sprintf("%x", b)
 
-	msg := &types.RobustMessage{
-		Type: types.RobustCreateSession,
+	msg := &robust.Message{
+		Type: robust.CreateSession,
 		Data: sessionauth,
 	}
 	if err := api.applyMessageWait(msg, 10*time.Second); err != nil {

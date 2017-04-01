@@ -6,7 +6,7 @@ import (
 
 	"github.com/robustirc/robustirc/internal/ircserver"
 	"github.com/robustirc/robustirc/internal/outputstream"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 	"golang.org/x/net/context"
 	"gopkg.in/sorcix/irc.v2"
 )
@@ -16,18 +16,18 @@ import (
 func TestPlumbing(t *testing.T) {
 	i := ircserver.NewIRCServer("robustirc.net", time.Unix(0, 1481144012969203276))
 
-	ids := make(map[string]types.RobustId)
+	ids := make(map[string]robust.Id)
 
-	ids["secure"] = types.RobustId{Id: 1420228218166687917}
-	ids["mero"] = types.RobustId{Id: 1420228218166687918}
+	ids["secure"] = robust.Id{Id: 1420228218166687917}
+	ids["mero"] = robust.Id{Id: 1420228218166687918}
 
 	i.CreateSession(ids["secure"], "auth-secure")
 	i.CreateSession(ids["mero"], "auth-mero")
 
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("NICK sECuRE"))
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("NICK mero"))
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("USER foo 0 * :Axel Wagner"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("NICK sECuRE"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
+	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("NICK mero"))
+	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("USER foo 0 * :Axel Wagner"))
 
 	o, err := outputstream.NewOutputStream("")
 	if err != nil {
@@ -35,7 +35,7 @@ func TestPlumbing(t *testing.T) {
 	}
 	defer o.Close()
 
-	msgid := types.RobustId{Id: time.Now().UnixNano()}
+	msgid := robust.Id{Id: time.Now().UnixNano()}
 	replies := i.ProcessMessage(msgid, ids["secure"], irc.ParseMessage("JOIN #test"))
 	sendMessages(replies, ids["secure"], msgid.Id, o)
 	got, ok := o.Get(msgid)
@@ -49,7 +49,7 @@ func TestPlumbing(t *testing.T) {
 		t.Fatalf("message 0: got %v, want %v", got[0].Data, string(replies.Messages[0].Data))
 	}
 
-	nextid := types.RobustId{Id: time.Now().UnixNano()}
+	nextid := robust.Id{Id: time.Now().UnixNano()}
 	replies = i.ProcessMessage(nextid, ids["secure"], irc.ParseMessage("JOIN #foobar"))
 	sendMessages(replies, ids["secure"], nextid.Id, o)
 	got = o.GetNext(context.TODO(), msgid)
@@ -67,9 +67,9 @@ func TestPlumbing(t *testing.T) {
 		t.Fatalf("sMero interestedIn JOIN to #foobar, expected false")
 	}
 
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #baz"))
+	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #baz"))
 
-	msgid = types.RobustId{Id: time.Now().UnixNano()}
+	msgid = robust.Id{Id: time.Now().UnixNano()}
 	replies = i.ProcessMessage(msgid, ids["secure"], irc.ParseMessage("JOIN #baz"))
 	sendMessages(replies, ids["secure"], msgid.Id, o)
 	got, _ = o.Get(msgid)

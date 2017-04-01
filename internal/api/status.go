@@ -13,7 +13,7 @@ import (
 	"github.com/robustirc/robustirc/internal/config"
 	"github.com/robustirc/robustirc/internal/ircserver"
 	"github.com/robustirc/robustirc/internal/privacy"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 
 	pb "github.com/robustirc/robustirc/internal/proto"
 )
@@ -25,7 +25,7 @@ func (api *HTTP) handleStatusGetMessage(w http.ResponseWriter, req *http.Request
 		Addr               string
 		GetMessageRequests map[string]GetMessagesStats
 		CurrentLink        string
-		Sessions           map[types.RobustId]ircserver.Session
+		Sessions           map[robust.Id]ircserver.Session
 	}{
 		Addr:               api.peerAddr,
 		GetMessageRequests: api.copyGetMessagesRequests(),
@@ -40,7 +40,7 @@ func (api *HTTP) handleStatusGetMessage(w http.ResponseWriter, req *http.Request
 func (api *HTTP) handleStatusSessions(w http.ResponseWriter, req *http.Request) {
 	if err := templates.ExecuteTemplate(w, "templates/sessions", struct {
 		Addr               string
-		Sessions           map[types.RobustId]ircserver.Session
+		Sessions           map[robust.Id]ircserver.Session
 		CurrentLink        string
 		GetMessageRequests map[string]GetMessagesStats
 	}{
@@ -74,7 +74,7 @@ func (api *HTTP) handleStatusState(w http.ResponseWriter, req *http.Request) {
 		Addr               string
 		ServerState        string
 		CurrentLink        string
-		Sessions           map[types.RobustId]ircserver.Session
+		Sessions           map[robust.Id]ircserver.Session
 		GetMessageRequests map[string]GetMessagesStats
 	}{
 		Addr:               api.peerAddr,
@@ -131,7 +131,7 @@ func (api *HTTP) handleStatusIrclog(w http.ResponseWriter, req *http.Request) {
 				continue
 			}
 			if l.Type == raft.LogCommand {
-				msg := types.NewRobustMessageFromBytes(l.Data)
+				msg := robust.NewMessageFromBytes(l.Data)
 				msg.Data = msg.PrivacyFilter()
 				l.Data, _ = json.Marshal(&msg)
 			}
@@ -152,7 +152,7 @@ func (api *HTTP) handleStatusIrclog(w http.ResponseWriter, req *http.Request) {
 		PrevOffset         int64
 		NextOffset         uint64
 		CurrentLink        string
-		Sessions           map[types.RobustId]ircserver.Session
+		Sessions           map[robust.Id]ircserver.Session
 		GetMessageRequests map[string]GetMessagesStats
 	}{
 		Addr:               api.peerAddr,
@@ -220,7 +220,7 @@ func (api *HTTP) handleStatus(res http.ResponseWriter, req *http.Request) {
 		Leader             string
 		Peers              []string
 		Stats              map[string]string
-		Sessions           map[types.RobustId]ircserver.Session
+		Sessions           map[robust.Id]ircserver.Session
 		GetMessageRequests map[string]GetMessagesStats
 		NetConfig          config.Network
 		CurrentLink        string
@@ -249,11 +249,11 @@ func (api *HTTP) handleIrclog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session := types.RobustId{Id: id}
+	session := robust.Id{Id: id}
 
 	// TODO(secure): pagination
 
-	var messages []*types.RobustMessage
+	var messages []*robust.Message
 	first, _ := api.ircStore.FirstIndex()
 	last, _ := api.ircStore.LastIndex()
 	iterator := api.ircStore.GetBulkIterator(first, last+1)
@@ -267,7 +267,7 @@ func (api *HTTP) handleIrclog(w http.ResponseWriter, r *http.Request) {
 		if elog.Type != raft.LogCommand {
 			continue
 		}
-		msg := types.NewRobustMessageFromBytes(elog.Data)
+		msg := robust.NewMessageFromBytes(elog.Data)
 		if msg.Session.Id == session.Id {
 			messages = append(messages, &msg)
 		}
@@ -288,8 +288,8 @@ func (api *HTTP) handleIrclog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	args := struct {
-		Session  types.RobustId
-		Messages []*types.RobustMessage
+		Session  robust.Id
+		Messages []*robust.Message
 	}{
 		session,
 		messages,

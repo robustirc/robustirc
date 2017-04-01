@@ -15,7 +15,7 @@ import (
 	"github.com/robustirc/bridge/robustsession"
 	"github.com/robustirc/internal/health"
 	"github.com/robustirc/robustirc/internal/localnet"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 )
 
 func TestMessageOfDeath(t *testing.T) {
@@ -75,7 +75,7 @@ func TestMessageOfDeath(t *testing.T) {
 					for _, m := range applied.GetMetric() {
 						for _, labelpair := range m.GetLabel() {
 							if labelpair.GetName() == "type" &&
-								labelpair.GetValue() == types.RobustType(types.RobustMessageOfDeath).String() {
+								labelpair.GetValue() == robust.Type(robust.MessageOfDeath).String() {
 								if m.GetCounter().GetValue() > 0 {
 									skipped <- true
 								}

@@ -5,17 +5,17 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/net/context"
+	"github.com/robustirc/robustirc/internal/robust"
 
-	"github.com/robustirc/robustirc/types"
+	"golang.org/x/net/context"
 )
 
 func addEmptyMsg(os *OutputStream, id, reply int64) {
 	os.Add([]Message{
-		{Id: types.RobustId{Id: id, Reply: reply}}})
+		{Id: robust.Id{Id: id, Reply: reply}}})
 }
 
-func testBlocking(t *testing.T, os *OutputStream, lastseen types.RobustId, want types.RobustId) {
+func testBlocking(t *testing.T, os *OutputStream, lastseen robust.Id, want robust.Id) {
 	next := make(chan []Message)
 
 	go func() {
@@ -50,7 +50,7 @@ func TestAppendNext(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	testBlocking(t, os, types.RobustId{}, types.RobustId{Id: 1, Reply: 1})
+	testBlocking(t, os, robust.Id{}, robust.Id{Id: 1, Reply: 1})
 }
 
 func TestCatchUp(t *testing.T) {
@@ -59,27 +59,27 @@ func TestCatchUp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got, want := os.LastSeen(), (types.RobustId{Id: 0, Reply: 0}); got != want {
+	if got, want := os.LastSeen(), (robust.Id{Id: 0, Reply: 0}); got != want {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 
 	addEmptyMsg(os, 1, 1)
-	if got, want := os.LastSeen(), (types.RobustId{Id: 1, Reply: 1}); got != want {
+	if got, want := os.LastSeen(), (robust.Id{Id: 1, Reply: 1}); got != want {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 	addEmptyMsg(os, 2, 1)
 	addEmptyMsg(os, 3, 1)
 
-	msgs := os.GetNext(context.TODO(), types.RobustId{})
-	if want := (types.RobustId{Id: 1, Reply: 1}); msgs[0].Id != want {
+	msgs := os.GetNext(context.TODO(), robust.Id{})
+	if want := (robust.Id{Id: 1, Reply: 1}); msgs[0].Id != want {
 		t.Fatalf("got %v, want %v", msgs[0].Id, want)
 	}
 	msgs = os.GetNext(context.TODO(), msgs[0].Id)
-	if want := (types.RobustId{Id: 2, Reply: 1}); msgs[0].Id != want {
+	if want := (robust.Id{Id: 2, Reply: 1}); msgs[0].Id != want {
 		t.Fatalf("got %v, want %v", msgs[0].Id, want)
 	}
 	msgs = os.GetNext(context.TODO(), msgs[0].Id)
-	if want := (types.RobustId{Id: 3, Reply: 1}); msgs[0].Id != want {
+	if want := (robust.Id{Id: 3, Reply: 1}); msgs[0].Id != want {
 		t.Fatalf("got %v, want %v", msgs[0].Id, want)
 	}
 }
@@ -94,20 +94,20 @@ func TestDeleteMiddle(t *testing.T) {
 	addEmptyMsg(os, 2, 1)
 	addEmptyMsg(os, 3, 1)
 
-	os.Delete(types.RobustId{Id: 2, Reply: 0})
+	os.Delete(robust.Id{Id: 2, Reply: 0})
 
 	// Verify we get the expected messages when using Get directly with the
 	// input IDs.
-	msgs, ok := os.Get(types.RobustId{Id: 3})
+	msgs, ok := os.Get(robust.Id{Id: 3})
 	if !ok {
 		t.Fatalf("got false, want true")
 	}
-	if want := (types.RobustId{Id: 3, Reply: 1}); msgs[0].Id != want {
+	if want := (robust.Id{Id: 3, Reply: 1}); msgs[0].Id != want {
 		t.Fatalf("got %v, want %v", msgs[0].Id, want)
 	}
 
 	// Verify getting an invalid message works as expected
-	msgs, ok = os.Get(types.RobustId{Id: 23})
+	msgs, ok = os.Get(robust.Id{Id: 23})
 	if ok {
 		t.Fatalf("got true, want false")
 	}
@@ -116,36 +116,36 @@ func TestDeleteMiddle(t *testing.T) {
 	}
 
 	// Now get the same messages using GetNext
-	msgs = os.GetNext(context.TODO(), types.RobustId{Id: 2, Reply: 1})
-	if want := (types.RobustId{Id: 3, Reply: 1}); msgs[0].Id != want {
+	msgs = os.GetNext(context.TODO(), robust.Id{Id: 2, Reply: 1})
+	if want := (robust.Id{Id: 3, Reply: 1}); msgs[0].Id != want {
 		t.Fatalf("got %v, want %v", msgs[0].Id, want)
 	}
 
-	msgs = os.GetNext(context.TODO(), types.RobustId{Id: 1, Reply: 1})
-	if want := (types.RobustId{Id: 3, Reply: 1}); msgs[0].Id != want {
+	msgs = os.GetNext(context.TODO(), robust.Id{Id: 1, Reply: 1})
+	if want := (robust.Id{Id: 3, Reply: 1}); msgs[0].Id != want {
 		t.Fatalf("got %v, want %v", msgs[0].Id, want)
 	}
 
-	os.Delete(types.RobustId{Id: 3, Reply: 0})
+	os.Delete(robust.Id{Id: 3, Reply: 0})
 
-	testBlocking(t, os, msgs[0].Id, types.RobustId{Id: 4, Reply: 1})
+	testBlocking(t, os, msgs[0].Id, robust.Id{Id: 4, Reply: 1})
 
-	os.Delete(types.RobustId{Id: 1, Reply: 0})
-	os.Delete(types.RobustId{Id: 4, Reply: 0})
+	os.Delete(robust.Id{Id: 1, Reply: 0})
+	os.Delete(robust.Id{Id: 4, Reply: 0})
 
-	testBlocking(t, os, msgs[0].Id, types.RobustId{Id: 5, Reply: 1})
+	testBlocking(t, os, msgs[0].Id, robust.Id{Id: 5, Reply: 1})
 
 	// Just to get 100% code coverage. We could also not do this, but then a
 	// human needs to look at the coverage output and keep the special case of
 	// the untested log.Panicf call in mind, so we just put the special case
 	// into code here.
-	os.Delete(types.RobustId{Id: 5, Reply: 0})
+	os.Delete(robust.Id{Id: 5, Reply: 0})
 	defer func() {
 		if err := recover(); err == nil {
 			t.Fatalf("Expected a panic")
 		}
 	}()
-	os.Delete(types.RobustId{Id: 0, Reply: 0})
+	os.Delete(robust.Id{Id: 0, Reply: 0})
 }
 
 func TestInterrupt(t *testing.T) {
@@ -162,8 +162,8 @@ func TestInterrupt(t *testing.T) {
 
 	addEmptyMsg(os, 1, 1)
 
-	msgs := os.GetNext(context.TODO(), types.RobustId{})
-	if want := (types.RobustId{Id: 1, Reply: 1}); msgs[0].Id != want {
+	msgs := os.GetNext(context.TODO(), robust.Id{})
+	if want := (robust.Id{Id: 1, Reply: 1}); msgs[0].Id != want {
 		t.Fatalf("got %v, want %v", msgs[0].Id, want)
 	}
 

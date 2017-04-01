@@ -15,7 +15,7 @@ import (
 	"github.com/robustirc/robustirc/internal/ircserver"
 	"github.com/robustirc/robustirc/internal/outputstream"
 	"github.com/robustirc/robustirc/internal/raftstore"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 	"github.com/stapelberg/glog"
 
 	"github.com/hashicorp/raft"
@@ -30,7 +30,7 @@ func appendLog(logs []*raft.Log, msg string) []*raft.Log {
 }
 
 func verifyEndState(t *testing.T) {
-	s, err := ircServer.GetSession(types.RobustId{Id: 1})
+	s, err := ircServer.GetSession(robust.Id{Id: 1})
 	if err != nil {
 		t.Fatalf("No session found after applying log messages")
 	}

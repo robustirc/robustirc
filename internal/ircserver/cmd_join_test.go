@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 
 	"gopkg.in/sorcix/irc.v2"
 )
@@ -17,7 +17,7 @@ func TestInvalidChannelPlumbing(t *testing.T) {
 	s, _ := i.GetSession(ids["secure"])
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #foobar")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #foobar")),
 		[]*irc.Message{
 			{Prefix: &s.ircPrefix, Command: irc.JOIN, Params: []string{"#foobar"}},
 			irc.ParseMessage(":robustirc.net MODE #foobar +nt"),
@@ -29,7 +29,7 @@ func TestInvalidChannelPlumbing(t *testing.T) {
 		})
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN foobar")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN foobar")),
 		":robustirc.net 403 sECuRE foobar :No such channel")
 }
 
@@ -37,7 +37,7 @@ func TestJoinMultiple(t *testing.T) {
 	i, ids := stdIRCServer()
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #test,#second")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test,#second")),
 		[]*irc.Message{
 			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad JOIN :#test"),
 			irc.ParseMessage(":robustirc.net MODE #test +nt"),
@@ -56,11 +56,11 @@ func TestJoinMultiple(t *testing.T) {
 		})
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #test,#second")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test,#second")),
 		[]*irc.Message{})
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #third,invalid,#fourth")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #third,invalid,#fourth")),
 		[]*irc.Message{
 			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad JOIN :#third"),
 			irc.ParseMessage(":robustirc.net MODE #third +nt"),
@@ -80,7 +80,7 @@ func TestJoinMultiple(t *testing.T) {
 		})
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("PART #second,#fourth")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("PART #second,#fourth")),
 		[]*irc.Message{
 			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad PART #second"),
 			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad PART #fourth"),
@@ -90,16 +90,16 @@ func TestJoinMultiple(t *testing.T) {
 func TestCaptchaJoin(t *testing.T) {
 	i, ids := stdIRCServer()
 
-	i.UpdateLastClientMessageID(&types.RobustMessage{
+	i.UpdateLastClientMessageID(&robust.Message{
 		Session: ids["mero"],
-		Id:      types.RobustId{Id: time.Unix(0, ids["mero"].Id).Add(1 * time.Minute).UnixNano()},
-		Type:    types.RobustIRCFromClient,
+		Id:      robust.Id{Id: time.Unix(0, ids["mero"].Id).Add(1 * time.Minute).UnixNano()},
+		Type:    robust.IRCFromClient,
 	})
 
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test"))
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("MODE #test +x")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("MODE #test +x")),
 		":robustirc.net NOTICE sECuRE :Cannot set mode +x, no CaptchaURL/CaptchaHMACSecret configured")
 
 	i.Config.CaptchaURL = "http://localhost"
@@ -107,7 +107,7 @@ func TestCaptchaJoin(t *testing.T) {
 	i.Config.CaptchaHMACSecret = hmacSecret
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("MODE #test +x")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("MODE #test +x")),
 		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE #test +x")
 
 	for _, message := range []string{
@@ -119,7 +119,7 @@ func TestCaptchaJoin(t *testing.T) {
 		"JOIN #test am9pbjoxNDIwMjI4Mjc4MTY2Njg3OTE4OiN0ZXN0.YXV0aC1tZXI=.MQi3m1acLjBq9Kcgr59BkLOs7zfUw+co0XYVJh0MKtY=",
 	} {
 		mustMatchIrcmsgs(t,
-			i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage(message)),
+			i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage(message)),
 			[]*irc.Message{
 				irc.ParseMessage(":robustirc.net NOTICE mero :To join #test, please go to http://localhost/#am9pbjoxNDIwMjI4Mjc4MTY2Njg3OTE4OiN0ZXN0.YXV0aC1tZXI=.MQi3m1acLjBq9Kcgr59BkLOs7zfUw+co0XYVJh0MKtY="),
 				irc.ParseMessage(":robustirc.net 473 mero #test :Cannot join channel (+x). Please go to http://localhost/#am9pbjoxNDIwMjI4Mjc4MTY2Njg3OTE4OiN0ZXN0.YXV0aC1tZXI=.MQi3m1acLjBq9Kcgr59BkLOs7zfUw+co0XYVJh0MKtY="),
@@ -133,7 +133,7 @@ func TestCaptchaJoin(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #test "+u.Fragment)),
+		i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #test "+u.Fragment)),
 		[]*irc.Message{
 			irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae JOIN :#test"),
 			irc.ParseMessage(":robustirc.net SJOIN 1 #test :mero"),
@@ -145,12 +145,12 @@ func TestCaptchaJoin(t *testing.T) {
 
 	// Verify a solved captcha also gets us into other channels, for 1 minute.
 	for _, name := range []string{"#second", "#third"} {
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN "+name))
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage(fmt.Sprintf("MODE %s +x", name)))
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN "+name))
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage(fmt.Sprintf("MODE %s +x", name)))
 	}
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #second")),
+		i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #second")),
 		[]*irc.Message{
 			irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae JOIN :#second"),
 			irc.ParseMessage(":robustirc.net SJOIN 1 #second :mero"),
@@ -160,24 +160,24 @@ func TestCaptchaJoin(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 366 mero #second :End of /NAMES list."),
 		})
 
-	i.UpdateLastClientMessageID(&types.RobustMessage{
+	i.UpdateLastClientMessageID(&robust.Message{
 		Session: ids["mero"],
-		Id:      types.RobustId{Id: time.Unix(0, ids["mero"].Id).Add(2 * time.Minute).UnixNano()},
-		Type:    types.RobustIRCFromClient,
+		Id:      robust.Id{Id: time.Unix(0, ids["mero"].Id).Add(2 * time.Minute).UnixNano()},
+		Type:    robust.IRCFromClient,
 	})
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #third")),
+		i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #third")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net NOTICE mero :To join #third, please go to http://localhost/#am9pbjoxNDIwMjI4MzM4MTY2Njg3OTE4OiN0aGlyZA==.YXV0aC1tZXI=.P4k2eEfS52KzS/DDZwDrwNEUvLt0hLZQffBymuTUDVA="),
 			irc.ParseMessage(":robustirc.net 473 mero #third :Cannot join channel (+x). Please go to http://localhost/#am9pbjoxNDIwMjI4MzM4MTY2Njg3OTE4OiN0aGlyZA==.YXV0aC1tZXI=.P4k2eEfS52KzS/DDZwDrwNEUvLt0hLZQffBymuTUDVA="),
 		})
 
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("MODE #test +o mero"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("MODE #test +o mero"))
 
 	// Verify invites override captchas
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("INVITE xeen #test")),
+		i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("INVITE xeen #test")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 341 mero xeen #test"),
 			irc.ParseMessage(":mero!foo@robust/0x13b5aa0a2bcfb8ae INVITE xeen :#test"),
@@ -185,7 +185,7 @@ func TestCaptchaJoin(t *testing.T) {
 		})
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("JOIN #test")),
+		i.ProcessMessage(robust.Id{}, ids["xeen"], irc.ParseMessage("JOIN #test")),
 		[]*irc.Message{
 			irc.ParseMessage(":xeen!baz@robust/0x13b5aa0a2bcfb8af JOIN :#test"),
 			irc.ParseMessage(":robustirc.net SJOIN 1 #test :xeen"),
@@ -201,10 +201,10 @@ func TestChannelCaseInsensitive(t *testing.T) {
 
 	sMero, _ := i.GetSession(ids["mero"])
 
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test"))
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #TEST")),
+		i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #TEST")),
 		[]*irc.Message{
 			{Prefix: &sMero.ircPrefix, Command: irc.JOIN, Params: []string{"#TEST"}},
 			irc.ParseMessage(":robustirc.net SJOIN 1 #TEST :mero"),

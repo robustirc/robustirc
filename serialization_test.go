@@ -12,7 +12,7 @@ import (
 	"github.com/robustirc/robustirc/internal/ircserver"
 	"github.com/robustirc/robustirc/internal/outputstream"
 	"github.com/robustirc/robustirc/internal/raftstore"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 	"gopkg.in/sorcix/irc.v2"
 )
 
@@ -100,7 +100,7 @@ func TestSerialization(t *testing.T) {
 		fsm.Apply(log)
 	}
 
-	msg, ok := outputStream.Get(types.RobustId{Id: 10})
+	msg, ok := outputStream.Get(robust.Id{Id: 10})
 	if !ok {
 		t.Fatalf("JOIN message did not result in any output")
 	}

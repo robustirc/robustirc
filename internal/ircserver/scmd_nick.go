@@ -3,7 +3,7 @@ package ircserver
 import (
 	"hash/fnv"
 
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 
 	"gopkg.in/sorcix/irc.v2"
 )
@@ -35,7 +35,7 @@ func (i *IRCServer) cmdServerNick(s *Session, reply *Replyctx, msg *irc.Message)
 
 	h := fnv.New64()
 	h.Write([]byte(msg.Params[0]))
-	id := types.RobustId{
+	id := robust.Id{
 		Id:    s.Id.Id,
 		Reply: int64(h.Sum64()),
 	}

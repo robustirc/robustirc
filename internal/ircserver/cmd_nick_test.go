@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 
 	"gopkg.in/sorcix/irc.v2"
 )
@@ -14,13 +14,13 @@ func TestNickCollision(t *testing.T) {
 
 	i, _ := stdIRCServer()
 
-	idSecure := types.RobustId{Id: 1420228218166687333}
-	idMero := types.RobustId{Id: 1420228218166687444}
+	idSecure := robust.Id{Id: 1420228218166687333}
+	idMero := robust.Id{Id: 1420228218166687444}
 
 	i.CreateSession(idSecure, "auth-secure")
 	i.CreateSession(idMero, "auth-mero")
 
-	got = i.ProcessMessage(types.RobustId{}, idSecure, irc.ParseMessage("NICK s[E]CuRE"))
+	got = i.ProcessMessage(robust.Id{}, idSecure, irc.ParseMessage("NICK s[E]CuRE"))
 	if len(got.Messages) > 0 {
 		for _, msg := range got.Messages {
 			if irc.ParseMessage(msg.Data).Command != irc.ERR_NICKNAMEINUSE {
@@ -31,15 +31,15 @@ func TestNickCollision(t *testing.T) {
 	}
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, idMero, irc.ParseMessage("NICK s[E]CuRE")),
+		i.ProcessMessage(robust.Id{}, idMero, irc.ParseMessage("NICK s[E]CuRE")),
 		":robustirc.net 433 * s[E]CuRE :Nickname is already in use")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, idMero, irc.ParseMessage("NICK S[E]CURE")),
+		i.ProcessMessage(robust.Id{}, idMero, irc.ParseMessage("NICK S[E]CURE")),
 		":robustirc.net 433 * S[E]CURE :Nickname is already in use")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, idMero, irc.ParseMessage("NICK S{E}CURE")),
+		i.ProcessMessage(robust.Id{}, idMero, irc.ParseMessage("NICK S{E}CURE")),
 		":robustirc.net 433 * S{E}CURE :Nickname is already in use")
 }
 
@@ -79,7 +79,7 @@ func TestInvalidNick(t *testing.T) {
 func TestInvalidNickPlumbing(t *testing.T) {
 	i, _ := stdIRCServer()
 
-	id := types.RobustId{Id: time.Now().UnixNano()}
+	id := robust.Id{Id: time.Now().UnixNano()}
 	i.CreateSession(id, "authbytes")
 
 	s, err := i.GetSession(id)
@@ -92,7 +92,7 @@ func TestInvalidNickPlumbing(t *testing.T) {
 	}
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("NICK 0secure")),
+		i.ProcessMessage(robust.Id{}, id, irc.ParseMessage("NICK 0secure")),
 		":robustirc.net 432 * 0secure :Erroneous nickname")
 
 	if s.Nick != "" {

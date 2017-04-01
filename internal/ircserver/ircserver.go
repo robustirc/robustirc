@@ -24,7 +24,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robustirc/robustirc/internal/config"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 	"gopkg.in/sorcix/irc.v2"
 )
 
@@ -106,7 +106,7 @@ type lcChan string
 type lcNick string
 
 type Session struct {
-	Id                types.RobustId
+	Id                robust.Id
 	auth              string
 	loggedIn          bool
 	Nick              string
@@ -195,7 +195,7 @@ type IRCServer struct {
 	// sessions contains all sessions, i.e. nickname, away message, whether the
 	// session is an IRC operator, etc. In contrast to nicks, this is keyed by
 	// the session id.
-	sessions   map[types.RobustId]*Session
+	sessions   map[robust.Id]*Session
 	sessionsMu *sync.RWMutex
 
 	// serverSessions is a slice that contains the IDs of all sessions that
@@ -220,7 +220,7 @@ type IRCServer struct {
 	ServerPrefix *irc.Prefix
 
 	// lastProcessed is the id of the last message fed into ProcessMessage.
-	lastProcessed   types.RobustId
+	lastProcessed   robust.Id
 	lastProcessedMu *sync.RWMutex
 
 	// serverCreation is the time at which the IRCServer object was created.
@@ -238,7 +238,7 @@ func NewIRCServer(networkname string, serverCreation time.Time) *IRCServer {
 		channels:        make(map[lcChan]*channel),
 		svsholds:        make(map[lcNick]svshold),
 		nicks:           make(map[lcNick]*Session),
-		sessions:        make(map[types.RobustId]*Session),
+		sessions:        make(map[robust.Id]*Session),
 		sessionsMu:      &sync.RWMutex{},
 		lastProcessedMu: &sync.RWMutex{},
 		ServerPrefix:    &irc.Prefix{Name: networkname},
@@ -257,19 +257,19 @@ func NewIRCServer(networkname string, serverCreation time.Time) *IRCServer {
 // NewRobustMessageId should only be called while node.State() ==
 // raft.Leader, otherwise it might panic due to time drift in the
 // network, leading to the node exiting (and being restarted).
-func (i *IRCServer) NewRobustMessageId() types.RobustId {
+func (i *IRCServer) NewRobustMessageId() robust.Id {
 	unixnano := time.Now().UnixNano()
 	i.lastProcessedMu.RLock()
 	defer i.lastProcessedMu.RUnlock()
 	if unixnano < i.lastProcessed.Id {
 		panic(fmt.Sprintf("Assumption violated: current time %d is older than the timestamp of the last processed message (%d)", unixnano, i.lastProcessed.Id))
 	}
-	return types.RobustId{Id: unixnano}
+	return robust.Id{Id: unixnano}
 }
 
 // UpdateLastMessage stores the clientmessageid of the last message in the
 // corresponding session, so that duplicate messages are not persisted twice.
-func (i *IRCServer) UpdateLastClientMessageID(msg *types.RobustMessage) error {
+func (i *IRCServer) UpdateLastClientMessageID(msg *robust.Message) error {
 	i.sessionsMu.Lock()
 	defer i.sessionsMu.Unlock()
 	session, err := i.getSessionLocked(msg.Session)
@@ -285,7 +285,7 @@ func (i *IRCServer) UpdateLastClientMessageID(msg *types.RobustMessage) error {
 }
 
 // CreateSession creates a new session (equivalent to an IRC connection).
-func (i *IRCServer) CreateSession(id types.RobustId, auth string) error {
+func (i *IRCServer) CreateSession(id robust.Id, auth string) error {
 	if got, limit := uint64(len(i.sessions)), i.SessionLimit(); got >= limit && limit > 0 {
 		return ErrSessionLimitReached
 	}
@@ -318,10 +318,10 @@ func (i *IRCServer) DeleteSession(s *Session, msgid int64) {
 	s.deleted = true
 }
 
-// ExpireSessions returns RobustDeleteSession RobustMessages for all sessions
+// ExpireSessions returns DeleteSession robust.Messages for all sessions
 // that are older than timeout. These messages are then applied to raft.
-func (i *IRCServer) ExpireSessions() []*types.RobustMessage {
-	var deletes []*types.RobustMessage
+func (i *IRCServer) ExpireSessions() []*robust.Message {
+	var deletes []*robust.Message
 
 	timeout := time.Duration(i.Config.SessionExpiration)
 
@@ -339,9 +339,9 @@ func (i *IRCServer) ExpireSessions() []*types.RobustMessage {
 
 		log.Printf("Expiring session %v\n", id)
 
-		deletes = append(deletes, &types.RobustMessage{
+		deletes = append(deletes, &robust.Message{
 			Session: id,
-			Type:    types.RobustDeleteSession,
+			Type:    robust.DeleteSession,
 			Data:    fmt.Sprintf("Ping timeout (%v)", timeout),
 		})
 	}
@@ -415,7 +415,7 @@ func (i *IRCServer) maybeDeleteChannel(c *channel) {
 // ProcessMessage modifies state in response to 'message' and returns zero or
 // more IRC messages in response to 'message'. These messages can then be
 // stored for eventual retrieval by the clients by calling SendMessages.
-func (i *IRCServer) ProcessMessage(id types.RobustId, session types.RobustId, message *irc.Message) *Replyctx {
+func (i *IRCServer) ProcessMessage(id robust.Id, session robust.Id, message *irc.Message) *Replyctx {
 	i.sessionsMu.Lock()
 	defer i.sessionsMu.Unlock()
 
@@ -484,13 +484,13 @@ func (i *IRCServer) ProcessMessage(id types.RobustId, session types.RobustId, me
 	return reply
 }
 
-func (i *IRCServer) SetLastProcessed(id types.RobustId) {
+func (i *IRCServer) SetLastProcessed(id robust.Id) {
 	i.lastProcessedMu.Lock()
 	defer i.lastProcessedMu.Unlock()
 	i.lastProcessed = id
 }
 
-func (i *IRCServer) MaybeDeleteSession(session types.RobustId) {
+func (i *IRCServer) MaybeDeleteSession(session robust.Id) {
 	i.sessionsMu.Lock()
 	defer i.sessionsMu.Unlock()
 	if s, ok := i.sessions[session]; ok {
@@ -516,13 +516,13 @@ func (i *IRCServer) MaybeDeleteSession(session types.RobustId) {
 // (based on the timestamp), but ErrSessionNotYetSeen when the session might
 // exist in the future, but was not yet seen on this IRC instance server
 // (perhaps due to raft delay).
-func (i *IRCServer) GetSession(id types.RobustId) (*Session, error) {
+func (i *IRCServer) GetSession(id robust.Id) (*Session, error) {
 	i.sessionsMu.RLock()
 	defer i.sessionsMu.RUnlock()
 	return i.getSessionLocked(id)
 }
 
-func (i *IRCServer) getSessionLocked(id types.RobustId) (*Session, error) {
+func (i *IRCServer) getSessionLocked(id robust.Id) (*Session, error) {
 	s, ok := i.sessions[id]
 	if ok {
 		return s, nil
@@ -543,7 +543,7 @@ func (i *IRCServer) getSessionLocked(id types.RobustId) (*Session, error) {
 // GetAuth returns the authentication string of |sessionid|, a random shared
 // secret between the RobustIRC network and the client to prevent session
 // hijacking.
-func (i *IRCServer) GetAuth(sessionid types.RobustId) (string, error) {
+func (i *IRCServer) GetAuth(sessionid robust.Id) (string, error) {
 	session, err := i.GetSession(sessionid)
 	if err != nil {
 		return "", err
@@ -553,7 +553,7 @@ func (i *IRCServer) GetAuth(sessionid types.RobustId) (string, error) {
 
 // GetNick returns the nickname of |sessionid|, or the empty string if that
 // session does not exist.
-func (i *IRCServer) GetNick(sessionid types.RobustId) string {
+func (i *IRCServer) GetNick(sessionid robust.Id) string {
 	i.sessionsMu.RLock()
 	defer i.sessionsMu.RUnlock()
 	if s, ok := i.sessions[sessionid]; ok {
@@ -563,7 +563,7 @@ func (i *IRCServer) GetNick(sessionid types.RobustId) string {
 }
 
 // ThrottleUntil returns the last activity of |sessionid| or the zero time.
-func (i *IRCServer) ThrottleUntil(sessionid types.RobustId) time.Time {
+func (i *IRCServer) ThrottleUntil(sessionid robust.Id) time.Time {
 	cooloff := time.Duration(i.Config.PostMessageCooloff)
 	if cooloff == 0 {
 		return time.Time{}
@@ -588,7 +588,7 @@ func (i *IRCServer) ThrottleUntil(sessionid types.RobustId) time.Time {
 
 // LastPostMessage returns |sessionid|’s last processed client message id and
 // the corresponding reply (for duplicate detection).
-func (i *IRCServer) LastPostMessage(sessionid types.RobustId) uint64 {
+func (i *IRCServer) LastPostMessage(sessionid robust.Id) uint64 {
 	i.sessionsMu.RLock()
 	defer i.sessionsMu.RUnlock()
 
@@ -600,10 +600,10 @@ func (i *IRCServer) LastPostMessage(sessionid types.RobustId) uint64 {
 
 // GetSessions returns a copy of sessions that can be used in the status
 // handler (i.e. it goes stale, but doesn’t block other operations).
-func (i *IRCServer) GetSessions() map[types.RobustId]Session {
+func (i *IRCServer) GetSessions() map[robust.Id]Session {
 	i.sessionsMu.RLock()
 	defer i.sessionsMu.RUnlock()
-	result := make(map[types.RobustId]Session, len(i.sessions))
+	result := make(map[robust.Id]Session, len(i.sessions))
 	for id, session := range i.sessions {
 		result[id] = *session
 	}
@@ -633,24 +633,24 @@ type Replyctx struct {
 	msgid    int64
 	replyid  int64
 	session  *Session
-	Messages []*types.RobustMessage
+	Messages []*robust.Message
 
 	// lastmsg tracks the last sent message, so that send() can return the same
 	// message multiple times when being called in a continuation.
 	lastmsg *irc.Message
 }
 
-// send converts |msg| into a RobustMessage and appends it to |reply|.
-func (i *IRCServer) send(reply *Replyctx, msg *irc.Message) *types.RobustMessage {
+// send converts |msg| into a robust.Message and appends it to |reply|.
+func (i *IRCServer) send(reply *Replyctx, msg *irc.Message) *robust.Message {
 	if reply.lastmsg == msg {
 		return reply.Messages[len(reply.Messages)-1]
 	}
 
 	reply.replyid++
 
-	robustmsg := &types.RobustMessage{
+	robustmsg := &robust.Message{
 		// The IDs must be the same across servers.
-		Id: types.RobustId{
+		Id: robust.Id{
 			Id:    reply.msgid,
 			Reply: reply.replyid,
 		},

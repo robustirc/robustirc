@@ -16,7 +16,7 @@ import (
 	"github.com/robustirc/robustirc/internal/ircserver"
 	"github.com/robustirc/robustirc/internal/outputstream"
 	"github.com/robustirc/robustirc/internal/raftstore"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 	"github.com/stapelberg/glog"
 	"gopkg.in/sorcix/irc.v2"
 )
@@ -39,7 +39,7 @@ type FSM struct {
 // marking them as a response to the incoming message with id 'id' and
 // associating them with session 'session'. IRC clients will
 // eventually receive these messages by calling GetNext.
-func sendMessages(reply *ircserver.Replyctx, session types.RobustId, id int64, o *outputstream.OutputStream) {
+func sendMessages(reply *ircserver.Replyctx, session robust.Id, id int64, o *outputstream.OutputStream) {
 	if len(reply.Messages) == 0 || o == nil {
 		return
 	}
@@ -57,25 +57,25 @@ func sendMessages(reply *ircserver.Replyctx, session types.RobustId, id int64, o
 	}
 }
 
-func applyRobustMessage(msg *types.RobustMessage, i *ircserver.IRCServer, o *outputstream.OutputStream) error {
+func applyRobustMessage(msg *robust.Message, i *ircserver.IRCServer, o *outputstream.OutputStream) error {
 	switch msg.Type {
-	case types.RobustMessageOfDeath:
+	case robust.MessageOfDeath:
 		// To prevent the message from being accepted again.
 		i.UpdateLastClientMessageID(msg)
 		log.Printf("Skipped message of death with msgid %d.\n", msg.Id.Id)
 
-	case types.RobustCreateSession:
+	case robust.CreateSession:
 		return i.CreateSession(msg.Id, msg.Data)
-	case types.RobustDeleteSession:
+	case robust.DeleteSession:
 		if _, err := i.GetSession(msg.Session); err == nil {
 			// TODO(secure): overwrite QUIT messages for services with an faq entry explaining that they are not robust yet.
 			reply := i.ProcessMessage(msg.Id, msg.Session, irc.ParseMessage("QUIT :"+string(msg.Data)))
-			i.SetLastProcessed(types.RobustId{Id: msg.Id.Id})
+			i.SetLastProcessed(robust.Id{Id: msg.Id.Id})
 			sendMessages(reply, msg.Session, msg.Id.Id, o)
 			i.MaybeDeleteSession(msg.Session)
 		}
 
-	case types.RobustIRCFromClient:
+	case robust.IRCFromClient:
 		// Need to do this first, because ircserver.ProcessMessage could delete
 		// the session, e.g. by using KILL or QUIT.
 		if err := i.UpdateLastClientMessageID(msg); err != nil {
@@ -83,12 +83,12 @@ func applyRobustMessage(msg *types.RobustMessage, i *ircserver.IRCServer, o *out
 		} else {
 			ircmsg := irc.ParseMessage(msg.Data)
 			reply := i.ProcessMessage(msg.Id, msg.Session, ircmsg)
-			i.SetLastProcessed(types.RobustId{Id: msg.Session.Id})
+			i.SetLastProcessed(robust.Id{Id: msg.Session.Id})
 			sendMessages(reply, msg.Session, msg.Session.Id, o)
 			i.MaybeDeleteSession(msg.Session)
 		}
 
-	case types.RobustConfig:
+	case robust.Config:
 		newCfg, err := config.FromString(msg.Data)
 		if err != nil {
 			log.Printf("Skipping unexpectedly invalid configuration (%v)\n", err)
@@ -110,10 +110,10 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		log.Panicf("Could not persist message in irclogs/: %v", err)
 	}
 
-	msg := types.NewRobustMessageFromBytes(l.Data)
+	msg := robust.NewMessageFromBytes(l.Data)
 	glog.Infof("Apply(msg.Type=%s)\n", msg.Type)
 	defer func() {
-		if msg.Type == types.RobustMessageOfDeath {
+		if msg.Type == robust.MessageOfDeath {
 			return
 		}
 		if r := recover(); r != nil {
@@ -126,7 +126,7 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 			// question before crashing. This doesn’t fix the underlying
 			// bug, i.e. an IRC message will then go unhandled, but it
 			// prevents RobustIRC from dying horribly in such a situation.
-			msg.Type = types.RobustMessageOfDeath
+			msg.Type = robust.MessageOfDeath
 			data, err := json.Marshal(msg)
 			if err != nil {
 				glog.Fatalf("Could not marshal message: %v", err)
@@ -226,7 +226,7 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 			return nil, fmt.Errorf("nlog.Type = %d instead of LogCommand", nlog.Type)
 		}
 
-		parsed := types.NewRobustMessageFromBytes(nlog.Data)
+		parsed := robust.NewMessageFromBytes(nlog.Data)
 		if time.Unix(0, parsed.Id.Id).After(compactionEnd) {
 			first = i
 			break
@@ -299,8 +299,8 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 			return err
 		}
 
-		msg := types.NewRobustMessageFromBytes(entry.Data)
-		if msg.Type == types.RobustState {
+		msg := robust.NewMessageFromBytes(entry.Data)
+		if msg.Type == robust.State {
 			log.Printf("found RobustState, unmarshalling\n")
 			state, err := base64.StdEncoding.DecodeString(msg.Data)
 			if err != nil {

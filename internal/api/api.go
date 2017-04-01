@@ -24,7 +24,7 @@ import (
 	"github.com/robustirc/robustirc/internal/ircserver"
 	"github.com/robustirc/robustirc/internal/outputstream"
 	"github.com/robustirc/robustirc/internal/raftstore"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 	"github.com/stapelberg/glog"
 )
 
@@ -126,7 +126,7 @@ var (
 // GetMessageStats encapsulates information about a GetMessages request.
 type GetMessagesStats struct {
 	RemoteAddr    string
-	Session       types.RobustId
+	Session       robust.Id
 	Nick          string
 	Started       time.Time
 	UserAgent     string
@@ -303,7 +303,7 @@ func (api *HTTP) dispatchPublic(w http.ResponseWriter, r *http.Request) {
 }
 
 // applyMessage applies the specified message to the network via Raft.
-func (api *HTTP) applyMessage(msg *types.RobustMessage, timeout time.Duration) (raft.ApplyFuture, error) {
+func (api *HTTP) applyMessage(msg *robust.Message, timeout time.Duration) (raft.ApplyFuture, error) {
 	applyMu.Lock()
 	defer applyMu.Unlock()
 
@@ -316,7 +316,7 @@ func (api *HTTP) applyMessage(msg *types.RobustMessage, timeout time.Duration) (
 	return api.raftNode.Apply(msgbytes, timeout), nil
 }
 
-func (api *HTTP) applyMessageWait(msg *types.RobustMessage, timeout time.Duration) error {
+func (api *HTTP) applyMessageWait(msg *robust.Message, timeout time.Duration) error {
 	f, err := api.applyMessage(msg, timeout)
 	if err != nil {
 		return err
@@ -331,7 +331,7 @@ func (api *HTTP) applyMessageWait(msg *types.RobustMessage, timeout time.Duratio
 }
 
 // TODO: unexport this, find the correct abstraction layer
-func (api *HTTP) ApplyMessageWait(msg *types.RobustMessage, timeout time.Duration) error {
+func (api *HTTP) ApplyMessageWait(msg *robust.Message, timeout time.Duration) error {
 	return api.applyMessageWait(msg, timeout)
 }
 
@@ -365,8 +365,8 @@ func (api *HTTP) maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body
 	p.ServeHTTP(w, r)
 }
 
-func (api *HTTP) session(r *http.Request, sessionId string) (types.RobustId, error) {
-	var sessionid types.RobustId
+func (api *HTTP) session(r *http.Request, sessionId string) (robust.Id, error) {
+	var sessionid robust.Id
 
 	id, err := strconv.ParseInt(sessionId, 0, 64)
 	if err != nil {
@@ -378,7 +378,7 @@ func (api *HTTP) session(r *http.Request, sessionId string) (types.RobustId, err
 		return sessionid, fmt.Errorf("no X-Session-Auth header set")
 	}
 
-	auth, err := api.ircServer.GetAuth(types.RobustId{Id: id})
+	auth, err := api.ircServer.GetAuth(robust.Id{Id: id})
 	if err != nil {
 		return sessionid, err
 	}
@@ -391,7 +391,7 @@ func (api *HTTP) session(r *http.Request, sessionId string) (types.RobustId, err
 	return sessionid, nil
 }
 
-func (api *HTTP) sessionOrProxy(w http.ResponseWriter, r *http.Request, sessionId string) (types.RobustId, error) {
+func (api *HTTP) sessionOrProxy(w http.ResponseWriter, r *http.Request, sessionId string) (robust.Id, error) {
 	sessionid, err := api.session(r, sessionId)
 	if err == ircserver.ErrSessionNotYetSeen && api.raftNode.State() != raft.Leader {
 		// The session might exist on the leader, so we must proxy.

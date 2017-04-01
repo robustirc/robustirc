@@ -20,7 +20,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/internal/privacy"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 	"github.com/syndtr/goleveldb/leveldb"
 	leveldb_errors "github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/opt"
@@ -53,11 +53,11 @@ func dumpLog(key uint64, rlog *raft.Log) {
 		return
 	}
 
-	unfilteredMsg := types.NewRobustMessageFromBytes(rlog.Data)
+	unfilteredMsg := robust.NewMessageFromBytes(rlog.Data)
 	rmsg := &unfilteredMsg
-	if rmsg.Type == types.RobustIRCFromClient {
+	if rmsg.Type == robust.IRCFromClient {
 		rmsg = privacy.FilterMsg(rmsg)
-	} else if rmsg.Type == types.RobustState {
+	} else if rmsg.Type == robust.State {
 		state, err := base64.StdEncoding.DecodeString(rmsg.Data)
 		if err != nil {
 			log.Printf("Could not decode robuststate: %v", err)
@@ -115,7 +115,7 @@ func dumpLeveldb(path string) error {
 				log.Fatalf("Corrupted database: %v\n", err)
 			}
 			if rlog.Type == raft.LogCommand {
-				rmsg := types.NewRobustMessageFromBytes(rlog.Data)
+				rmsg := robust.NewMessageFromBytes(rlog.Data)
 				lastModified = time.Unix(0, rmsg.Id.Id)
 				break
 			}

@@ -11,7 +11,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/internal/privacy"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 	"github.com/stapelberg/glog"
 	"gopkg.in/sorcix/irc.v2"
 )
@@ -29,7 +29,7 @@ type canaryMessageState struct {
 	Compacted bool
 }
 
-func messagesString(messages []*types.RobustMessage) string {
+func messagesString(messages []*robust.Message) string {
 	output := make([]string, len(messages))
 
 	for idx, msg := range messages {
@@ -103,13 +103,13 @@ func canary(fsm raft.FSM, statePath string) {
 			continue
 		}
 
-		nmsg := types.NewRobustMessageFromBytes(nlog.Data)
+		nmsg := robust.NewMessageFromBytes(nlog.Data)
 		if time.Unix(0, nmsg.Id.Id).Before(rs.compactionEnd) {
 			continue
 		}
 
 		// TODO: come up with pseudo-values for createsession/deletesession
-		if nmsg.Type != types.RobustIRCFromClient {
+		if nmsg.Type != robust.IRCFromClient {
 			continue
 		}
 		ircmsg := irc.ParseMessage(nmsg.Data)

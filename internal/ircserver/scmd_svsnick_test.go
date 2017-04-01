@@ -3,29 +3,30 @@ package ircserver
 import (
 	"testing"
 
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
+
 	"gopkg.in/sorcix/irc.v2"
 )
 
 func TestServerSvsnick(t *testing.T) {
 	i, ids := stdIRCServerWithServices()
 
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test"))
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, ids["services"], irc.ParseMessage("SVSNICK secure socoro :1")),
+		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage("SVSNICK secure socoro :1")),
 		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad NICK :socoro")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, ids["services"], irc.ParseMessage("SVSNICK secure socoro :1")),
+		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage("SVSNICK secure socoro :1")),
 		":robustirc.net 401 * secure :No such nick/channel")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, ids["services"], irc.ParseMessage("SVSNICK secure ! :1")),
+		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage("SVSNICK secure ! :1")),
 		":robustirc.net 432 * ! :Erroneous nickname")
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("JOIN #TEST")),
+		i.ProcessMessage(robust.Id{}, ids["xeen"], irc.ParseMessage("JOIN #TEST")),
 		[]*irc.Message{
 			irc.ParseMessage(":xeen!baz@robust/0x13b5aa0a2bcfb8af JOIN :#TEST"),
 			irc.ParseMessage(":robustirc.net SJOIN 1 #TEST :xeen"),
@@ -37,6 +38,6 @@ func TestServerSvsnick(t *testing.T) {
 
 	mustMatchInterested(t, i,
 		ids["services"], irc.ParseMessage("SVSNICK socoro sucuru :1"),
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{true, false, true})
 }

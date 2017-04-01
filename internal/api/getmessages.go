@@ -13,7 +13,7 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/internal/ircserver"
 	"github.com/robustirc/robustirc/internal/outputstream"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 	"github.com/stapelberg/glog"
 )
 
@@ -28,13 +28,13 @@ func (api *HTTP) updateLastContact() {
 	}
 }
 
-func (api *HTTP) pingMessage() *types.RobustMessage {
+func (api *HTTP) pingMessage() *robust.Message {
 	peers, err := api.peerStore.Peers()
 	if err != nil {
 		log.Fatalf("Could not get peers: %v (Peer file corrupted on disk?)", err)
 	}
-	return &types.RobustMessage{
-		Type:    types.RobustPing,
+	return &robust.Message{
+		Type:    robust.Ping,
 		Servers: peers,
 	}
 }
@@ -55,25 +55,25 @@ func parseLastSeen(lastSeenStr string) (first int64, last int64, err error) {
 	return first, last, nil
 }
 
-func (api *HTTP) pingTicker(ctx context.Context, msgschan chan<- []*types.RobustMessage) {
+func (api *HTTP) pingTicker(ctx context.Context, msgschan chan<- []*robust.Message) {
 	ticker := time.NewTicker(pingInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			msgschan <- []*types.RobustMessage{api.pingMessage()}
+			msgschan <- []*robust.Message{api.pingMessage()}
 		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func outputToRobustMessages(msgs []outputstream.Message) []*types.RobustMessage {
-	result := make([]*types.RobustMessage, len(msgs))
+func outputToRobustMessages(msgs []outputstream.Message) []*robust.Message {
+	result := make([]*robust.Message, len(msgs))
 	for idx, msg := range msgs {
-		result[idx] = &types.RobustMessage{
+		result[idx] = &robust.Message{
 			Id:             msg.Id,
-			Type:           types.RobustIRCToClient,
+			Type:           robust.IRCToClient,
 			Data:           msg.Data,
 			InterestingFor: msg.InterestingFor,
 		}
@@ -81,7 +81,7 @@ func outputToRobustMessages(msgs []outputstream.Message) []*types.RobustMessage 
 	return result
 }
 
-func (api *HTTP) getMessages(ctx context.Context, lastSeen types.RobustId, msgschan chan<- []*types.RobustMessage) {
+func (api *HTTP) getMessages(ctx context.Context, lastSeen robust.Id, msgschan chan<- []*robust.Message) {
 	var msgs []outputstream.Message
 
 	// With the following output messages stored for a session:
@@ -155,7 +155,7 @@ func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessi
 				http.StatusInternalServerError)
 			return
 		}
-		lastSeen = types.RobustId{
+		lastSeen = robust.Id{
 			Id:    first,
 			Reply: last,
 		}
@@ -167,7 +167,7 @@ func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessi
 	flushTimer.Stop()
 	var lastFlush time.Time
 	willFlush := false
-	msgschan := make(chan []*types.RobustMessage)
+	msgschan := make(chan []*robust.Message)
 
 	sessionId = strconv.FormatInt(session.Id, 10)
 	ctx, cancel := context.WithCancel(r.Context())
@@ -215,7 +215,7 @@ func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessi
 
 		case msgs := <-msgschan:
 			for _, msg := range msgs {
-				if msg.Type != types.RobustPing && !msg.InterestingFor[session.Id] {
+				if msg.Type != robust.Ping && !msg.InterestingFor[session.Id] {
 					continue
 				}
 

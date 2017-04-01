@@ -3,7 +3,7 @@ package ircserver
 import (
 	"testing"
 
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 
 	"gopkg.in/sorcix/irc.v2"
 )
@@ -12,40 +12,40 @@ func TestList(t *testing.T) {
 	i, ids := stdIRCServer()
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("LIST")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("LIST")),
 		":robustirc.net 323 sECuRE :End of LIST")
 
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test"))
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("LIST")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("LIST")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 322 sECuRE #test 1 :"),
 			irc.ParseMessage(":robustirc.net 323 sECuRE :End of LIST"),
 		})
 
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("TOPIC #test :this is a topic"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("TOPIC #test :this is a topic"))
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("LIST")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("LIST")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 322 sECuRE #test 1 :this is a topic"),
 			irc.ParseMessage(":robustirc.net 323 sECuRE :End of LIST"),
 		})
 
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #test"))
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("LIST")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("LIST")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 322 sECuRE #test 2 :this is a topic"),
 			irc.ParseMessage(":robustirc.net 323 sECuRE :End of LIST"),
 		})
 
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #new"))
+	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #new"))
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("LIST")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("LIST")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 322 sECuRE #new 1 :"),
 			irc.ParseMessage(":robustirc.net 322 sECuRE #test 2 :this is a topic"),
@@ -53,14 +53,14 @@ func TestList(t *testing.T) {
 		})
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("LIST #test")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("LIST #test")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 322 sECuRE #test 2 :this is a topic"),
 			irc.ParseMessage(":robustirc.net 323 sECuRE :End of LIST"),
 		})
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("LIST #test,#new")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("LIST #test,#new")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 322 sECuRE #test 2 :this is a topic"),
 			irc.ParseMessage(":robustirc.net 322 sECuRE #new 1 :"),
@@ -68,16 +68,16 @@ func TestList(t *testing.T) {
 		})
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("LIST invalid,#test,invalid")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("LIST invalid,#test,invalid")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 322 sECuRE #test 2 :this is a topic"),
 			irc.ParseMessage(":robustirc.net 323 sECuRE :End of LIST"),
 		})
 
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("MODE #new +s"))
+	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("MODE #new +s"))
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("LIST")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("LIST")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 322 sECuRE #test 2 :this is a topic"),
 			irc.ParseMessage(":robustirc.net 323 sECuRE :End of LIST"),

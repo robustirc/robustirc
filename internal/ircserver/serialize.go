@@ -6,7 +6,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/robustirc/robustirc/internal/config"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 	"gopkg.in/sorcix/irc.v2"
 
 	pb "github.com/robustirc/robustirc/internal/proto"
@@ -188,7 +188,7 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 			loggedIn = true
 		}
 		newSession := &Session{
-			Id:                  types.RobustId{Id: s.Id.Id, Reply: s.Id.Reply},
+			Id:                  robust.Id{Id: s.Id.Id, Reply: s.Id.Reply},
 			auth:                s.Auth,
 			loggedIn:            loggedIn,
 			Nick:                s.Nick,
@@ -256,7 +256,7 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 			reason:   s.Reason,
 		}
 	}
-	i.lastProcessed = types.RobustId{
+	i.lastProcessed = robust.Id{
 		Id:    snapshot.LastProcessed.Id,
 		Reply: snapshot.LastProcessed.Reply,
 	}

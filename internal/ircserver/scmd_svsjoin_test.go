@@ -4,21 +4,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
+
 	"gopkg.in/sorcix/irc.v2"
 )
 
 func TestServerSvsjoin(t *testing.T) {
 	i, ids := stdIRCServerWithServices()
 
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test"))
 
 	mustMatchIrcmsg(t,
-		i.ProcessMessage(types.RobustId{}, ids["services"], irc.ParseMessage(":NickServ SVSJOIN bleh #test")),
+		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage(":NickServ SVSJOIN bleh #test")),
 		irc.ParseMessage(":robustirc.net 401 NickServ bleh :No such nick/channel"))
 
 	msg := irc.ParseMessage(":NickServ SVSJOIN xeen #TEST")
-	msgid := types.RobustId{Id: time.Now().UnixNano()}
+	msgid := robust.Id{Id: time.Now().UnixNano()}
 	reply := i.ProcessMessage(msgid, ids["services"], msg)
 	msgs := robustMessagesFromReply(reply)
 
@@ -33,22 +34,22 @@ func TestServerSvsjoin(t *testing.T) {
 		})
 
 	mustMatchInterestedMsgs(t, i,
-		msg, []*types.RobustMessage{msgs[0]},
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		msg, []*robust.Message{msgs[0]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{true, false, true})
 
 	mustMatchInterestedMsgs(t, i,
-		msg, []*types.RobustMessage{msgs[1]},
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"], ids["services"]},
+		msg, []*robust.Message{msgs[1]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"], ids["services"]},
 		[]bool{false, false, false, true})
 
 	mustMatchInterestedMsgs(t, i,
-		msg, []*types.RobustMessage{msgs[2]},
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		msg, []*robust.Message{msgs[2]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{false, false, true})
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["services"], irc.ParseMessage(":NickServ SVSJOIN xeen #bar")),
+		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage(":NickServ SVSJOIN xeen #bar")),
 		[]*irc.Message{
 			irc.ParseMessage(":xeen!baz@robust/0x13b5aa0a2bcfb8af JOIN :#bar"),
 			irc.ParseMessage(":robustirc.net SJOIN 1 #bar :@xeen"),
@@ -58,14 +59,14 @@ func TestServerSvsjoin(t *testing.T) {
 		})
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["services"], irc.ParseMessage(":NickServ SVSPART xeen #bar")),
+		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage(":NickServ SVSPART xeen #bar")),
 		[]*irc.Message{
 			irc.ParseMessage(":xeen!baz@robust/0x13b5aa0a2bcfb8af PART #bar"),
 		})
 
 	mustMatchInterested(t, i,
 		ids["services"], irc.ParseMessage(":NickServ SVSPART xeen #test"),
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"], ids["services"]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"], ids["services"]},
 		[]bool{true, false, true, true})
 
 }

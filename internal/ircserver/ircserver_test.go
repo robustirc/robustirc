@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/robustirc/robustirc/internal/config"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 
 	"gopkg.in/sorcix/irc.v2"
 )
 
-func stdIRCServer() (*IRCServer, map[string]types.RobustId) {
+func stdIRCServer() (*IRCServer, map[string]robust.Id) {
 	i := NewIRCServer("robustirc.net", time.Unix(0, 1481144012969203276))
 	i.Config = config.Network{
 		IRC: config.IRC{
@@ -24,22 +24,22 @@ func stdIRCServer() (*IRCServer, map[string]types.RobustId) {
 		},
 	}
 
-	ids := make(map[string]types.RobustId)
+	ids := make(map[string]robust.Id)
 
-	ids["secure"] = types.RobustId{Id: 1420228218166687917}
-	ids["mero"] = types.RobustId{Id: 1420228218166687918}
-	ids["xeen"] = types.RobustId{Id: 1420228218166687919}
+	ids["secure"] = robust.Id{Id: 1420228218166687917}
+	ids["mero"] = robust.Id{Id: 1420228218166687918}
+	ids["xeen"] = robust.Id{Id: 1420228218166687919}
 
 	i.CreateSession(ids["secure"], "auth-secure")
 	i.CreateSession(ids["mero"], "auth-mero")
 	i.CreateSession(ids["xeen"], "auth-xeen")
 
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("NICK sECuRE"))
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("NICK mero"))
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("USER foo 0 * :Axel Wagner"))
-	i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("NICK xeen"))
-	i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("USER baz 0 * :Iks Enn"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("NICK sECuRE"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
+	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("NICK mero"))
+	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("USER foo 0 * :Axel Wagner"))
+	i.ProcessMessage(robust.Id{}, ids["xeen"], irc.ParseMessage("NICK xeen"))
+	i.ProcessMessage(robust.Id{}, ids["xeen"], irc.ParseMessage("USER baz 0 * :Iks Enn"))
 
 	return i, ids
 }
@@ -87,7 +87,7 @@ func TestSessionInitialization(t *testing.T) {
 	i := NewIRCServer("robustirc.net", time.Now())
 	i.Config = config.Network{}
 
-	id := types.RobustId{Id: time.Now().UnixNano()}
+	id := robust.Id{Id: time.Now().UnixNano()}
 	i.CreateSession(id, "authbytes")
 
 	s, err := i.GetSession(id)
@@ -100,17 +100,17 @@ func TestSessionInitialization(t *testing.T) {
 	}
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("JOIN #test")),
+		i.ProcessMessage(robust.Id{}, id, irc.ParseMessage("JOIN #test")),
 		":robustirc.net 451 JOIN :You have not registered")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("NICK")),
+		i.ProcessMessage(robust.Id{}, id, irc.ParseMessage("NICK")),
 		":robustirc.net 431 :No nickname given")
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("NICK secure")),
+		i.ProcessMessage(robust.Id{}, id, irc.ParseMessage("NICK secure")),
 		[]*irc.Message{})
-	got := i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
+	got := i.ProcessMessage(robust.Id{}, id, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
 	if len(got.Messages) < 1 || irc.ParseMessage(got.Messages[0].Data).Command != irc.RPL_WELCOME {
 		t.Fatalf("got %v, want irc.RPL_WELCOME", got)
 	}
@@ -124,13 +124,13 @@ func TestSessionInitialization(t *testing.T) {
 	}
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("JOINT #test")),
+		i.ProcessMessage(robust.Id{}, id, irc.ParseMessage("JOINT #test")),
 		":robustirc.net 421 secure JOINT :Unknown command")
 
 	// Now connect again with the same nickname and verify the server behaves
 	// correctly in that scenario.
 
-	idSecond := types.RobustId{Id: time.Now().UnixNano()}
+	idSecond := robust.Id{Id: time.Now().UnixNano()}
 	i.CreateSession(idSecond, "authbytes")
 
 	sSecond, err := i.GetSession(idSecond)
@@ -143,14 +143,14 @@ func TestSessionInitialization(t *testing.T) {
 	}
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, idSecond, irc.ParseMessage("NICK :secure")),
+		i.ProcessMessage(robust.Id{}, idSecond, irc.ParseMessage("NICK :secure")),
 		":robustirc.net 433 * secure :Nickname is already in use")
 	if sSecond.Nick != "" {
 		t.Fatalf("session.Nick: got %q, want %q", s.Nick, "")
 	}
-	i.ProcessMessage(types.RobustId{}, idSecond, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
+	i.ProcessMessage(robust.Id{}, idSecond, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
 
-	got = i.ProcessMessage(types.RobustId{}, idSecond, irc.ParseMessage("NICK secure_"))
+	got = i.ProcessMessage(robust.Id{}, idSecond, irc.ParseMessage("NICK secure_"))
 	if len(got.Messages) < 1 || irc.ParseMessage(got.Messages[0].Data).Command != irc.RPL_WELCOME {
 		t.Fatalf("got %v, want irc.RPL_WELCOME", got)
 	}
@@ -174,16 +174,16 @@ func welcomeMustContain(t *testing.T, passMsg, privMsg string) {
 		},
 	}
 
-	id := types.RobustId{Id: 0x13c988ab2b01f2fb}
+	id := robust.Id{Id: 0x13c988ab2b01f2fb}
 	i.CreateSession(id, "authbytes")
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage(passMsg)),
+		i.ProcessMessage(robust.Id{}, id, irc.ParseMessage(passMsg)),
 		[]*irc.Message{})
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("NICK secure")),
+		i.ProcessMessage(robust.Id{}, id, irc.ParseMessage("NICK secure")),
 		[]*irc.Message{})
-	got := i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
+	got := i.ProcessMessage(robust.Id{}, id, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
 	if len(got.Messages) < 1 || irc.ParseMessage(got.Messages[0].Data).Command != irc.RPL_WELCOME {
 		t.Fatalf("got %v, want irc.RPL_WELCOME", got)
 	}
@@ -233,7 +233,7 @@ func TestNickServAuth(t *testing.T) {
 		":robustirc.net 381 secure :You are now an IRC operator")
 }
 
-func mustMatchInterestedMsgs(t *testing.T, i *IRCServer, msg *irc.Message, msgs []*types.RobustMessage, sessions []types.RobustId, want []bool) {
+func mustMatchInterestedMsgs(t *testing.T, i *IRCServer, msg *irc.Message, msgs []*robust.Message, sessions []robust.Id, want []bool) {
 	if len(want) != len(sessions) {
 		panic("bug: len(want) != len(sessions)")
 	}
@@ -267,12 +267,12 @@ func mustMatchInterestedMsgs(t *testing.T, i *IRCServer, msg *irc.Message, msgs 
 	}
 }
 
-func robustMessagesFromReply(replies *Replyctx) []*types.RobustMessage {
-	converted := make([]*types.RobustMessage, len(replies.Messages))
+func robustMessagesFromReply(replies *Replyctx) []*robust.Message {
+	converted := make([]*robust.Message, len(replies.Messages))
 	for idx, msg := range replies.Messages {
-		converted[idx] = &types.RobustMessage{
+		converted[idx] = &robust.Message{
 			Id:             msg.Id,
-			Type:           types.RobustIRCToClient,
+			Type:           robust.IRCToClient,
 			Data:           msg.Data,
 			InterestingFor: msg.InterestingFor,
 		}
@@ -280,8 +280,8 @@ func robustMessagesFromReply(replies *Replyctx) []*types.RobustMessage {
 	return converted
 }
 
-func mustMatchInterested(t *testing.T, i *IRCServer, sessionid types.RobustId, msg *irc.Message, sessions []types.RobustId, want []bool) {
-	msgid := types.RobustId{Id: time.Now().UnixNano()}
+func mustMatchInterested(t *testing.T, i *IRCServer, sessionid robust.Id, msg *irc.Message, sessions []robust.Id, want []bool) {
+	msgid := robust.Id{Id: time.Now().UnixNano()}
 	replies := i.ProcessMessage(msgid, sessionid, msg)
 	mustMatchInterestedMsgs(t, i, msg, robustMessagesFromReply(replies), sessions, want)
 }
@@ -291,82 +291,82 @@ func TestInterestedIn(t *testing.T) {
 
 	mustMatchInterested(t, i,
 		ids["secure"], irc.ParseMessage("NICK secure_out_of_chan"),
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{true, false, false})
 
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #test"))
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #test"))
 
 	mustMatchInterested(t, i,
 		ids["secure"], irc.ParseMessage("NICK secore"),
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{true, true, false})
 
 	mustMatchInterested(t, i,
 		ids["secure"], irc.ParseMessage("TOPIC #test :foobar"),
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{true, true, false})
 
 	mustMatchInterested(t, i,
 		ids["secure"], irc.ParseMessage("PRIVMSG #test :foobar"),
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{false, true, false})
 
 	mustMatchInterested(t, i,
 		ids["secure"], irc.ParseMessage("MODE #test +o mero"),
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{true, true, false})
 
 	mustMatchInterested(t, i,
 		ids["secure"], irc.ParseMessage("MODE secore +i"),
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{true, false, false})
 
 	mustMatchInterested(t, i,
 		ids["secure"], irc.ParseMessage("PRIVMSG xeen :foobar"),
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{false, false, true})
 
 	mustMatchInterested(t, i,
 		ids["secure"], irc.ParseMessage("PART #test"),
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{true, true, false})
 
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test"))
 
 	mustMatchInterested(t, i,
 		ids["mero"], irc.ParseMessage("KICK #test secore :bye"),
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{true, true, false})
 
 	mustMatchInterested(t, i,
 		ids["secure"], irc.ParseMessage("QUIT :bye"),
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{false, false, false})
 
-	i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(robust.Id{}, ids["xeen"], irc.ParseMessage("JOIN #test"))
 
 	mustMatchInterested(t, i,
 		ids["mero"], irc.ParseMessage("QUIT :bye"),
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{false, false, true})
 }
 
 func TestInterestedInDelayed(t *testing.T) {
 	i, ids := stdIRCServer()
 
-	i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("JOIN #test"))
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #test"))
 
 	msg := irc.ParseMessage("NICK secore")
-	msgid := types.RobustId{Id: time.Now().UnixNano()}
+	msgid := robust.Id{Id: time.Now().UnixNano()}
 	replies := i.ProcessMessage(msgid, ids["secure"], msg)
 
-	i.ProcessMessage(types.RobustId{}, ids["mero"], irc.ParseMessage("PART #test"))
+	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("PART #test"))
 
 	mustMatchInterestedMsgs(t, i,
 		msg, robustMessagesFromReply(replies),
-		[]types.RobustId{ids["secure"], ids["mero"], ids["xeen"]},
+		[]robust.Id{ids["secure"], ids["mero"], ids["xeen"]},
 		[]bool{true, true, false})
 }
 
@@ -388,16 +388,16 @@ func TestServiceAliases(t *testing.T) {
 		"bs":       "PRIVMSG BotServ :",
 	}
 
-	i.ProcessMessage(types.RobustId{}, ids["services"], irc.ParseMessage("NICK NickServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
-	i.ProcessMessage(types.RobustId{}, ids["services"], irc.ParseMessage("NICK ChanServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
-	i.ProcessMessage(types.RobustId{}, ids["services"], irc.ParseMessage("NICK OperServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
-	i.ProcessMessage(types.RobustId{}, ids["services"], irc.ParseMessage("NICK MemoServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
-	i.ProcessMessage(types.RobustId{}, ids["services"], irc.ParseMessage("NICK HostServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
-	i.ProcessMessage(types.RobustId{}, ids["services"], irc.ParseMessage("NICK BotServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
+	i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage("NICK NickServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
+	i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage("NICK ChanServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
+	i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage("NICK OperServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
+	i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage("NICK MemoServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
+	i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage("NICK HostServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
+	i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage("NICK BotServ 1 1422134861 services robustirc.net services.robustirc.net 0 :Operator Server"))
 
 	for alias, expanded := range aliases {
 		mustMatchMsg(t,
-			i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage(alias+" IDENTIFY foobar baz")),
+			i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage(alias+" IDENTIFY foobar baz")),
 			":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad "+expanded+"IDENTIFY foobar baz")
 	}
 }
@@ -410,7 +410,7 @@ func TestCaptchaLogin(t *testing.T) {
 	i.Config.CaptchaHMACSecret = hmacSecret
 	i.Config.CaptchaRequiredForLogin = true
 
-	id := types.RobustId{Id: 1420228218166687919}
+	id := robust.Id{Id: 1420228218166687919}
 	i.CreateSession(id, "authbytes")
 
 	s, err := i.GetSession(id)
@@ -423,7 +423,7 @@ func TestCaptchaLogin(t *testing.T) {
 	}
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("NICK attacker")),
+		i.ProcessMessage(robust.Id{}, id, irc.ParseMessage("NICK attacker")),
 		[]*irc.Message{})
 
 	captchaRequiredMsgs := []*irc.Message{
@@ -431,17 +431,17 @@ func TestCaptchaLogin(t *testing.T) {
 	}
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("USER attacker a a :a")),
+		i.ProcessMessage(robust.Id{}, id, irc.ParseMessage("USER attacker a a :a")),
 		captchaRequiredMsgs)
 
 	// Invalid password
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("PASS :foo")),
+		i.ProcessMessage(robust.Id{}, id, irc.ParseMessage("PASS :foo")),
 		captchaRequiredMsgs)
 
 	// Invalid captcha password
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("PASS :captcha=foo")),
+		i.ProcessMessage(robust.Id{}, id, irc.ParseMessage("PASS :captcha=foo")),
 		captchaRequiredMsgs)
 
 	u, err := url.Parse(i.generateCaptchaURL(s, fmt.Sprintf("okay:login:%d:", id.Id+1)))
@@ -450,7 +450,7 @@ func TestCaptchaLogin(t *testing.T) {
 	}
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, id, irc.ParseMessage("PASS :captcha="+u.Fragment)),
+		i.ProcessMessage(robust.Id{}, id, irc.ParseMessage("PASS :captcha="+u.Fragment)),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 001 attacker :Welcome to RobustIRC!"),
 			irc.ParseMessage(":robustirc.net 002 attacker :Your host is robustirc.net"),
@@ -470,11 +470,11 @@ func TestSessionLimit(t *testing.T) {
 		MaxSessions: 1,
 	}
 
-	if err := i.CreateSession(types.RobustId{}, "authbytes"); err != nil {
+	if err := i.CreateSession(robust.Id{}, "authbytes"); err != nil {
 		t.Fatalf("Could not create session: %v", err)
 	}
 
-	if err := i.CreateSession(types.RobustId{}, "authbytes"); err == nil {
+	if err := i.CreateSession(robust.Id{}, "authbytes"); err == nil {
 		t.Fatal("Unexpectedly could create second session")
 	}
 }
@@ -486,7 +486,7 @@ func TestChannelLimit(t *testing.T) {
 	}
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("JOIN #test")),
+		i.ProcessMessage(robust.Id{}, ids["xeen"], irc.ParseMessage("JOIN #test")),
 		[]*irc.Message{
 			irc.ParseMessage(":xeen!baz@robust/0x13b5aa0a2bcfb8af JOIN :#test"),
 			irc.ParseMessage(":robustirc.net MODE #test +nt"),
@@ -498,6 +498,6 @@ func TestChannelLimit(t *testing.T) {
 		})
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, ids["xeen"], irc.ParseMessage("JOIN #second")),
+		i.ProcessMessage(robust.Id{}, ids["xeen"], irc.ParseMessage("JOIN #second")),
 		":robustirc.net 403 xeen #second :No such channel")
 }

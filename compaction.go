@@ -8,7 +8,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/internal/raftstore"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 )
 
 type robustSnapshot struct {
@@ -22,8 +22,8 @@ type robustSnapshot struct {
 // Persist writes a robustSnapshot to disk, i.e. handles the
 // serialization details.
 func (s *robustSnapshot) Persist(sink raft.SnapshotSink) error {
-	stateMsg := types.RobustMessage{
-		Type: types.RobustState,
+	stateMsg := robust.Message{
+		Type: robust.State,
 		Data: base64.StdEncoding.EncodeToString(s.state), // TODO: find a more straight-forward way to encode this
 	}
 	stateMsgJson, err := json.Marshal(&stateMsg)

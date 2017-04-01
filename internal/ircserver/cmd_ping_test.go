@@ -3,7 +3,7 @@ package ircserver
 import (
 	"testing"
 
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 
 	"gopkg.in/sorcix/irc.v2"
 )
@@ -12,10 +12,10 @@ func TestPing(t *testing.T) {
 	i, ids := stdIRCServer()
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("PING")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("PING")),
 		":robustirc.net 409 sECuRE :No origin specified")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(types.RobustId{}, ids["secure"], irc.ParseMessage("PING foobar")),
+		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("PING foobar")),
 		":robustirc.net PONG foobar")
 }

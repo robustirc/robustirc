@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 )
 
 func (api *HTTP) handleKill(w http.ResponseWriter, r *http.Request) {
@@ -31,9 +31,9 @@ func (api *HTTP) handleKill(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		msg := &types.RobustMessage{
-			Session: types.RobustId{Id: id},
-			Type:    types.RobustDeleteSession,
+		msg := &robust.Message{
+			Session: robust.Id{Id: id},
+			Type:    robust.DeleteSession,
 			Data:    "killed",
 		}
 		if err := api.applyMessageWait(msg, 10*time.Second); err != nil {

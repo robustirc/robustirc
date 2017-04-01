@@ -4,10 +4,10 @@ package privacy
 
 import (
 	"github.com/golang/protobuf/proto"
-	"github.com/robustirc/robustirc/types"
 	"gopkg.in/sorcix/irc.v2"
 
 	pb "github.com/robustirc/robustirc/internal/proto"
+	"github.com/robustirc/robustirc/internal/robust"
 )
 
 func FilterSnapshot(snapshot pb.Snapshot) pb.Snapshot {
@@ -32,8 +32,8 @@ func FilterIrcmsg(message *irc.Message) *irc.Message {
 	return message
 }
 
-func FilterMsg(message *types.RobustMessage) *types.RobustMessage {
-	return &types.RobustMessage{
+func FilterMsg(message *robust.Message) *robust.Message {
+	return &robust.Message{
 		Id:      message.Id,
 		Session: message.Session,
 		Type:    message.Type,
@@ -41,8 +41,8 @@ func FilterMsg(message *types.RobustMessage) *types.RobustMessage {
 	}
 }
 
-func FilterMsgs(messages []*types.RobustMessage) []*types.RobustMessage {
-	output := make([]*types.RobustMessage, len(messages))
+func FilterMsgs(messages []*robust.Message) []*robust.Message {
+	output := make([]*robust.Message, len(messages))
 	for idx, message := range messages {
 		output[idx] = FilterMsg(message)
 	}

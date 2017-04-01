@@ -19,17 +19,17 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/robustirc/robustirc/types"
+	"github.com/robustirc/robustirc/internal/robust"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
-// Message is similar to types.RobustMessage, but more compact. This speeds up
+// Message is similar to robust.Message, but more compact. This speeds up
 // (de)serialization, which is useful for storing messages outside of main
 // memory.
 type Message struct {
-	Id             types.RobustId
+	Id             robust.Id
 	Data           string
 	InterestingFor map[int64]bool
 }
@@ -135,7 +135,7 @@ func (os *OutputStream) reset() error {
 	os.lastseen = messageBatch{
 		Messages: []Message{
 			{
-				Id:             types.RobustId{Id: 0},
+				Id:             robust.Id{Id: 0},
 				InterestingFor: make(map[int64]bool),
 			},
 		},
@@ -176,18 +176,18 @@ func (os *OutputStream) Add(msgs []Message) error {
 	return nil
 }
 
-func (os *OutputStream) LastSeen() types.RobustId {
+func (os *OutputStream) LastSeen() robust.Id {
 	os.messagesMu.RLock()
 	defer os.messagesMu.RUnlock()
 	if len(os.lastseen.Messages) > 0 {
 		return os.lastseen.Messages[0].Id
 	}
-	return types.RobustId{Id: 0}
+	return robust.Id{Id: 0}
 }
 
 // Delete deletes all IRC output messages that were generated in reply to the
 // input message with inputID.
-func (os *OutputStream) Delete(inputID types.RobustId) error {
+func (os *OutputStream) Delete(inputID robust.Id) error {
 	var key [8]byte
 
 	os.messagesMu.Lock()
@@ -227,7 +227,7 @@ func (os *OutputStream) Delete(inputID types.RobustId) error {
 // was deleted in the meanwhile. In case there is no next message yet,
 // GetNext blocks until it appears.
 // GetNext(types.RobustId{Id: 0}) returns the first message.
-func (os *OutputStream) GetNext(ctx context.Context, lastseen types.RobustId) []Message {
+func (os *OutputStream) GetNext(ctx context.Context, lastseen robust.Id) []Message {
 	// GetNext handles 4 different cases:
 	//
 	// ┌──────────────────┬───────────┬───────────────────────────────────────┐
@@ -343,7 +343,7 @@ func (os *OutputStream) getUnlocked(id uint64) (*messageBatch, bool) {
 }
 
 // Get returns the next IRC output message for 'input', if present.
-func (os *OutputStream) Get(input types.RobustId) ([]Message, bool) {
+func (os *OutputStream) Get(input robust.Id) ([]Message, bool) {
 	os.messagesMu.RLock()
 	defer os.messagesMu.RUnlock()
 
