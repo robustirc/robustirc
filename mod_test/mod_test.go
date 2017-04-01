@@ -13,9 +13,9 @@ import (
 
 	"github.com/prometheus/common/expfmt"
 	"github.com/robustirc/bridge/robustsession"
+	"github.com/robustirc/robustirc/internal/health"
 	"github.com/robustirc/robustirc/internal/localnet"
 	"github.com/robustirc/robustirc/types"
-	"github.com/robustirc/robustirc/util"
 )
 
 func TestMessageOfDeath(t *testing.T) {
@@ -104,7 +104,7 @@ func TestMessageOfDeath(t *testing.T) {
 			// Ensure the node comes back up.
 			started := time.Now()
 			for time.Since(started) < 10*time.Second {
-				if _, err := util.GetServerStatus(addr, l.NetworkPassword); err != nil {
+				if _, err := health.GetServerStatus(addr, l.NetworkPassword); err != nil {
 					t.Logf("Node %s unhealthy: %v", addr, err)
 					time.Sleep(1 * time.Second)
 					continue

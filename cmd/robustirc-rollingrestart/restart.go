@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/robustirc/robustirc/internal/health"
 	"github.com/robustirc/robustirc/internal/robusthttp"
-	"github.com/robustirc/robustirc/util"
 	"github.com/stapelberg/glog"
 )
 
@@ -64,7 +64,7 @@ func quit(server string) error {
 	return nil
 }
 
-func allNodesUpdated(statuses map[string]util.ServerStatus, binaryHash string) bool {
+func allNodesUpdated(statuses map[string]health.ServerStatus, binaryHash string) bool {
 	for _, status := range statuses {
 		if status.ExecutableHash != binaryHash {
 			return false
@@ -84,9 +84,9 @@ func main() {
 	binaryHash := fileHash(*binaryPath)
 	glog.Infof("binaryHash = %s", binaryHash)
 
-	servers := util.ResolveNetwork(*network)
+	servers := health.ResolveNetwork(*network)
 	log.Printf("Checking network health\n")
-	if statuses, err := util.EnsureNetworkHealthy(servers, *networkPassword); err != nil {
+	if statuses, err := health.EnsureNetworkHealthy(servers, *networkPassword); err != nil {
 		log.Fatalf("Aborting upgrade for safety: %v", err)
 	} else {
 		if allNodesUpdated(statuses, binaryHash) {
@@ -99,12 +99,12 @@ func main() {
 
 	for rtry := 0; rtry < 5; rtry++ {
 		for _, server := range servers {
-			var statuses map[string]util.ServerStatus
+			var statuses map[string]health.ServerStatus
 			var err error
 
 			started := time.Now()
 			for time.Since(started) < *networkHealthTimeout {
-				statuses, err = util.EnsureNetworkHealthy(servers, *networkPassword)
+				statuses, err = health.EnsureNetworkHealthy(servers, *networkPassword)
 				if err != nil {
 					log.Printf("Network is not healthy: %v\n", err)
 					time.Sleep(1 * time.Second)
@@ -135,7 +135,7 @@ func main() {
 
 			for htry := 0; htry < 60; htry++ {
 				time.Sleep(1 * time.Second)
-				current, err := util.GetServerStatus(server, *networkPassword)
+				current, err := health.GetServerStatus(server, *networkPassword)
 				if err != nil {
 					log.Printf("Node unhealthy: %v\n", err)
 					continue

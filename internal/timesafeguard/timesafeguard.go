@@ -46,7 +46,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/robustirc/robustirc/util"
+	"github.com/robustirc/robustirc/internal/health"
 	"github.com/stapelberg/glog"
 )
 
@@ -82,9 +82,9 @@ func (t timeResult) worstCaseDrift() time.Duration {
 	return drift
 }
 
-func getServerTime(server, networkPassword string) (timeResult, util.ServerStatus, error) {
+func getServerTime(server, networkPassword string) (timeResult, health.ServerStatus, error) {
 	start := time.Now()
-	status, err := util.GetServerStatus(server, networkPassword)
+	status, err := health.GetServerStatus(server, networkPassword)
 	return timeResult{
 		Start:  start,
 		End:    time.Now(),

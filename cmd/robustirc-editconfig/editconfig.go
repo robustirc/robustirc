@@ -10,8 +10,8 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/robustirc/robustirc/internal/health"
 	"github.com/robustirc/robustirc/internal/robusthttp"
-	"github.com/robustirc/robustirc/util"
 )
 
 var (
@@ -76,7 +76,7 @@ func postConfig(server string, revision string, config io.Reader) error {
 func main() {
 	flag.Parse()
 
-	servers := util.ResolveNetwork(*network)
+	servers := health.ResolveNetwork(*network)
 	config, revision, err := getConfig(servers[0])
 	if err != nil {
 		log.Fatal(err)

@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/robustirc/robustirc/internal/health"
 	"github.com/robustirc/robustirc/util"
 )
 
@@ -115,7 +116,7 @@ func (l *localnet) Running() bool {
 }
 
 func (l *localnet) Healthy() bool {
-	_, err := util.EnsureNetworkHealthy(l.Servers(), l.NetworkPassword)
+	_, err := health.EnsureNetworkHealthy(l.Servers(), l.NetworkPassword)
 	return err == nil
 }
 

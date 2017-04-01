@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/hashicorp/raft"
+	"github.com/robustirc/robustirc/internal/health"
 	"github.com/robustirc/robustirc/internal/robusthttp"
-	"github.com/robustirc/robustirc/util"
 	"github.com/stapelberg/glog"
 )
 
@@ -90,9 +90,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	servers := util.ResolveNetwork(*network)
+	servers := health.ResolveNetwork(*network)
 	var peers []string
-	statuses, err := util.CollectStatuses(servers, *networkPassword)
+	statuses, err := health.CollectStatuses(servers, *networkPassword)
 	if len(statuses) == 0 {
 		glog.Errorf("No node within -network=%q reachable: %v", *network, err)
 		os.Exit(1)
@@ -111,7 +111,7 @@ func main() {
 
 	removePeerFound := false
 	var leader string
-	statuses, err = util.CollectStatuses(peers, *networkPassword)
+	statuses, err = health.CollectStatuses(peers, *networkPassword)
 	healthy := make(map[string]bool)
 	for _, server := range peers {
 		if server == *removePeer {
