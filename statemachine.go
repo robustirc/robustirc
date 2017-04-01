@@ -15,7 +15,7 @@ import (
 	"github.com/robustirc/robustirc/config"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/outputstream"
-	"github.com/robustirc/robustirc/raft_store"
+	"github.com/robustirc/robustirc/raftstore"
 	"github.com/robustirc/robustirc/types"
 	"github.com/stapelberg/glog"
 	"gopkg.in/sorcix/irc.v2"
@@ -23,9 +23,9 @@ import (
 
 type FSM struct {
 	// Used for invalidating messages of death.
-	store *raft_store.LevelDBStore
+	store *raftstore.LevelDBStore
 
-	ircstore *raft_store.LevelDBStore
+	ircstore *raftstore.LevelDBStore
 
 	skipDeletionForCanary bool
 
@@ -275,7 +275,7 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 		log.Fatal(err)
 	}
 	var err error
-	ircStore, err = raft_store.NewLevelDBStore(irclogPath, true)
+	ircStore, err = raftstore.NewLevelDBStore(irclogPath, true)
 	if err != nil {
 		log.Fatal(err)
 	}

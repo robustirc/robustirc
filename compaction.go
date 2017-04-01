@@ -7,14 +7,14 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
-	"github.com/robustirc/robustirc/raft_store"
+	"github.com/robustirc/robustirc/raftstore"
 	"github.com/robustirc/robustirc/types"
 )
 
 type robustSnapshot struct {
 	firstIndex    uint64
 	lastIndex     uint64
-	store         *raft_store.LevelDBStore
+	store         *raftstore.LevelDBStore
 	state         []byte
 	compactionEnd time.Time
 }

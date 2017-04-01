@@ -26,7 +26,7 @@ import (
 	"github.com/robustirc/robustirc/api"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/outputstream"
-	"github.com/robustirc/robustirc/raft_store"
+	"github.com/robustirc/robustirc/raftstore"
 	"github.com/robustirc/robustirc/robusthttp"
 	"github.com/robustirc/robustirc/timesafeguard"
 
@@ -88,7 +88,7 @@ var (
 
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
-	ircStore  *raft_store.LevelDBStore
+	ircStore  *raftstore.LevelDBStore
 	ircServer *ircserver.IRCServer
 
 	// outputStream is filled in SendMessages with messages that were
@@ -446,11 +446,11 @@ func main() {
 	metrics.NewGlobal(metrics.DefaultConfig("raftmetrics"), sink)
 
 	bootstrapping := *singleNode || *join != ""
-	logStore, err := raft_store.NewLevelDBStore(filepath.Join(*raftDir, "raftlog"), bootstrapping)
+	logStore, err := raftstore.NewLevelDBStore(filepath.Join(*raftDir, "raftlog"), bootstrapping)
 	if err != nil {
 		log.Fatal(err)
 	}
-	ircStore, err = raft_store.NewLevelDBStore(filepath.Join(*raftDir, "irclog"), bootstrapping)
+	ircStore, err = raftstore.NewLevelDBStore(filepath.Join(*raftDir, "irclog"), bootstrapping)
 	if err != nil {
 		log.Fatal(err)
 	}

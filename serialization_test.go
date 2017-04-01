@@ -11,12 +11,12 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/outputstream"
-	"github.com/robustirc/robustirc/raft_store"
+	"github.com/robustirc/robustirc/raftstore"
 	"github.com/robustirc/robustirc/types"
 	"gopkg.in/sorcix/irc.v2"
 )
 
-func createIrcServer(tempdir string) (*raft_store.LevelDBStore, *raft_store.LevelDBStore, FSM, error) {
+func createIrcServer(tempdir string) (*raftstore.LevelDBStore, *raftstore.LevelDBStore, FSM, error) {
 	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 	var err error
 	outputStream, err = outputstream.NewOutputStream("")
@@ -25,11 +25,11 @@ func createIrcServer(tempdir string) (*raft_store.LevelDBStore, *raft_store.Leve
 	}
 	flag.Set("raftdir", tempdir)
 
-	logstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "raftlog"), false)
+	logstore, err := raftstore.NewLevelDBStore(filepath.Join(tempdir, "raftlog"), false)
 	if err != nil {
 		return nil, nil, FSM{}, err
 	}
-	ircstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "irclog"), false)
+	ircstore, err := raftstore.NewLevelDBStore(filepath.Join(tempdir, "irclog"), false)
 	if err != nil {
 		return nil, nil, FSM{}, err
 	}

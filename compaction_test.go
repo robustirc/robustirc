@@ -14,7 +14,7 @@ import (
 
 	"github.com/robustirc/robustirc/ircserver"
 	"github.com/robustirc/robustirc/outputstream"
-	"github.com/robustirc/robustirc/raft_store"
+	"github.com/robustirc/robustirc/raftstore"
 	"github.com/robustirc/robustirc/types"
 	"github.com/stapelberg/glog"
 
@@ -119,11 +119,11 @@ func TestCompaction(t *testing.T) {
 
 	flag.Set("raftdir", tempdir)
 
-	logstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "raftlog"), false)
+	logstore, err := raftstore.NewLevelDBStore(filepath.Join(tempdir, "raftlog"), false)
 	if err != nil {
 		t.Fatalf("Unexpected error in NewLevelDBStore: %v", err)
 	}
-	ircstore, err := raft_store.NewLevelDBStore(filepath.Join(tempdir, "irclog"), false)
+	ircstore, err := raftstore.NewLevelDBStore(filepath.Join(tempdir, "irclog"), false)
 	if err != nil {
 		t.Fatalf("Unexpected error in NewLevelDBStore: %v", err)
 	}
