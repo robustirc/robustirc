@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/hashicorp/raft"
-	"github.com/robustirc/robustirc/internal/health"
-	"github.com/robustirc/robustirc/internal/robusthttp"
+	"github.com/robustirc/internal/health"
+	"github.com/robustirc/internal/robusthttp"
 	"github.com/stapelberg/glog"
 )
 

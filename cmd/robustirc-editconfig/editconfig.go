@@ -10,8 +10,8 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/robustirc/robustirc/internal/health"
-	"github.com/robustirc/robustirc/internal/robusthttp"
+	"github.com/robustirc/internal/health"
+	"github.com/robustirc/internal/robusthttp"
 )
 
 var (

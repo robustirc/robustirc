@@ -22,12 +22,12 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robustirc/bridge/tlsutil"
+	"github.com/robustirc/internal/robusthttp"
 	"github.com/robustirc/rafthttp"
 	"github.com/robustirc/robustirc/internal/api"
 	"github.com/robustirc/robustirc/internal/ircserver"
 	"github.com/robustirc/robustirc/internal/outputstream"
 	"github.com/robustirc/robustirc/internal/raftstore"
-	"github.com/robustirc/robustirc/internal/robusthttp"
 	"github.com/robustirc/robustirc/internal/timesafeguard"
 
 	"github.com/armon/go-metrics"

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/robustirc/robustirc/internal/robusthttp"
+	"github.com/robustirc/internal/robusthttp"
 )
 
 func SetNetworkConfig(servers []string, config, networkPassword string) error {

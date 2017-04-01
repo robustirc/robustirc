@@ -13,7 +13,7 @@ import (
 
 	"github.com/prometheus/common/expfmt"
 	"github.com/robustirc/bridge/robustsession"
-	"github.com/robustirc/robustirc/internal/health"
+	"github.com/robustirc/internal/health"
 	"github.com/robustirc/robustirc/internal/localnet"
 	"github.com/robustirc/robustirc/types"
 )

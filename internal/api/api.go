@@ -19,11 +19,11 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/kardianos/osext"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/robustirc/internal/robusthttp"
 	"github.com/robustirc/rafthttp"
 	"github.com/robustirc/robustirc/internal/ircserver"
 	"github.com/robustirc/robustirc/internal/outputstream"
 	"github.com/robustirc/robustirc/internal/raftstore"
-	"github.com/robustirc/robustirc/internal/robusthttp"
 	"github.com/robustirc/robustirc/types"
 	"github.com/stapelberg/glog"
 )

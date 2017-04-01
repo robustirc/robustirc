@@ -46,7 +46,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/robustirc/robustirc/internal/health"
+	"github.com/robustirc/internal/health"
 	"github.com/stapelberg/glog"
 )
 
