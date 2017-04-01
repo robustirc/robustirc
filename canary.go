@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
+	"github.com/robustirc/robustirc/internal/privacy"
 	"github.com/robustirc/robustirc/types"
-	"github.com/robustirc/robustirc/util"
 	"github.com/stapelberg/glog"
 	"gopkg.in/sorcix/irc.v2"
 )
@@ -120,7 +120,7 @@ func canary(fsm raft.FSM, statePath string) {
 		cm := canaryMessageState{
 			Id:        idx,
 			Session:   nmsg.Session.Id,
-			Input:     util.PrivacyFilterIrcmsg(ircmsg).String(),
+			Input:     privacy.FilterIrcmsg(ircmsg).String(),
 			Output:    make([]canaryMessageOutput, len(vmsgs)),
 			Compacted: false,
 		}
@@ -130,7 +130,7 @@ func canary(fsm raft.FSM, statePath string) {
 				ifc["0x"+strconv.FormatInt(k, 16)] = v
 			}
 			cm.Output[idx] = canaryMessageOutput{
-				Text:           util.PrivacyFilterIrcmsg(irc.ParseMessage(vmsg.Data)).String(),
+				Text:           privacy.FilterIrcmsg(irc.ParseMessage(vmsg.Data)).String(),
 				InterestingFor: ifc,
 			}
 		}

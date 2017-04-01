@@ -19,8 +19,8 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hashicorp/raft"
+	"github.com/robustirc/robustirc/internal/privacy"
 	"github.com/robustirc/robustirc/types"
-	"github.com/robustirc/robustirc/util"
 	"github.com/syndtr/goleveldb/leveldb"
 	leveldb_errors "github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/opt"
@@ -56,7 +56,7 @@ func dumpLog(key uint64, rlog *raft.Log) {
 	unfilteredMsg := types.NewRobustMessageFromBytes(rlog.Data)
 	rmsg := &unfilteredMsg
 	if rmsg.Type == types.RobustIRCFromClient {
-		rmsg = util.PrivacyFilterMsg(rmsg)
+		rmsg = privacy.FilterMsg(rmsg)
 	} else if rmsg.Type == types.RobustState {
 		state, err := base64.StdEncoding.DecodeString(rmsg.Data)
 		if err != nil {
@@ -69,7 +69,7 @@ func dumpLog(key uint64, rlog *raft.Log) {
 			log.Printf("Could not unmarshal proto: %v", err)
 			return
 		}
-		snapshot = util.PrivacyFilterSnapshot(snapshot)
+		snapshot = privacy.FilterSnapshot(snapshot)
 		var marshaler proto.TextMarshaler
 		rmsg.Data = marshaler.Text(&snapshot)
 	}

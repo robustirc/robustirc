@@ -14,12 +14,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/robustirc/robustirc/internal/robusthttp"
-	"github.com/robustirc/robustirc/types"
-	"gopkg.in/sorcix/irc.v2"
-
-	pb "github.com/robustirc/robustirc/internal/proto"
 )
 
 type ServerStatus struct {
@@ -182,43 +177,4 @@ func SetNetworkConfig(servers []string, config, networkPassword string) error {
 	}
 
 	return nil
-}
-
-func PrivacyFilterSnapshot(snapshot pb.Snapshot) pb.Snapshot {
-	result := proto.Clone(&snapshot).(*pb.Snapshot)
-	for _, session := range result.Sessions {
-		session.Pass = "<privacy filtered>"
-	}
-	return *result
-}
-
-func PrivacyFilterIrcmsg(message *irc.Message) *irc.Message {
-	if message == nil {
-		return nil
-	}
-	if message.Command == irc.PRIVMSG ||
-		message.Command == irc.NOTICE ||
-		message.Command == irc.PASS {
-		if len(message.Params) > 0 {
-			message.Params[len(message.Params)-1] = "<privacy filtered>"
-		}
-	}
-	return message
-}
-
-func PrivacyFilterMsg(message *types.RobustMessage) *types.RobustMessage {
-	return &types.RobustMessage{
-		Id:      message.Id,
-		Session: message.Session,
-		Type:    message.Type,
-		Data:    PrivacyFilterIrcmsg(irc.ParseMessage(message.Data)).String(),
-	}
-}
-
-func PrivacyFilterMsgs(messages []*types.RobustMessage) []*types.RobustMessage {
-	output := make([]*types.RobustMessage, len(messages))
-	for idx, message := range messages {
-		output[idx] = PrivacyFilterMsg(message)
-	}
-	return output
 }

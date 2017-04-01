@@ -12,8 +12,8 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/internal/config"
 	"github.com/robustirc/robustirc/internal/ircserver"
+	"github.com/robustirc/robustirc/internal/privacy"
 	"github.com/robustirc/robustirc/types"
-	"github.com/robustirc/robustirc/util"
 
 	pb "github.com/robustirc/robustirc/internal/proto"
 )
@@ -64,7 +64,7 @@ func (api *HTTP) handleStatusState(w http.ResponseWriter, req *http.Request) {
 		if err := proto.Unmarshal(state, &snapshot); err != nil {
 			textState = fmt.Sprintf("unmarshaling state failed: %v", err)
 		} else {
-			snapshot = util.PrivacyFilterSnapshot(snapshot)
+			snapshot = privacy.FilterSnapshot(snapshot)
 			var marshaler proto.TextMarshaler
 			textState = marshaler.Text(&snapshot)
 		}
