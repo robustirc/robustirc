@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/robustirc/robustirc/config"
+	"github.com/robustirc/robustirc/internal/config"
 	"github.com/robustirc/robustirc/types"
 	"gopkg.in/sorcix/irc.v2"
 )

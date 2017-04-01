@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/robustirc/robustirc/ircserver"
-	"github.com/robustirc/robustirc/outputstream"
+	"github.com/robustirc/robustirc/internal/ircserver"
+	"github.com/robustirc/robustirc/internal/outputstream"
 	"github.com/robustirc/robustirc/types"
 	"golang.org/x/net/context"
 	"gopkg.in/sorcix/irc.v2"

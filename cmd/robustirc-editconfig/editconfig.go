@@ -10,7 +10,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/robustirc/robustirc/robusthttp"
+	"github.com/robustirc/robustirc/internal/robusthttp"
 	"github.com/robustirc/robustirc/util"
 )
 

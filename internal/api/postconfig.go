@@ -10,7 +10,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/hashicorp/raft"
-	"github.com/robustirc/robustirc/config"
+	"github.com/robustirc/robustirc/internal/config"
 	"github.com/robustirc/robustirc/types"
 )
 

@@ -25,7 +25,7 @@ import (
 	leveldb_errors "github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 
-	pb "github.com/robustirc/robustirc/proto"
+	pb "github.com/robustirc/robustirc/internal/proto"
 )
 
 var (

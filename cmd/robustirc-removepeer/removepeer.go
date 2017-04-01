@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/raft"
-	"github.com/robustirc/robustirc/robusthttp"
+	"github.com/robustirc/robustirc/internal/robusthttp"
 	"github.com/robustirc/robustirc/util"
 	"github.com/stapelberg/glog"
 )

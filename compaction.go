@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
-	"github.com/robustirc/robustirc/raftstore"
+	"github.com/robustirc/robustirc/internal/raftstore"
 	"github.com/robustirc/robustirc/types"
 )
 

@@ -12,7 +12,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/robustirc/robustirc/localnet"
+	"github.com/robustirc/robustirc/internal/localnet"
 )
 
 var (

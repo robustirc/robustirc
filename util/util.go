@@ -15,11 +15,11 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/robustirc/robustirc/robusthttp"
+	"github.com/robustirc/robustirc/internal/robusthttp"
 	"github.com/robustirc/robustirc/types"
 	"gopkg.in/sorcix/irc.v2"
 
-	pb "github.com/robustirc/robustirc/proto"
+	pb "github.com/robustirc/robustirc/internal/proto"
 )
 
 type ServerStatus struct {

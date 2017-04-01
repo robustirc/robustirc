@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/robustirc/robustirc/ircserver"
-	"github.com/robustirc/robustirc/outputstream"
-	"github.com/robustirc/robustirc/raftstore"
+	"github.com/robustirc/robustirc/internal/ircserver"
+	"github.com/robustirc/robustirc/internal/outputstream"
+	"github.com/robustirc/robustirc/internal/raftstore"
 	"github.com/robustirc/robustirc/types"
 	"github.com/stapelberg/glog"
 

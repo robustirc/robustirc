@@ -5,11 +5,11 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/robustirc/robustirc/config"
+	"github.com/robustirc/robustirc/internal/config"
 	"github.com/robustirc/robustirc/types"
 	"gopkg.in/sorcix/irc.v2"
 
-	pb "github.com/robustirc/robustirc/proto"
+	pb "github.com/robustirc/robustirc/internal/proto"
 )
 
 func timeToTimestamp(t time.Time) *pb.Timestamp {

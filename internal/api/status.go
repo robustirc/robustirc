@@ -10,12 +10,12 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hashicorp/raft"
-	"github.com/robustirc/robustirc/config"
-	"github.com/robustirc/robustirc/ircserver"
+	"github.com/robustirc/robustirc/internal/config"
+	"github.com/robustirc/robustirc/internal/ircserver"
 	"github.com/robustirc/robustirc/types"
 	"github.com/robustirc/robustirc/util"
 
-	pb "github.com/robustirc/robustirc/proto"
+	pb "github.com/robustirc/robustirc/internal/proto"
 )
 
 //go:generate go run gentmpl.go -package=api templates/header templates/footer templates/status templates/getmessage templates/sessions templates/state templates/statusirclog templates/irclog
