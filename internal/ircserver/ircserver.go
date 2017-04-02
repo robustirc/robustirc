@@ -259,6 +259,9 @@ func NewIRCServer(networkname string, serverCreation time.Time) *IRCServer {
 // network, leading to the node exiting (and being restarted).
 func (i *IRCServer) NewRobustMessageId() robust.Id {
 	unixnano := time.Now().UnixNano()
+	// Calling IdFromRaftIndex is a slight misnomer, but the next
+	// commit will remove this code anyway.
+	unixnano = int64(robust.IdFromRaftIndex(uint64(unixnano)))
 	i.lastProcessedMu.RLock()
 	defer i.lastProcessedMu.RUnlock()
 	if unixnano < i.lastProcessed.Id {

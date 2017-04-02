@@ -10,6 +10,19 @@ import (
 	"gopkg.in/sorcix/irc.v2"
 )
 
+// XXX(1.0): replace MessageOffset with 7804071725000000000 (2217-04-20 23:42:05)
+// MessageOffset will be added to all robust.Message ids. We need
+// an offset because message ids must be monotonically increasing,
+// and RobustIRC used to use UNIX nano timestamps. For new
+// networks, the offset doesn’t hurt, and it’s configurable in
+// case networks need to transition back and forth between the old
+// and the new mechanism. See also issue #150.
+var MessageOffset uint64
+
+func IdFromRaftIndex(index uint64) uint64 {
+	return MessageOffset + index
+}
+
 type Id struct {
 	Id    int64
 	Reply int64

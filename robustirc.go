@@ -28,6 +28,7 @@ import (
 	"github.com/robustirc/robustirc/internal/ircserver"
 	"github.com/robustirc/robustirc/internal/outputstream"
 	"github.com/robustirc/robustirc/internal/raftstore"
+	"github.com/robustirc/robustirc/internal/robust"
 	"github.com/robustirc/robustirc/internal/timesafeguard"
 
 	"github.com/armon/go-metrics"
@@ -85,6 +86,10 @@ var (
 	networkPassword = flag.String("network_password",
 		"",
 		"A secure password to protect the communication between raft nodes. Use pwgen(1) or similar. If empty, the ROBUSTIRC_NETWORK_PASSWORD environment variable is used.")
+	// XXX(1.0): delete this flag, all networks are expected to have transitioned.
+	messageOffset = flag.Uint64("robustirc_message_offset",
+		0,
+		"will be added to all robust.Message ids. We need an offset because message ids must be monotonically increasing, and RobustIRC used to use UNIX nano timestamps. For new networks, the offset doesn’t hurt, and it’s configurable in case networks need to transition back and forth between the old and the new mechanism. See also issue #150.")
 
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
@@ -301,6 +306,7 @@ func main() {
 		printDefault(flag.Lookup("listen"))
 		printDefault(flag.Lookup("raftdir"))
 		printDefault(flag.Lookup("tls_ca_file"))
+		printDefault(flag.Lookup("message_offset"))
 		printDefault(flag.Lookup("version"))
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "The following flags are optional and provided by glog:\n")
@@ -314,6 +320,8 @@ func main() {
 		printDefault(flag.Lookup("vmodule"))
 	}
 	flag.Parse()
+
+	robust.MessageOffset = *messageOffset
 
 	// Store logs in -raftdir, unless otherwise specified.
 	if flag.Lookup("log_dir").Value.String() == "" {
