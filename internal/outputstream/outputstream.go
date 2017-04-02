@@ -31,7 +31,7 @@ import (
 type Message struct {
 	Id             robust.Id
 	Data           string
-	InterestingFor map[int64]bool
+	InterestingFor map[uint64]bool
 }
 
 type messageBatch struct {
@@ -136,7 +136,7 @@ func (os *OutputStream) reset() error {
 		Messages: []Message{
 			{
 				Id:             robust.Id{Id: 0},
-				InterestingFor: make(map[int64]bool),
+				InterestingFor: make(map[uint64]bool),
 			},
 		},
 		NextID: math.MaxUint64,

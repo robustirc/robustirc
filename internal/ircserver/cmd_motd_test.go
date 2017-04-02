@@ -2,6 +2,7 @@ package ircserver
 
 import (
 	"testing"
+	"time"
 
 	"github.com/robustirc/robustirc/internal/robust"
 
@@ -15,7 +16,7 @@ func TestMotd(t *testing.T) {
 
 	idSecure := robust.Id{Id: 1420228218166687917}
 
-	i.CreateSession(idSecure, "auth-secure")
+	i.CreateSession(idSecure, "auth-secure", time.Unix(0, int64(idSecure.Id)))
 
 	i.ProcessMessage(robust.Id{}, idSecure, irc.ParseMessage("USER 1 2 3 :4"))
 	got = i.ProcessMessage(robust.Id{}, idSecure, irc.ParseMessage("NICK s[E]CuRE"))

@@ -39,7 +39,7 @@ type FSM struct {
 // marking them as a response to the incoming message with id 'id' and
 // associating them with session 'session'. IRC clients will
 // eventually receive these messages by calling GetNext.
-func sendMessages(reply *ircserver.Replyctx, session robust.Id, id int64, o *outputstream.OutputStream) {
+func sendMessages(reply *ircserver.Replyctx, session robust.Id, id uint64, o *outputstream.OutputStream) {
 	if len(reply.Messages) == 0 || o == nil {
 		return
 	}
@@ -65,7 +65,7 @@ func applyRobustMessage(msg *robust.Message, i *ircserver.IRCServer, o *outputst
 		log.Printf("Skipped message of death with msgid %d.\n", msg.Id.Id)
 
 	case robust.CreateSession:
-		return i.CreateSession(msg.Id, msg.Data)
+		return i.CreateSession(msg.Id, msg.Data, msg.Timestamp())
 	case robust.DeleteSession:
 		if _, err := i.GetSession(msg.Session); err == nil {
 			// TODO(secure): overwrite QUIT messages for services with an faq entry explaining that they are not robust yet.
@@ -110,7 +110,7 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		log.Panicf("Could not persist message in irclogs/: %v", err)
 	}
 
-	msg := robust.NewMessageFromBytes(l.Data)
+	msg := robust.NewMessageFromBytes(l.Data, robust.IdFromRaftIndex(l.Index))
 	glog.Infof("Apply(msg.Type=%s)\n", msg.Type)
 	defer func() {
 		if msg.Type == robust.MessageOfDeath {
@@ -163,7 +163,7 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 		return nil, err
 	}
 	if first < 1 {
-		return nil, fmt.Errorf("first index of ircstore is < 1")
+		return nil, fmt.Errorf("first index of ircstore (%d) is < 1", first)
 	}
 
 	log.Printf("Filtering and writing up to %d indexes (from %d to %d)\n", last-first, first, last)
@@ -226,8 +226,8 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 			return nil, fmt.Errorf("nlog.Type = %d instead of LogCommand", nlog.Type)
 		}
 
-		parsed := robust.NewMessageFromBytes(nlog.Data)
-		if time.Unix(0, parsed.Id.Id).After(compactionEnd) {
+		parsed := robust.NewMessageFromBytes(nlog.Data, robust.IdFromRaftIndex(nlog.Index))
+		if parsed.Timestamp().After(compactionEnd) {
 			first = i
 			break
 		}
@@ -299,7 +299,7 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 			return err
 		}
 
-		msg := robust.NewMessageFromBytes(entry.Data)
+		msg := robust.NewMessageFromBytes(entry.Data, robust.IdFromRaftIndex(entry.Index))
 		if msg.Type == robust.State {
 			log.Printf("found RobustState, unmarshalling\n")
 			state, err := base64.StdEncoding.DecodeString(msg.Data)

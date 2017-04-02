@@ -14,9 +14,9 @@ func TestIdle(t *testing.T) {
 
 	joinTime := time.Now()
 	msg := robust.Message{
-		Id:      robust.Id{Id: joinTime.UnixNano()},
-		Session: ids["mero"],
-		Data:    "JOIN #test",
+		UnixNano: joinTime.UnixNano(),
+		Session:  ids["mero"],
+		Data:     "JOIN #test",
 	}
 	if err := i.UpdateLastClientMessageID(&msg); err != nil {
 		t.Fatalf("Unexpected error calling UpdateLastClientMessageID: %v", err)
@@ -32,9 +32,9 @@ func TestIdle(t *testing.T) {
 
 	pingTime := time.Now()
 	msg = robust.Message{
-		Id:      robust.Id{Id: pingTime.UnixNano()},
-		Session: ids["mero"],
-		Data:    "PING :foo",
+		UnixNano: pingTime.UnixNano(),
+		Session:  ids["mero"],
+		Data:     "PING :foo",
 	}
 	if err := i.UpdateLastClientMessageID(&msg); err != nil {
 		t.Fatalf("Unexpected error calling UpdateLastClientMessageID: %v", err)

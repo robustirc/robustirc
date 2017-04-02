@@ -3,8 +3,8 @@ syntax = "proto3";
 package proto;
 
 message RobustId {
-	sfixed64 id = 1;
-	sfixed64 reply = 2;
+	fixed64 id = 1;
+	fixed64 reply = 2;
 }
 
 message RobustMessage {

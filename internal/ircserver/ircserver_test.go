@@ -30,9 +30,9 @@ func stdIRCServer() (*IRCServer, map[string]robust.Id) {
 	ids["mero"] = robust.Id{Id: 1420228218166687918}
 	ids["xeen"] = robust.Id{Id: 1420228218166687919}
 
-	i.CreateSession(ids["secure"], "auth-secure")
-	i.CreateSession(ids["mero"], "auth-mero")
-	i.CreateSession(ids["xeen"], "auth-xeen")
+	i.CreateSession(ids["secure"], "auth-secure", time.Unix(0, int64(ids["secure"].Id)))
+	i.CreateSession(ids["mero"], "auth-mero", time.Unix(0, int64(ids["mero"].Id)))
+	i.CreateSession(ids["xeen"], "auth-xeen", time.Unix(0, int64(ids["xeen"].Id)))
 
 	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("NICK sECuRE"))
 	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
@@ -87,8 +87,9 @@ func TestSessionInitialization(t *testing.T) {
 	i := NewIRCServer("robustirc.net", time.Now())
 	i.Config = config.Network{}
 
-	id := robust.Id{Id: time.Now().UnixNano()}
-	i.CreateSession(id, "authbytes")
+	unixnano := time.Now().UnixNano()
+	id := robust.Id{Id: uint64(unixnano)}
+	i.CreateSession(id, "authbytes", time.Unix(0, unixnano))
 
 	s, err := i.GetSession(id)
 	if err != nil {
@@ -130,8 +131,9 @@ func TestSessionInitialization(t *testing.T) {
 	// Now connect again with the same nickname and verify the server behaves
 	// correctly in that scenario.
 
-	idSecond := robust.Id{Id: time.Now().UnixNano()}
-	i.CreateSession(idSecond, "authbytes")
+	unixnano = time.Now().UnixNano()
+	idSecond := robust.Id{Id: uint64(unixnano)}
+	i.CreateSession(idSecond, "authbytes", time.Unix(0, unixnano))
 
 	sSecond, err := i.GetSession(idSecond)
 	if err != nil {
@@ -175,7 +177,7 @@ func welcomeMustContain(t *testing.T, passMsg, privMsg string) {
 	}
 
 	id := robust.Id{Id: 0x13c988ab2b01f2fb}
-	i.CreateSession(id, "authbytes")
+	i.CreateSession(id, "authbytes", time.Unix(0, int64(id.Id)))
 
 	mustMatchIrcmsgs(t,
 		i.ProcessMessage(robust.Id{}, id, irc.ParseMessage(passMsg)),
@@ -281,7 +283,8 @@ func robustMessagesFromReply(replies *Replyctx) []*robust.Message {
 }
 
 func mustMatchInterested(t *testing.T, i *IRCServer, sessionid robust.Id, msg *irc.Message, sessions []robust.Id, want []bool) {
-	msgid := robust.Id{Id: time.Now().UnixNano()}
+	unixnano := time.Now().UnixNano()
+	msgid := robust.Id{Id: uint64(unixnano)}
 	replies := i.ProcessMessage(msgid, sessionid, msg)
 	mustMatchInterestedMsgs(t, i, msg, robustMessagesFromReply(replies), sessions, want)
 }
@@ -359,8 +362,7 @@ func TestInterestedInDelayed(t *testing.T) {
 	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #test"))
 
 	msg := irc.ParseMessage("NICK secore")
-	msgid := robust.Id{Id: time.Now().UnixNano()}
-	replies := i.ProcessMessage(msgid, ids["secure"], msg)
+	replies := i.ProcessMessage(robust.Id{}, ids["secure"], msg)
 
 	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("PART #test"))
 
@@ -411,7 +413,7 @@ func TestCaptchaLogin(t *testing.T) {
 	i.Config.CaptchaRequiredForLogin = true
 
 	id := robust.Id{Id: 1420228218166687919}
-	i.CreateSession(id, "authbytes")
+	i.CreateSession(id, "authbytes", time.Unix(0, int64(id.Id)))
 
 	s, err := i.GetSession(id)
 	if err != nil {
@@ -470,11 +472,11 @@ func TestSessionLimit(t *testing.T) {
 		MaxSessions: 1,
 	}
 
-	if err := i.CreateSession(robust.Id{}, "authbytes"); err != nil {
+	if err := i.CreateSession(robust.Id{}, "authbytes", time.Now()); err != nil {
 		t.Fatalf("Could not create session: %v", err)
 	}
 
-	if err := i.CreateSession(robust.Id{}, "authbytes"); err == nil {
+	if err := i.CreateSession(robust.Id{}, "authbytes", time.Now()); err == nil {
 		t.Fatal("Unexpectedly could create second session")
 	}
 }

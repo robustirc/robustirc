@@ -10,7 +10,7 @@ import (
 	"golang.org/x/net/context"
 )
 
-func addEmptyMsg(os *OutputStream, id, reply int64) {
+func addEmptyMsg(os *OutputStream, id, reply uint64) {
 	os.Add([]Message{
 		{Id: robust.Id{Id: id, Reply: reply}}})
 }

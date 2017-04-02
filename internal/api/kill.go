@@ -26,7 +26,7 @@ func (api *HTTP) handleKill(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, sessionid := range r.Form["session"] {
-		id, err := strconv.ParseInt(sessionid, 0, 64)
+		id, err := strconv.ParseUint(sessionid, 0, 64)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

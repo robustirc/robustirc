@@ -21,8 +21,8 @@ func TestPlumbing(t *testing.T) {
 	ids["secure"] = robust.Id{Id: 1420228218166687917}
 	ids["mero"] = robust.Id{Id: 1420228218166687918}
 
-	i.CreateSession(ids["secure"], "auth-secure")
-	i.CreateSession(ids["mero"], "auth-mero")
+	i.CreateSession(ids["secure"], "auth-secure", time.Unix(0, int64(ids["secure"].Id)))
+	i.CreateSession(ids["mero"], "auth-mero", time.Unix(0, int64(ids["mero"].Id)))
 
 	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("NICK sECuRE"))
 	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
@@ -35,7 +35,7 @@ func TestPlumbing(t *testing.T) {
 	}
 	defer o.Close()
 
-	msgid := robust.Id{Id: time.Now().UnixNano()}
+	msgid := robust.Id{Id: uint64(time.Now().UnixNano())}
 	replies := i.ProcessMessage(msgid, ids["secure"], irc.ParseMessage("JOIN #test"))
 	sendMessages(replies, ids["secure"], msgid.Id, o)
 	got, ok := o.Get(msgid)
@@ -49,7 +49,7 @@ func TestPlumbing(t *testing.T) {
 		t.Fatalf("message 0: got %v, want %v", got[0].Data, string(replies.Messages[0].Data))
 	}
 
-	nextid := robust.Id{Id: time.Now().UnixNano()}
+	nextid := robust.Id{Id: uint64(time.Now().UnixNano())}
 	replies = i.ProcessMessage(nextid, ids["secure"], irc.ParseMessage("JOIN #foobar"))
 	sendMessages(replies, ids["secure"], nextid.Id, o)
 	got = o.GetNext(context.TODO(), msgid)
@@ -69,7 +69,7 @@ func TestPlumbing(t *testing.T) {
 
 	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #baz"))
 
-	msgid = robust.Id{Id: time.Now().UnixNano()}
+	msgid = robust.Id{Id: uint64(time.Now().UnixNano())}
 	replies = i.ProcessMessage(msgid, ids["secure"], irc.ParseMessage("JOIN #baz"))
 	sendMessages(replies, ids["secure"], msgid.Id, o)
 	got, _ = o.Get(msgid)

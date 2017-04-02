@@ -39,16 +39,16 @@ func (api *HTTP) pingMessage() *robust.Message {
 	}
 }
 
-func parseLastSeen(lastSeenStr string) (first int64, last int64, err error) {
+func parseLastSeen(lastSeenStr string) (first uint64, last uint64, err error) {
 	parts := strings.Split(lastSeenStr, ".")
 	if got, want := len(parts), 2; got != want {
 		return 0, 0, fmt.Errorf("Unexpected number of parts: got %d, want %d", got, want)
 	}
-	first, err = strconv.ParseInt(parts[0], 0, 64)
+	first, err = strconv.ParseUint(parts[0], 0, 64)
 	if err != nil {
 		return 0, 0, err
 	}
-	last, err = strconv.ParseInt(parts[1], 0, 64)
+	last, err = strconv.ParseUint(parts[1], 0, 64)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -169,7 +169,7 @@ func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessi
 	willFlush := false
 	msgschan := make(chan []*robust.Message)
 
-	sessionId = strconv.FormatInt(session.Id, 10)
+	sessionId = strconv.FormatUint(session.Id, 10)
 	ctx, cancel := context.WithCancel(r.Context())
 	// Cancel the helper goroutines we are about to start when this
 	// request handler returns.

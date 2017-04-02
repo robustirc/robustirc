@@ -7,7 +7,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/internal/privacy"
@@ -23,7 +22,7 @@ type canaryMessageOutput struct {
 
 type canaryMessageState struct {
 	Id        uint64
-	Session   int64
+	Session   uint64
 	Input     string
 	Output    []canaryMessageOutput
 	Compacted bool
@@ -103,8 +102,8 @@ func canary(fsm raft.FSM, statePath string) {
 			continue
 		}
 
-		nmsg := robust.NewMessageFromBytes(nlog.Data)
-		if time.Unix(0, nmsg.Id.Id).Before(rs.compactionEnd) {
+		nmsg := robust.NewMessageFromBytes(nlog.Data, robust.IdFromRaftIndex(nlog.Index))
+		if nmsg.Timestamp().Before(rs.compactionEnd) {
 			continue
 		}
 
@@ -127,7 +126,7 @@ func canary(fsm raft.FSM, statePath string) {
 		for idx, vmsg := range vmsgs {
 			ifc := make(map[string]bool)
 			for k, v := range vmsg.InterestingFor {
-				ifc["0x"+strconv.FormatInt(k, 16)] = v
+				ifc["0x"+strconv.FormatUint(k, 16)] = v
 			}
 			cm.Output[idx] = canaryMessageOutput{
 				Text:           privacy.FilterIrcmsg(irc.ParseMessage(vmsg.Data)).String(),

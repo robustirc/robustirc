@@ -64,6 +64,7 @@ func (i *IRCServer) Marshal(lastIncludedIndex uint64) ([]byte, error) {
 			LastSolvedCaptcha:   timeToTimestamp(session.LastSolvedCaptcha),
 			Operator:            session.Operator,
 			AwayMsg:             session.AwayMsg,
+			Created:             session.Created,
 			ThrottlingExponent:  int64(session.throttlingExponent),
 			InvitedTo:           invitedTo,
 			Modes:               modes,
@@ -187,6 +188,10 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 		case pb.Bool_TRUE:
 			loggedIn = true
 		}
+		created := int64(s.Id.Id)
+		if s.Created > 0 {
+			created = s.Created
+		}
 		newSession := &Session{
 			Id:                  robust.Id{Id: s.Id.Id, Reply: s.Id.Reply},
 			auth:                s.Auth,
@@ -200,6 +205,7 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 			LastSolvedCaptcha:   timestampToTime(s.LastSolvedCaptcha),
 			Operator:            s.Operator,
 			AwayMsg:             s.AwayMsg,
+			Created:             created,
 			throttlingExponent:  int(s.ThrottlingExponent),
 			invitedTo:           invitedTo,
 			modes:               modes,

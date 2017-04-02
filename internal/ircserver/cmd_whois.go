@@ -80,7 +80,7 @@ func (i *IRCServer) cmdWhois(s *Session, reply *Replyctx, msg *irc.Message) {
 	}
 
 	idle := strconv.FormatInt(int64(s.LastActivity.Sub(session.LastNonPing).Seconds()), 10)
-	signon := strconv.FormatInt(time.Unix(0, session.Id.Id).Unix(), 10)
+	signon := strconv.FormatInt(time.Unix(0, session.Created).Unix(), 10)
 	i.sendUser(s, reply, &irc.Message{
 		Prefix:  i.ServerPrefix,
 		Command: irc.RPL_WHOISIDLE,

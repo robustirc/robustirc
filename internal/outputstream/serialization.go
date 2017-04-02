@@ -56,19 +56,19 @@ func unmarshalMessageBatch(buffer []byte) *messageBatch {
 	n += 8
 	for i := 0; i < len(result.Messages); i++ {
 		msg := &(result.Messages[i])
-		msg.Id.Id = int64(binary.LittleEndian.Uint64(buffer[n:]))
+		msg.Id.Id = binary.LittleEndian.Uint64(buffer[n:])
 		n += 8
-		msg.Id.Reply = int64(binary.LittleEndian.Uint64(buffer[n:]))
+		msg.Id.Reply = binary.LittleEndian.Uint64(buffer[n:])
 		n += 8
 		lenData = int(binary.LittleEndian.Uint64(buffer[n:]))
 		n += 8
 		msg.Data = string(buffer[n : n+lenData])
 		n += lenData
 		lenInterestingFor = binary.LittleEndian.Uint64(buffer[n:])
-		msg.InterestingFor = make(map[int64]bool, lenInterestingFor)
+		msg.InterestingFor = make(map[uint64]bool, lenInterestingFor)
 		n += 8
 		for j := uint64(0); j < lenInterestingFor; j++ {
-			msg.InterestingFor[int64(binary.LittleEndian.Uint64(buffer[n:]))] = true
+			msg.InterestingFor[uint64(binary.LittleEndian.Uint64(buffer[n:]))] = true
 			n += 8
 		}
 	}

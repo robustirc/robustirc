@@ -17,8 +17,8 @@ func TestNickCollision(t *testing.T) {
 	idSecure := robust.Id{Id: 1420228218166687333}
 	idMero := robust.Id{Id: 1420228218166687444}
 
-	i.CreateSession(idSecure, "auth-secure")
-	i.CreateSession(idMero, "auth-mero")
+	i.CreateSession(idSecure, "auth-secure", time.Unix(0, int64(idSecure.Id)))
+	i.CreateSession(idMero, "auth-mero", time.Unix(0, int64(idMero.Id)))
 
 	got = i.ProcessMessage(robust.Id{}, idSecure, irc.ParseMessage("NICK s[E]CuRE"))
 	if len(got.Messages) > 0 {
@@ -79,8 +79,9 @@ func TestInvalidNick(t *testing.T) {
 func TestInvalidNickPlumbing(t *testing.T) {
 	i, _ := stdIRCServer()
 
-	id := robust.Id{Id: time.Now().UnixNano()}
-	i.CreateSession(id, "authbytes")
+	unixnano := time.Now().UnixNano()
+	id := robust.Id{Id: uint64(unixnano)}
+	i.CreateSession(id, "authbytes", time.Unix(0, unixnano))
 
 	s, err := i.GetSession(id)
 	if err != nil {

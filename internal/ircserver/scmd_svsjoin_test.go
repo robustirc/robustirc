@@ -2,7 +2,6 @@ package ircserver
 
 import (
 	"testing"
-	"time"
 
 	"github.com/robustirc/robustirc/internal/robust"
 
@@ -19,8 +18,7 @@ func TestServerSvsjoin(t *testing.T) {
 		irc.ParseMessage(":robustirc.net 401 NickServ bleh :No such nick/channel"))
 
 	msg := irc.ParseMessage(":NickServ SVSJOIN xeen #TEST")
-	msgid := robust.Id{Id: time.Now().UnixNano()}
-	reply := i.ProcessMessage(msgid, ids["services"], msg)
+	reply := i.ProcessMessage(robust.Id{}, ids["services"], msg)
 	msgs := robustMessagesFromReply(reply)
 
 	mustMatchIrcmsgs(t,

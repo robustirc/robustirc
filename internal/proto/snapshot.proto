@@ -41,6 +41,7 @@ message Snapshot {
     Timestamp last_activity = 7;
     bool operator = 8;
     string away_msg = 9;
+    int64 created = 22;
     int64 throttling_exponent = 10;
     repeated string invited_to = 11;
     repeated string modes = 12;

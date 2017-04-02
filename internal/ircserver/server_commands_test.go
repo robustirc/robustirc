@@ -2,6 +2,7 @@ package ircserver
 
 import (
 	"testing"
+	"time"
 
 	"github.com/robustirc/robustirc/internal/config"
 	"github.com/robustirc/robustirc/internal/robust"
@@ -14,7 +15,7 @@ func stdIRCServerWithServices() (*IRCServer, map[string]robust.Id) {
 		Password: "mypass",
 	})
 	ids["services"] = robust.Id{Id: 0x13c6cdee3e749faf}
-	i.CreateSession(ids["services"], "auth-server")
+	i.CreateSession(ids["services"], "auth-server", time.Unix(0, int64(ids["services"].Id)))
 	i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage("PASS :services=mypass"))
 	i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage("SERVER services.robustirc.net 1 :Services for IRC Networks"))
 	return i, ids
@@ -31,7 +32,7 @@ func TestServerHandshake(t *testing.T) {
 
 	ids["services"] = robust.Id{Id: 0x13c6cdee3e749faf}
 
-	i.CreateSession(ids["services"], "auth-server")
+	i.CreateSession(ids["services"], "auth-server", time.Unix(0, int64(ids["services"].Id)))
 
 	mustMatchIrcmsgs(t,
 		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage("PASS :services=wrong")),

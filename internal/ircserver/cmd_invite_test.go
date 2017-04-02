@@ -2,7 +2,6 @@ package ircserver
 
 import (
 	"testing"
-	"time"
 
 	"github.com/robustirc/robustirc/internal/robust"
 
@@ -16,8 +15,7 @@ func TestInterestedInInvite(t *testing.T) {
 	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #test"))
 
 	msg := irc.ParseMessage("INVITE xeen #test")
-	msgid := robust.Id{Id: time.Now().UnixNano()}
-	replies := i.ProcessMessage(msgid, ids["secure"], msg)
+	replies := i.ProcessMessage(robust.Id{}, ids["secure"], msg)
 	msgs := robustMessagesFromReply(replies)
 
 	mustMatchIrcmsgs(t,

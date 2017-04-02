@@ -37,10 +37,12 @@ func (i *IRCServer) cmdServerNick(s *Session, reply *Replyctx, msg *irc.Message)
 	h.Write([]byte(msg.Params[0]))
 	id := robust.Id{
 		Id:    s.Id.Id,
-		Reply: int64(h.Sum64()),
+		Reply: uint64(h.Sum64()),
 	}
 
-	i.CreateSession(id, "")
+	// s.LastActivity is the timestamp of the robust.Message which
+	// contains the server_NICK command we’re processing.
+	i.CreateSession(id, "", s.LastActivity)
 	ss := i.sessions[id]
 	ss.Nick = msg.Params[0]
 	i.nicks[NickToLower(ss.Nick)] = ss

@@ -90,10 +90,14 @@ func TestJoinMultiple(t *testing.T) {
 func TestCaptchaJoin(t *testing.T) {
 	i, ids := stdIRCServer()
 
+	sMero, _ := i.GetSession(ids["mero"])
+	meroCreated := time.Unix(0, sMero.Created)
+
 	i.UpdateLastClientMessageID(&robust.Message{
-		Session: ids["mero"],
-		Id:      robust.Id{Id: time.Unix(0, ids["mero"].Id).Add(1 * time.Minute).UnixNano()},
-		Type:    robust.IRCFromClient,
+		Session:  ids["mero"],
+		Id:       robust.Id{},
+		UnixNano: meroCreated.Add(1 * time.Minute).UnixNano(),
+		Type:     robust.IRCFromClient,
 	})
 
 	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test"))
@@ -161,9 +165,10 @@ func TestCaptchaJoin(t *testing.T) {
 		})
 
 	i.UpdateLastClientMessageID(&robust.Message{
-		Session: ids["mero"],
-		Id:      robust.Id{Id: time.Unix(0, ids["mero"].Id).Add(2 * time.Minute).UnixNano()},
-		Type:    robust.IRCFromClient,
+		Session:  ids["mero"],
+		Id:       robust.Id{},
+		UnixNano: meroCreated.Add(2 * time.Minute).UnixNano(),
+		Type:     robust.IRCFromClient,
 	})
 
 	mustMatchIrcmsgs(t,

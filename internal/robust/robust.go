@@ -24,8 +24,8 @@ func IdFromRaftIndex(index uint64) uint64 {
 }
 
 type Id struct {
-	Id    int64
-	Reply int64
+	Id    uint64
+	Reply uint64
 }
 
 func (i *Id) String() string {
@@ -79,12 +79,15 @@ type Message struct {
 	Type    Type
 	Data    string
 
+	// UnixNano is set by the server which accepts the message.
+	UnixNano int64
+
 	// InterestingFor is a map from session ids (only the Id part of a
 	// robust.Id, since Reply is always unset for sessions) to a bool
 	// that signals whether the session is interested in the message.
 	// InterestingFor gets set once in SendMessages and stays
 	// constant.
-	InterestingFor map[int64]bool `json:"-"`
+	InterestingFor map[uint64]bool `json:"-"`
 
 	// List of all servers currently in the network. Only present when
 	// Type == robust.Ping.
@@ -102,8 +105,16 @@ type Message struct {
 	Revision uint64 `json:",omitempty"`
 }
 
-func (m *Message) Timestamp() string {
-	return time.Unix(0, m.Id.Id).Format("2006-01-02 15:04:05 -07:00")
+func (m *Message) Timestamp() time.Time {
+	// For messages which were created before we introduced UnixNano:
+	if m.UnixNano == 0 {
+		return time.Unix(0, int64(m.Id.Id))
+	}
+	return time.Unix(0, m.UnixNano)
+}
+
+func (m *Message) TimestampString() string {
+	return m.Timestamp().Format("2006-01-02 15:04:05 -07:00")
 }
 
 func (m *Message) PrivacyFilter() string {
@@ -125,10 +136,13 @@ func (m *Message) PrivacyFilter() string {
 	return m.Data
 }
 
-func NewMessageFromBytes(b []byte) Message {
+func NewMessageFromBytes(b []byte, index uint64) Message {
 	var msg Message
 	if err := json.Unmarshal(b, &msg); err != nil {
 		log.Panicf("Could not json.Unmarshal() a (supposed) robust.Message (%v): %v\n", b, err)
+	}
+	if msg.Id.Id == 0 {
+		msg.Id.Id = index
 	}
 	return msg
 }

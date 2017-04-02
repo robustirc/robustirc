@@ -131,7 +131,7 @@ func (api *HTTP) handleStatusIrclog(w http.ResponseWriter, req *http.Request) {
 				continue
 			}
 			if l.Type == raft.LogCommand {
-				msg := robust.NewMessageFromBytes(l.Data)
+				msg := robust.NewMessageFromBytes(l.Data, robust.IdFromRaftIndex(l.Index))
 				msg.Data = msg.PrivacyFilter()
 				l.Data, _ = json.Marshal(&msg)
 			}
@@ -243,7 +243,7 @@ func (api *HTTP) handleStatus(res http.ResponseWriter, req *http.Request) {
 }
 
 func (api *HTTP) handleIrclog(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(r.FormValue("sessionid"), 0, 64)
+	id, err := strconv.ParseUint(r.FormValue("sessionid"), 0, 64)
 	if err != nil || id == 0 {
 		http.Error(w, "Invalid session", http.StatusBadRequest)
 		return
@@ -267,7 +267,7 @@ func (api *HTTP) handleIrclog(w http.ResponseWriter, r *http.Request) {
 		if elog.Type != raft.LogCommand {
 			continue
 		}
-		msg := robust.NewMessageFromBytes(elog.Data)
+		msg := robust.NewMessageFromBytes(elog.Data, robust.IdFromRaftIndex(elog.Index))
 		if msg.Session.Id == session.Id {
 			messages = append(messages, &msg)
 		}

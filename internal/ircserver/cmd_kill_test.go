@@ -2,7 +2,6 @@ package ircserver
 
 import (
 	"testing"
-	"time"
 
 	"github.com/robustirc/robustirc/internal/robust"
 
@@ -23,8 +22,7 @@ func TestInterestedInKill(t *testing.T) {
 		})
 
 	msg := irc.ParseMessage("KILL secure :bleh")
-	msgid := robust.Id{Id: time.Now().UnixNano()}
-	replies := i.ProcessMessage(msgid, ids["mero"], msg)
+	replies := i.ProcessMessage(robust.Id{}, ids["mero"], msg)
 	msgs := robustMessagesFromReply(replies)
 
 	mustMatchIrcmsgs(t,

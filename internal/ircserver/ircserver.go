@@ -118,6 +118,7 @@ type Session struct {
 	LastSolvedCaptcha time.Time
 	Operator          bool
 	AwayMsg           string
+	Created           int64
 
 	// throttlingExponent starts at 0 and is increased on every
 	// subsequent message until 2^throttlingExponent ≥
@@ -201,7 +202,7 @@ type IRCServer struct {
 	// serverSessions is a slice that contains the IDs of all sessions that
 	// represent server-to-server connections, so that they can efficiently be
 	// added in e.g. interestJoin.
-	serverSessions []int64
+	serverSessions []uint64
 
 	// nicks maps from nicknames in lower-case (e.g. NickToLower("sECuRE")) to
 	// session pointers. Being able to quickly look up sessions based on their
@@ -248,28 +249,6 @@ func NewIRCServer(networkname string, serverCreation time.Time) *IRCServer {
 	}
 }
 
-// NewRobustMessageId returns an id that is guaranteed to be higher
-// than the last processed message (it panics otherwise) so that
-// timestamp drift is loudly complained about instead of silently
-// accepted to the point where it breaks the network’s regular
-// operation.
-//
-// NewRobustMessageId should only be called while node.State() ==
-// raft.Leader, otherwise it might panic due to time drift in the
-// network, leading to the node exiting (and being restarted).
-func (i *IRCServer) NewRobustMessageId() robust.Id {
-	unixnano := time.Now().UnixNano()
-	// Calling IdFromRaftIndex is a slight misnomer, but the next
-	// commit will remove this code anyway.
-	unixnano = int64(robust.IdFromRaftIndex(uint64(unixnano)))
-	i.lastProcessedMu.RLock()
-	defer i.lastProcessedMu.RUnlock()
-	if unixnano < i.lastProcessed.Id {
-		panic(fmt.Sprintf("Assumption violated: current time %d is older than the timestamp of the last processed message (%d)", unixnano, i.lastProcessed.Id))
-	}
-	return robust.Id{Id: unixnano}
-}
-
 // UpdateLastMessage stores the clientmessageid of the last message in the
 // corresponding session, so that duplicate messages are not persisted twice.
 func (i *IRCServer) UpdateLastClientMessageID(msg *robust.Message) error {
@@ -279,7 +258,7 @@ func (i *IRCServer) UpdateLastClientMessageID(msg *robust.Message) error {
 	if err != nil {
 		return err
 	}
-	session.LastActivity = time.Unix(0, msg.Id.Id)
+	session.LastActivity = msg.Timestamp()
 	if !strings.HasPrefix(strings.ToLower(msg.Data), "ping") {
 		session.LastNonPing = session.LastActivity
 	}
@@ -288,7 +267,7 @@ func (i *IRCServer) UpdateLastClientMessageID(msg *robust.Message) error {
 }
 
 // CreateSession creates a new session (equivalent to an IRC connection).
-func (i *IRCServer) CreateSession(id robust.Id, auth string) error {
+func (i *IRCServer) CreateSession(id robust.Id, auth string, timestamp time.Time) error {
 	if got, limit := uint64(len(i.sessions)), i.SessionLimit(); got >= limit && limit > 0 {
 		return ErrSessionLimitReached
 	}
@@ -297,8 +276,9 @@ func (i *IRCServer) CreateSession(id robust.Id, auth string) error {
 		auth:         auth,
 		Channels:     make(map[lcChan]bool),
 		invitedTo:    make(map[lcChan]bool),
-		LastActivity: time.Unix(0, id.Id),
-		LastNonPing:  time.Unix(0, id.Id),
+		Created:      timestamp.UnixNano(),
+		LastActivity: timestamp,
+		LastNonPing:  timestamp,
 		svid:         "0",
 	}
 	return nil
@@ -307,7 +287,7 @@ func (i *IRCServer) CreateSession(id robust.Id, auth string) error {
 // DeleteSession deletes the specified session. Called from the IRC server
 // itself (when processing QUIT or KILL) or from the API (DELETE request coming
 // from the bridge).
-func (i *IRCServer) DeleteSession(s *Session, msgid int64) {
+func (i *IRCServer) DeleteSession(s *Session, msgid uint64) {
 	for _, c := range i.channels {
 		delete(c.nicks, NickToLower(s.Nick))
 
@@ -340,7 +320,7 @@ func (i *IRCServer) ExpireSessions() []*robust.Message {
 			continue
 		}
 
-		log.Printf("Expiring session %v\n", id)
+		log.Printf("Expiring session %v (LastActivity: %v)", id, s.LastActivity)
 
 		deletes = append(deletes, &robust.Message{
 			Session: id,
@@ -450,7 +430,7 @@ func (i *IRCServer) ProcessMessage(id robust.Id, session robust.Id, message *irc
 			Command: irc.ERR_NOTREGISTERED,
 			Params:  []string{command, "You have not registered"},
 		})
-		if s.LastActivity.Sub(time.Unix(0, s.Id.Id)) > 10*time.Minute {
+		if s.LastActivity.Sub(time.Unix(0, s.Created)) > 10*time.Minute {
 			i.sendUser(s, reply, &irc.Message{
 				Command: irc.ERROR,
 				Params:  []string{"Closing Link: You have not registered within 10 minutes"},
@@ -531,10 +511,9 @@ func (i *IRCServer) getSessionLocked(id robust.Id) (*Session, error) {
 		return s, nil
 	}
 
-	// TODO(secure): think about and document implications of timestamp drift
 	i.lastProcessedMu.RLock()
 	defer i.lastProcessedMu.RUnlock()
-	if time.Unix(0, i.lastProcessed.Id).Sub(time.Unix(0, id.Id)) > 0 {
+	if i.lastProcessed.Id > id.Id {
 		// We processed a newer message than that session identifier, so
 		// the session definitely does not exist.
 		return nil, ErrNoSuchSession
@@ -633,8 +612,8 @@ func (i *IRCServer) NumChannels() int {
 // IRC message. A reply context object will be passed to all cmd* functions and
 // the send* functions use it to keep track of the replyid for example.
 type Replyctx struct {
-	msgid    int64
-	replyid  int64
+	msgid    uint64
+	replyid  uint64
 	session  *Session
 	Messages []*robust.Message
 
@@ -658,7 +637,7 @@ func (i *IRCServer) send(reply *Replyctx, msg *irc.Message) *robust.Message {
 			Reply: reply.replyid,
 		},
 		Data:           string(msg.Bytes()),
-		InterestingFor: make(map[int64]bool),
+		InterestingFor: make(map[uint64]bool),
 	}
 
 	reply.Messages = append(reply.Messages, robustmsg)

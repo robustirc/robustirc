@@ -108,11 +108,6 @@ func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, peerStore *raf
 }
 
 var (
-	// applyMu guards calls to raft.Apply(). We need to lock them because
-	// otherwise we cannot guarantee that multiple goroutines will write
-	// strictly monotonically increasing timestamps.
-	applyMu sync.Mutex
-
 	// To avoid setting up a new proxy on every request, we cache the proxies
 	// for each node (since the current leader might change abruptly).
 	nodeProxies   = make(map[string]*httputil.ReverseProxy)
@@ -302,31 +297,24 @@ func (api *HTTP) dispatchPublic(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Not found", http.StatusNotFound)
 }
 
-// applyMessage applies the specified message to the network via Raft.
-func (api *HTTP) applyMessage(msg *robust.Message, timeout time.Duration) (raft.ApplyFuture, error) {
-	applyMu.Lock()
-	defer applyMu.Unlock()
-
-	msg.Id = api.ircServer.NewRobustMessageId()
-	msgbytes, err := json.Marshal(msg)
-	if err != nil {
-		return nil, err
-	}
-
-	return api.raftNode.Apply(msgbytes, timeout), nil
-}
-
+// applyMessageWait applies the specified message to the network via
+// Raft, waits for it be committed and assigns its message id from the
+// Raft index.
 func (api *HTTP) applyMessageWait(msg *robust.Message, timeout time.Duration) error {
-	f, err := api.applyMessage(msg, timeout)
+	msg.UnixNano = time.Now().UnixNano()
+	msgbytes, err := json.Marshal(msg)
 	if err != nil {
 		return err
 	}
+
+	f := api.raftNode.Apply(msgbytes, timeout)
 	if err := f.Error(); err != nil {
 		return err
 	}
 	if err, ok := f.Response().(error); ok {
 		return err
 	}
+	msg.Id.Id = robust.IdFromRaftIndex(f.Index())
 	return nil
 }
 
@@ -368,7 +356,7 @@ func (api *HTTP) maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body
 func (api *HTTP) session(r *http.Request, sessionId string) (robust.Id, error) {
 	var sessionid robust.Id
 
-	id, err := strconv.ParseInt(sessionId, 0, 64)
+	id, err := strconv.ParseUint(sessionId, 0, 64)
 	if err != nil {
 		return sessionid, fmt.Errorf("invalid session: %v", err)
 	}

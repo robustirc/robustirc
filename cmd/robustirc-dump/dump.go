@@ -42,7 +42,7 @@ var (
 	padding = len(fmt.Sprintf("%d", uint64(math.MaxUint64)))
 	format  = fmt.Sprintf("%%%dd\t%%s\t%%s\t%%v (%%v)\t%%s\t%%s", padding) + "\n"
 
-	lastId       int64
+	lastId       uint64
 	lastModified = time.Now()
 )
 
@@ -53,7 +53,7 @@ func dumpLog(key uint64, rlog *raft.Log) {
 		return
 	}
 
-	unfilteredMsg := robust.NewMessageFromBytes(rlog.Data)
+	unfilteredMsg := robust.NewMessageFromBytes(rlog.Data, robust.IdFromRaftIndex(rlog.Index))
 	rmsg := &unfilteredMsg
 	if rmsg.Type == robust.IRCFromClient {
 		rmsg = privacy.FilterMsg(rmsg)
@@ -73,14 +73,14 @@ func dumpLog(key uint64, rlog *raft.Log) {
 		var marshaler proto.TextMarshaler
 		rmsg.Data = marshaler.Text(&snapshot)
 	}
-	msgtime := time.Unix(0, rmsg.Id.Id)
+	msgtime := rmsg.Timestamp()
 	timepassed := lastModified.Sub(msgtime)
 	if !*onlyCompacted || timepassed > 7*24*time.Hour {
 		fmt.Printf(format, key, rmsg.Type, rmsg.Id.String(), msgtime, timepassed, rmsg.Session.String(), rmsg.Data)
 	}
 
 	if rmsg.Id.Id < lastId {
-		log.Printf("WARNING: message IDs not strictly monotonically increasing at %v\n", time.Unix(0, rmsg.Id.Id))
+		log.Printf("WARNING: message IDs not strictly monotonically increasing at %d\n", rmsg.Id.Id)
 	}
 	lastId = rmsg.Id.Id
 }
@@ -115,8 +115,8 @@ func dumpLeveldb(path string) error {
 				log.Fatalf("Corrupted database: %v\n", err)
 			}
 			if rlog.Type == raft.LogCommand {
-				rmsg := robust.NewMessageFromBytes(rlog.Data)
-				lastModified = time.Unix(0, rmsg.Id.Id)
+				rmsg := robust.NewMessageFromBytes(rlog.Data, robust.IdFromRaftIndex(rlog.Index))
+				lastModified = rmsg.Timestamp()
 				break
 			}
 			i.Prev()

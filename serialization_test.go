@@ -91,12 +91,11 @@ func TestSerialization(t *testing.T) {
 		t.Fatalf("lastIncludedIndex is not equal to what we wrote, got %d, want %d", got, want)
 	}
 
-	logs = nil
 	logs = appendLog(logs, `{"Id": {"Id": 10}, "Session": {"Id": 4}, "Type": 2, "Data": "JOIN #test"}`)
-	if err := logstore.StoreLogs(logs); err != nil {
+	if err := logstore.StoreLogs(logs[len(logs)-1:]); err != nil {
 		t.Fatalf("Unexpected error in store.StoreLogs: %v", err)
 	}
-	for _, log := range logs {
+	for _, log := range logs[len(logs)-1:] {
 		fsm.Apply(log)
 	}
 
