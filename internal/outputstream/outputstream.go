@@ -1,28 +1,24 @@
 // Package outputstream represents the messages which the ircserver package
 // generates in response to what is being sent to RobustIRC.
 //
-// Data is stored in a temporary LevelDB database so that not all data is kept
-// in main memory at all times. The working set we are talking about is ≈100M,
-// but using LevelDB (with its default Snappy compression), that gets
-// compressed down to ≈35M.
+// Data is cached in main memory, then spilled to disk. The working set is
+// usually about 100MB, and could be compressed down to 35MB.
 package outputstream
 
 import (
 	"encoding/binary"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
-	"math"
 	"os"
 	"path/filepath"
-	"strings"
+	"sort"
 	"sync"
 
 	"golang.org/x/net/context"
 
 	"github.com/robustirc/robustirc/internal/robust"
-	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/opt"
-	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 // Message is similar to robust.Message, but more compact. This speeds up
@@ -42,6 +38,12 @@ type messageBatch struct {
 	NextID uint64
 }
 
+type fileHandle struct {
+	firstID uint64
+	lastID  uint64
+	file    *os.File
+}
+
 type OutputStream struct {
 	// tmpdir is the directory which we pass to ioutil.TempDir.
 	tmpdir string
@@ -50,306 +52,250 @@ type OutputStream struct {
 	// contains our database.
 	dirname string
 
-	// messagesMu guards |db|, |batch| and |lastseen|.
-	messagesMu sync.RWMutex
 	newMessage *sync.Cond
 
-	db       *leveldb.DB
-	batch    leveldb.Batch
-	lastseen messageBatch
+	cacheCapacity int64
 
 	cacheMu       sync.RWMutex
-	messagesCache map[uint64]*messageBatch
+	messagesCache []*messageBatch
+
+	filesMu sync.RWMutex
+	files   []fileHandle
 }
 
 func DeleteOldDatabases(tmpdir string) error {
-	dir, err := os.Open(tmpdir)
+	matches, err := filepath.Glob(filepath.Join(tmpdir, "tmp-outputstream-*"))
 	if err != nil {
 		return err
 	}
-	defer dir.Close()
-	names, err := dir.Readdirnames(-1)
-	if err != nil {
-		return err
-	}
-	for _, name := range names {
-		if strings.HasPrefix(name, "tmp-outputstream-") {
-			if err := os.RemoveAll(filepath.Join(tmpdir, name)); err != nil {
-				return err
-			}
+	for _, name := range matches {
+		if err := os.RemoveAll(filepath.Join(tmpdir, name)); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func NewOutputStream(tmpdir string) (*OutputStream, error) {
+// assumptions:
+// • message IDs are strictly monotonically increasing, but not consecutive
+//   (not all raft messages are irc messages, and hence not all raft messages
+//    have an output).
+// • messages are appended only
+// • messages are deleted in batches
+
+func NewOutputStream(tmpdir string, cacheCapacity int64) (*OutputStream, error) {
 	os := &OutputStream{
 		tmpdir:        tmpdir,
-		messagesCache: make(map[uint64]*messageBatch),
+		cacheCapacity: cacheCapacity,
 	}
-	os.newMessage = sync.NewCond(&os.messagesMu)
+	var err error
+	os.dirname, err = ioutil.TempDir(tmpdir, "tmp-outputstream-")
+	if err != nil {
+		return nil, err
+	}
+	os.newMessage = sync.NewCond(&os.cacheMu)
 	return os, os.reset()
 }
 
 func (o *OutputStream) Close() error {
-	if o.db == nil {
-		return nil
-	}
-	if err := o.db.Close(); err != nil {
-		return err
-	}
 	return os.RemoveAll(o.dirname)
 }
 
 // Reset deletes all messages.
-func (os *OutputStream) reset() error {
-	var key [8]byte
-
-	os.messagesMu.Lock()
-	defer os.messagesMu.Unlock()
-
-	if err := os.Close(); err != nil {
-		return err
-	}
-
-	dirname, err := ioutil.TempDir(os.tmpdir, "tmp-outputstream-")
-	if err != nil {
-		return err
-	}
-	os.dirname = dirname
-
-	// Open a temporary database, i.e. one whose values we only use as long as
-	// this RobustIRC process is running, and which will be deleted at the next
-	// startup. This implies we don’t need to fsync(), and leveldb should error
-	// out when there already is a database in our newly created tempdir.
-	db, err := leveldb.OpenFile(dirname, &opt.Options{
-		ErrorIfExist:       true,
-		NoSync:             true,
-		BlockCacheCapacity: 2 * 1024 * 1024,
-	})
-	if err != nil {
-		return err
-	}
-	os.db = db
-
-	os.lastseen = messageBatch{
-		Messages: []Message{
-			{
-				Id:             robust.Id{Id: 0},
-				InterestingFor: make(map[uint64]bool),
-			},
-		},
-		NextID: math.MaxUint64,
-	}
-	binary.BigEndian.PutUint64(key[:], uint64(0))
-	return os.db.Put(key[:], os.lastseen.marshal(), nil)
-}
-
-// Add adds messages to the output stream. The Id.Id field of all messages must
-// be identical, i.e. they must all be replies to the same input IRC message.
-func (os *OutputStream) Add(msgs []Message) error {
-	var key [8]byte
-
-	os.messagesMu.Lock()
-	defer os.messagesMu.Unlock()
-
-	os.batch.Reset()
-
-	os.lastseen.NextID = uint64(msgs[0].Id.Id)
-	binary.BigEndian.PutUint64(key[:], uint64(os.lastseen.Messages[0].Id.Id))
-	os.batch.Put(key[:], os.lastseen.marshal())
-	os.cacheMu.Lock()
-	delete(os.messagesCache, uint64(os.lastseen.Messages[0].Id.Id))
-	os.cacheMu.Unlock()
-
-	os.lastseen = messageBatch{
-		Messages: msgs,
-		NextID:   math.MaxUint64,
-	}
-	binary.BigEndian.PutUint64(key[:], uint64(msgs[0].Id.Id))
-	os.batch.Put(key[:], os.lastseen.marshal())
-	if err := os.db.Write(&os.batch, nil); err != nil {
-		return err
-	}
-
-	os.newMessage.Broadcast()
+func (o *OutputStream) reset() error {
+	o.messagesCache = make([]*messageBatch, 0, o.cacheCapacity)
 	return nil
 }
 
-func (os *OutputStream) LastSeen() robust.Id {
-	os.messagesMu.RLock()
-	defer os.messagesMu.RUnlock()
-	if len(os.lastseen.Messages) > 0 {
-		return os.lastseen.Messages[0].Id
+func (o *OutputStream) indexBytes() int64 { return (o.cacheCapacity + 1) * 8 }
+
+// Add adds messages to the output stream. The Id.Id field of all messages must
+// be identical, i.e. they must all be replies to the same input IRC message.
+func (o *OutputStream) Add(msgs []Message) error {
+	o.cacheMu.Lock()
+	defer o.cacheMu.Unlock()
+	batch := messageBatch{
+		Messages: msgs,
 	}
-	return robust.Id{Id: 0}
-}
 
-// Delete deletes all IRC output messages that were generated in reply to the
-// input message with inputID.
-func (os *OutputStream) Delete(inputID robust.Id) error {
-	var key [8]byte
-
-	os.messagesMu.Lock()
-	defer os.messagesMu.Unlock()
-	if inputID.Id == os.lastseen.Messages[0].Id.Id {
-		// When deleting the last message, lastseen needs to be set to the
-		// previous message to avoid blocking in GetNext() forever.
-		i := os.db.NewIterator(nil, nil)
-		defer i.Release()
-		if !i.Last() {
-			log.Panicf("outputstream LevelDB is empty, which is a BUG\n")
+	if len(o.messagesCache) == cap(o.messagesCache) {
+		// Cache full, flush to disk.
+		fh := fileHandle{
+			firstID: o.messagesCache[0].Messages[0].Id.Id,
+			lastID:  o.messagesCache[len(o.messagesCache)-1].Messages[0].Id.Id,
 		}
-		if !i.Prev() {
-			// We should always keep the first message (RobustId{Id: 0}).
-			log.Panicf("Delete() called on _all_ messages\n")
-		}
-
-		mb := unmarshalMessageBatch(i.Value())
-		os.lastseen = messageBatch{
-			Messages: mb.Messages,
-			NextID:   math.MaxUint64,
-		}
-
-		binary.BigEndian.PutUint64(key[:], uint64(os.lastseen.Messages[0].Id.Id))
-		if err := os.db.Put(key[:], os.lastseen.marshal(), nil); err != nil {
+		f, err := os.Create(filepath.Join(o.dirname, fmt.Sprintf("%d_to_%d.bin", fh.firstID, fh.lastID)))
+		if err != nil {
 			return err
 		}
+		fh.file = f
+
+		// Reserve space for the index. We store one extra entry so that we can
+		// unconditionally read offset and nextOffset below (to get the length).
+		offsets := make([]uint64, len(o.messagesCache)+1)
+		if _, err := f.Seek(o.indexBytes(), io.SeekStart); err != nil {
+			return err
+		}
+
+		// Write the messages, updating the index as we go.
+		var offset uint64
+		for idx, mb := range o.messagesCache {
+			b := mb.marshal()
+			if _, err := f.Write(b); err != nil {
+				return err
+			}
+			offsets[idx] = offset
+			offset += uint64(len(b))
+		}
+		offsets[len(o.messagesCache)] = offset
+
+		// Write the index.
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+
+		for _, offset := range offsets {
+			if err := binary.Write(f, binary.BigEndian, offset); err != nil {
+				return err
+			}
+		}
+
+		o.filesMu.Lock()
+		defer o.filesMu.Unlock()
+		o.files = append(o.files, fh)
+		o.messagesCache = make([]*messageBatch, 0, o.cacheCapacity)
 	}
-	os.cacheMu.Lock()
-	delete(os.messagesCache, uint64(inputID.Id))
-	os.cacheMu.Unlock()
-	binary.BigEndian.PutUint64(key[:], uint64(inputID.Id))
-	return os.db.Delete(key[:], nil)
+	o.messagesCache = append(o.messagesCache, &batch)
+
+	o.newMessage.Broadcast()
+	return nil
+}
+
+// Delete deletes all IRC output messages that were generated up to (and including) last.
+func (o *OutputStream) Delete(last robust.Id) error {
+	o.filesMu.Lock()
+	defer o.filesMu.Unlock()
+	newFiles := make([]fileHandle, 0, len(o.files))
+	for idx, fh := range o.files {
+		if last.Id >= fh.lastID {
+			fh.file.Close()
+			if err := os.Remove(fh.file.Name()); err != nil {
+				return err
+			}
+			continue
+		}
+		newFiles = append(newFiles, o.files[idx:]...)
+		break
+	}
+	o.files = newFiles
+	return nil
 }
 
 // GetNext returns the next IRC output message after lastseen, even if lastseen
 // was deleted in the meanwhile. In case there is no next message yet,
 // GetNext blocks until it appears.
 // GetNext(types.RobustId{Id: 0}) returns the first message.
-func (os *OutputStream) GetNext(ctx context.Context, lastseen robust.Id) []Message {
-	// GetNext handles 4 different cases:
-	//
-	// ┌──────────────────┬───────────┬───────────────────────────────────────┐
-	// │ lastseen message │  nextid   │ outcome                               │
-	// ├──────────────────┼───────────┼───────────────────────────────────────┤
-	// │    exists        │   valid   │ return                                │
-	// │    exists        │ not found │ binary search for more recent message │
-	// │    exists        │  MaxInt64 │ block until next message              │
-	// │   not found      │     /     │ binary search for more recent message │
-	// └──────────────────┴───────────┴───────────────────────────────────────┘
-	//
-	// Note that binary search may fall-through to blocking in case it cannot
-	// find a more recent message.
-
-	os.messagesMu.RLock()
-	current, ok := os.getUnlocked(uint64(lastseen.Id))
-	if ok && current.NextID < math.MaxUint64 {
-		next, okNext := os.getUnlocked(current.NextID)
-		if okNext {
-			os.messagesMu.RUnlock()
-			return next.Messages
-		}
-		// NextID points to a deleted message, fall back to binary search.
-		ok = false
+func (o *OutputStream) GetNext(ctx context.Context, lastseen robust.Id) []Message {
+	nextId := robust.Id{Id: lastseen.Id + 1}
+	mb, ok := o.Get(nextId)
+	if ok {
+		return mb
 	}
-
-	if !ok {
-		// Anything _newer_ than lastseen, i.e. the interval [lastseen.Id+1, ∞)
-		var key [8]byte
-		binary.BigEndian.PutUint64(key[:], uint64(lastseen.Id)+1)
-		i := os.db.NewIterator(&util.Range{
-			Start: key[:],
-			Limit: nil,
-		}, nil)
-		defer i.Release()
-		if i.First() {
-			mb := unmarshalMessageBatch(i.Value())
-			os.messagesMu.RUnlock()
-			return mb.Messages
-		}
-
-		// There is no message which is more recent than lastseen, so just take
-		// the last message and fallthrough into the code path that waits for
-		// newer messages.
-		i = os.db.NewIterator(nil, nil)
-		defer i.Release()
-		if !i.Last() {
-			log.Panicf("outputstream LevelDB is empty, which is a BUG\n")
-		}
-
-		current = unmarshalMessageBatch(i.Value())
-	}
-	os.messagesMu.RUnlock()
 
 	// Wait until a new message appears.
-	os.messagesMu.Lock()
+	o.cacheMu.Lock()
 	for {
-		current, _ = os.getUnlocked(uint64(current.Messages[0].Id.Id))
-		next, ok := os.getUnlocked(current.NextID)
+		next, ok := o.getUnlocked(nextId.Id)
 		if ok {
-			os.messagesMu.Unlock()
+			o.cacheMu.Unlock()
 			return next.Messages
 		}
 		select {
 		case <-ctx.Done():
-			os.messagesMu.Unlock()
+			o.cacheMu.Unlock()
 			return []Message{}
 		default:
 		}
-		os.newMessage.Wait()
+		o.newMessage.Wait()
 	}
 }
 
 // InterruptGetNext interrupts any running GetNext() calls so that they return
 // if |cancelled| is specified and true in the GetNext() call.
-func (os *OutputStream) InterruptGetNext() {
-	os.messagesMu.Lock()
-	defer os.messagesMu.Unlock()
-	os.newMessage.Broadcast()
+func (o *OutputStream) InterruptGetNext() {
+	o.cacheMu.Lock()
+	defer o.cacheMu.Unlock()
+	o.newMessage.Broadcast()
 }
 
-func (os *OutputStream) getUnlocked(id uint64) (*messageBatch, bool) {
-	var key [8]byte
-	os.cacheMu.RLock()
-	mb, ok := os.messagesCache[id]
-	os.cacheMu.RUnlock()
-	if ok {
+func (o *OutputStream) getCachedUnlocked(id uint64) (*messageBatch, bool) {
+	n := len(o.messagesCache)
+	if n == 0 {
+		return nil, false
+	}
+
+	if id < o.messagesCache[0].Messages[0].Id.Id {
+		// not cached anymore
+		return nil, false
+	}
+
+	i := sort.Search(n, func(i int) bool {
+		return o.messagesCache[i].Messages[0].Id.Id >= id
+	})
+	if i == n {
+		// not found
+		return nil, false
+	}
+	return o.messagesCache[i], true
+}
+
+func (o *OutputStream) getUnlocked(id uint64) (*messageBatch, bool) {
+	if mb, ok := o.getCachedUnlocked(id); ok {
 		return mb, ok
 	}
-	binary.BigEndian.PutUint64(key[:], id)
-	value, err := os.db.Get(key[:], nil)
-	if err != nil {
-		if err == leveldb.ErrNotFound {
+
+	o.filesMu.RLock()
+	defer o.filesMu.RUnlock()
+	// walk files in reverse, because newer messages are more likely to be requested
+	for idx := len(o.files) - 1; idx >= 0; idx-- {
+		fh := o.files[idx]
+		if id < fh.firstID || id > fh.lastID {
+			continue
+		}
+
+		if _, err := fh.file.Seek(int64((id-fh.firstID)*8), io.SeekStart); err != nil {
 			return nil, false
 		}
-		log.Panicf("Unexpected outputstream LevelDB error: %v\n", err)
-	}
-	mb = unmarshalMessageBatch(value)
-	os.cacheMu.Lock()
-	// A cache size of 1000 has empirically worked best so far.
-	if len(os.messagesCache) > 1000 {
-		// Just randomly delete entries to free up memory.
-		for id := range os.messagesCache {
-			delete(os.messagesCache, id)
-			if len(os.messagesCache) < 500 {
-				break
-			}
+		var offset, nextOffset uint64
+		if err := binary.Read(fh.file, binary.BigEndian, &offset); err != nil {
+			return nil, false
 		}
+		if err := binary.Read(fh.file, binary.BigEndian, &nextOffset); err != nil {
+			return nil, false
+		}
+
+		log.Printf("id = %d, firstID = %d, lastID = %d, offset = %d, nextOffset = %d", id, fh.firstID, fh.lastID, offset, nextOffset)
+		if _, err := fh.file.Seek(o.indexBytes()+int64(offset), io.SeekStart); err != nil {
+			return nil, false
+		}
+		b := make([]byte, nextOffset-offset)
+		if _, err := fh.file.Read(b); err != nil {
+			return nil, false
+		}
+		mb := unmarshalMessageBatch(b)
+		return mb, true
 	}
-	os.messagesCache[id] = mb
-	os.cacheMu.Unlock()
-	return mb, true
+	return nil, false
 }
 
-// Get returns the next IRC output message for 'input', if present.
-func (os *OutputStream) Get(input robust.Id) ([]Message, bool) {
-	os.messagesMu.RLock()
-	defer os.messagesMu.RUnlock()
+// Get returns the IRC output message for 'input', if present.
+func (o *OutputStream) Get(input robust.Id) ([]Message, bool) {
+	o.cacheMu.RLock()
+	defer o.cacheMu.RUnlock()
 
-	mb, ok := os.getUnlocked(uint64(input.Id))
+	mb, ok := o.getUnlocked(input.Id)
 	if !ok {
-		return nil, ok
+		return nil, false
 	}
 	return mb.Messages, true
 }

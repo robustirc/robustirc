@@ -285,7 +285,7 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 	}
 
 	ircServer = ircserver.NewIRCServer(*network, time.Now())
-	outputStream, err = outputstream.NewOutputStream(*raftDir)
+	outputStream, err = outputstream.NewOutputStream(*raftDir, 1024)
 	if err != nil {
 		log.Fatal(err)
 	}

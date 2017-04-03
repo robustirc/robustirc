@@ -375,7 +375,7 @@ func main() {
 
 	ircServer = ircserver.NewIRCServer(*network, time.Now())
 	var err error
-	outputStream, err = outputstream.NewOutputStream(*raftDir)
+	outputStream, err = outputstream.NewOutputStream(*raftDir, 1024)
 	if err != nil {
 		log.Fatalf("Could not create new outputstream: %v", err)
 	}

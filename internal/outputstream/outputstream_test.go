@@ -1,6 +1,7 @@
 package outputstream
 
 import (
+	"log"
 	"runtime"
 	"testing"
 	"time"
@@ -31,7 +32,9 @@ func testBlocking(t *testing.T, os *OutputStream, lastseen robust.Id, want robus
 	default:
 	}
 
+	log.Printf("add")
 	os.Add([]Message{{Id: want}})
+	log.Printf("after add")
 
 	select {
 	case msgs := <-next:
@@ -45,28 +48,76 @@ func testBlocking(t *testing.T, os *OutputStream, lastseen robust.Id, want robus
 }
 
 func TestAppendNext(t *testing.T) {
-	os, err := NewOutputStream("")
+	os, err := NewOutputStream("", 5)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	log.Printf("before")
 	testBlocking(t, os, robust.Id{}, robust.Id{Id: 1, Reply: 1})
+	log.Printf("after")
+}
+
+func TestDisk(t *testing.T) {
+	os, err := NewOutputStream("", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 1; i < 10; i++ {
+		addEmptyMsg(os, uint64(i), 1)
+	}
+
+	msgs := make([]Message, 1)
+	for i := 1; i < 10; i++ {
+		log.Printf("i = %d", i)
+		msgs = os.GetNext(context.TODO(), msgs[0].Id)
+		if want := (robust.Id{Id: uint64(i), Reply: 1}); msgs[0].Id != want {
+			t.Fatalf("got %v, want %v", msgs[0].Id, want)
+		}
+	}
+}
+
+func TestDelete(t *testing.T) {
+	o, err := NewOutputStream("", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 1; i < 15; i++ {
+		addEmptyMsg(o, uint64(i), 1)
+	}
+
+	for i := 1; i < 15; i++ {
+		if _, ok := o.Get(robust.Id{Id: uint64(i)}); !ok {
+			t.Fatalf("message %d could not be retrieved", i)
+		}
+	}
+
+	// TODO: verify the file exists on disk
+
+	// Message 5 is an edge condition: it is the last message in the first
+	// on-disk file.
+	if err := o.Delete(robust.Id{Id: 5}); err != nil {
+		t.Fatal(err)
+	}
+
+	// TODO: verify the file vanished from disk
+
+	for i := 6; i < 15; i++ {
+		if _, ok := o.Get(robust.Id{Id: uint64(i)}); !ok {
+			t.Fatalf("message %d could not be retrieved", i)
+		}
+	}
 }
 
 func TestCatchUp(t *testing.T) {
-	os, err := NewOutputStream("")
+	os, err := NewOutputStream("", 5)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if got, want := os.LastSeen(), (robust.Id{Id: 0, Reply: 0}); got != want {
-		t.Fatalf("got %v, want %v", got, want)
-	}
-
 	addEmptyMsg(os, 1, 1)
-	if got, want := os.LastSeen(), (robust.Id{Id: 1, Reply: 1}); got != want {
-		t.Fatalf("got %v, want %v", got, want)
-	}
 	addEmptyMsg(os, 2, 1)
 	addEmptyMsg(os, 3, 1)
 
@@ -84,72 +135,8 @@ func TestCatchUp(t *testing.T) {
 	}
 }
 
-func TestDeleteMiddle(t *testing.T) {
-	os, err := NewOutputStream("")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	addEmptyMsg(os, 1, 1)
-	addEmptyMsg(os, 2, 1)
-	addEmptyMsg(os, 3, 1)
-
-	os.Delete(robust.Id{Id: 2, Reply: 0})
-
-	// Verify we get the expected messages when using Get directly with the
-	// input IDs.
-	msgs, ok := os.Get(robust.Id{Id: 3})
-	if !ok {
-		t.Fatalf("got false, want true")
-	}
-	if want := (robust.Id{Id: 3, Reply: 1}); msgs[0].Id != want {
-		t.Fatalf("got %v, want %v", msgs[0].Id, want)
-	}
-
-	// Verify getting an invalid message works as expected
-	msgs, ok = os.Get(robust.Id{Id: 23})
-	if ok {
-		t.Fatalf("got true, want false")
-	}
-	if msgs != nil {
-		t.Fatalf("got %v, want nil", msgs)
-	}
-
-	// Now get the same messages using GetNext
-	msgs = os.GetNext(context.TODO(), robust.Id{Id: 2, Reply: 1})
-	if want := (robust.Id{Id: 3, Reply: 1}); msgs[0].Id != want {
-		t.Fatalf("got %v, want %v", msgs[0].Id, want)
-	}
-
-	msgs = os.GetNext(context.TODO(), robust.Id{Id: 1, Reply: 1})
-	if want := (robust.Id{Id: 3, Reply: 1}); msgs[0].Id != want {
-		t.Fatalf("got %v, want %v", msgs[0].Id, want)
-	}
-
-	os.Delete(robust.Id{Id: 3, Reply: 0})
-
-	testBlocking(t, os, msgs[0].Id, robust.Id{Id: 4, Reply: 1})
-
-	os.Delete(robust.Id{Id: 1, Reply: 0})
-	os.Delete(robust.Id{Id: 4, Reply: 0})
-
-	testBlocking(t, os, msgs[0].Id, robust.Id{Id: 5, Reply: 1})
-
-	// Just to get 100% code coverage. We could also not do this, but then a
-	// human needs to look at the coverage output and keep the special case of
-	// the untested log.Panicf call in mind, so we just put the special case
-	// into code here.
-	os.Delete(robust.Id{Id: 5, Reply: 0})
-	defer func() {
-		if err := recover(); err == nil {
-			t.Fatalf("Expected a panic")
-		}
-	}()
-	os.Delete(robust.Id{Id: 0, Reply: 0})
-}
-
 func TestInterrupt(t *testing.T) {
-	os, err := NewOutputStream("")
+	os, err := NewOutputStream("", 5)
 	if err != nil {
 		t.Fatal(err)
 	}

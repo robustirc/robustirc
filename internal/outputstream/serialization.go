@@ -5,9 +5,9 @@ import (
 	"unsafe"
 )
 
-// To avoid additional dependencies on libraries like flatbuffers or capnproto
-// and yet achieve high encoding/decoding speed and low memory usage, these are
-// hand-written functions to marshal/unmarshal messageBatches.
+// These hand-written functions to marshal/unmarshal messageBatches
+// are about 10x faster than proto.Marshal. See issue #135 for
+// details.
 
 func (m *messageBatch) marshal() []byte {
 	bufLen := unsafe.Sizeof(uint64(0)) /* NextID */ +

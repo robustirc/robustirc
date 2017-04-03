@@ -109,7 +109,7 @@ func restore(fsm raft.FSM, fss raft.SnapshotStore, numLogs uint64) error {
 func TestCompaction(t *testing.T) {
 	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 	var err error
-	outputStream, err = outputstream.NewOutputStream("")
+	outputStream, err = outputstream.NewOutputStream("", 1024)
 
 	tempdir, err := ioutil.TempDir("", "robust-test-")
 	if err != nil {

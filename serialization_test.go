@@ -19,7 +19,7 @@ import (
 func createIrcServer(tempdir string) (*raftstore.LevelDBStore, *raftstore.LevelDBStore, FSM, error) {
 	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 	var err error
-	outputStream, err = outputstream.NewOutputStream("")
+	outputStream, err = outputstream.NewOutputStream("", 1024)
 	if err != nil {
 		return nil, nil, FSM{}, err
 	}

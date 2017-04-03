@@ -29,7 +29,7 @@ func TestPlumbing(t *testing.T) {
 	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("NICK mero"))
 	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("USER foo 0 * :Axel Wagner"))
 
-	o, err := outputstream.NewOutputStream("")
+	o, err := outputstream.NewOutputStream("", 1024)
 	if err != nil {
 		t.Fatal(err)
 	}
