@@ -13,7 +13,7 @@ func init() {
 }
 
 func (i *IRCServer) cmdQuit(s *Session, reply *Replyctx, msg *irc.Message) {
-	i.DeleteSession(s, reply.msgid)
+	i.deleteSessionLocked(s, reply.msgid)
 	if s.loggedIn {
 		i.sendServices(reply,
 			i.sendCommonChannels(s, reply, &irc.Message{

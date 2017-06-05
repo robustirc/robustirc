@@ -42,7 +42,7 @@ func (i *IRCServer) cmdKill(s *Session, reply *Replyctx, msg *irc.Message) {
 		return
 	}
 
-	i.DeleteSession(session, reply.msgid)
+	i.deleteSessionLocked(session, reply.msgid)
 
 	i.sendServices(reply,
 		i.sendCommonChannels(session, reply, &irc.Message{

@@ -50,6 +50,6 @@ func (i *IRCServer) cmdServerSvspart(s *Session, reply *Replyctx, msg *irc.Messa
 	}))
 
 	delete(c.nicks, nick)
-	i.maybeDeleteChannel(c)
+	i.maybeDeleteChannelLocked(c)
 	delete(session.Channels, ChanToLower(channelname))
 }

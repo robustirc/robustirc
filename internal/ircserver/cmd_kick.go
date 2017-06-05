@@ -61,7 +61,7 @@ func (i *IRCServer) cmdKick(s *Session, reply *Replyctx, msg *irc.Message) {
 
 	// TODO(secure): reduce code duplication with cmdPart()
 	delete(c.nicks, NickToLower(msg.Params[1]))
-	i.maybeDeleteChannel(c)
+	i.maybeDeleteChannelLocked(c)
 	delete(session.Channels, ChanToLower(channelname))
 
 }

@@ -268,6 +268,12 @@ func (i *IRCServer) UpdateLastClientMessageID(msg *robust.Message) error {
 
 // CreateSession creates a new session (equivalent to an IRC connection).
 func (i *IRCServer) CreateSession(id robust.Id, auth string, timestamp time.Time) error {
+	i.sessionsMu.Lock()
+	defer i.sessionsMu.Unlock()
+	return i.createSessionLocked(id, auth, timestamp)
+}
+
+func (i *IRCServer) createSessionLocked(id robust.Id, auth string, timestamp time.Time) error {
 	if got, limit := uint64(len(i.sessions)), i.SessionLimit(); got >= limit && limit > 0 {
 		return ErrSessionLimitReached
 	}
@@ -287,11 +293,11 @@ func (i *IRCServer) CreateSession(id robust.Id, auth string, timestamp time.Time
 // DeleteSession deletes the specified session. Called from the IRC server
 // itself (when processing QUIT or KILL) or from the API (DELETE request coming
 // from the bridge).
-func (i *IRCServer) DeleteSession(s *Session, msgid uint64) {
+func (i *IRCServer) deleteSessionLocked(s *Session, msgid uint64) {
 	for _, c := range i.channels {
 		delete(c.nicks, NickToLower(s.Nick))
 
-		i.maybeDeleteChannel(c)
+		i.maybeDeleteChannelLocked(c)
 	}
 	delete(i.nicks, NickToLower(s.Nick))
 	// Instead of deleting the session here, we defer that to SendMessages, as
@@ -386,7 +392,7 @@ func extractPassword(password, prefix string) string {
 	return extracted
 }
 
-func (i *IRCServer) maybeDeleteChannel(c *channel) {
+func (i *IRCServer) maybeDeleteChannelLocked(c *channel) {
 	if len(c.nicks) > 0 {
 		return
 	}
@@ -437,7 +443,7 @@ func (i *IRCServer) ProcessMessage(id robust.Id, session robust.Id, message *irc
 				Command: irc.ERROR,
 				Params:  []string{"Closing Link: You have not registered within 10 minutes"},
 			})
-			i.DeleteSession(s, reply.msgid)
+			i.deleteSessionLocked(s, reply.msgid)
 		}
 		return reply
 	}

@@ -57,5 +57,5 @@ func (i *IRCServer) cmdServerKill(s *Session, reply *Replyctx, msg *irc.Message)
 			Command: irc.QUIT,
 			Params:  []string{"Killed: " + msg.Trailing()},
 		}))
-	i.DeleteSession(session, reply.msgid)
+	i.deleteSessionLocked(session, reply.msgid)
 }

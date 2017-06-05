@@ -11,7 +11,7 @@ func init() {
 func (i *IRCServer) cmdServerQuit(s *Session, reply *Replyctx, msg *irc.Message) {
 	// No prefix means the server quits the entire session.
 	if msg.Prefix == nil {
-		i.DeleteSession(s, reply.msgid)
+		i.deleteSessionLocked(s, reply.msgid)
 		// For services, we also need to delete all sessions that share the
 		// same .Id, but have a different .Reply.
 		for id, session := range i.sessions {
@@ -23,7 +23,7 @@ func (i *IRCServer) cmdServerQuit(s *Session, reply *Replyctx, msg *irc.Message)
 				Command: irc.QUIT,
 				Params:  []string{msg.Trailing()},
 			})
-			i.DeleteSession(session, reply.msgid)
+			i.deleteSessionLocked(session, reply.msgid)
 		}
 		return
 	}
@@ -39,7 +39,7 @@ func (i *IRCServer) cmdServerQuit(s *Session, reply *Replyctx, msg *irc.Message)
 			Command: irc.QUIT,
 			Params:  []string{msg.Trailing()},
 		})
-		i.DeleteSession(session, reply.msgid)
+		i.deleteSessionLocked(session, reply.msgid)
 		return
 	}
 }
