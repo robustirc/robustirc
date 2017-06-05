@@ -14,6 +14,15 @@ func init() {
 	}
 }
 
+func banned(bans []banPattern, userhost, userhostAddr string) bool {
+	for _, b := range bans {
+		if b.re.MatchString(userhost) || b.re.MatchString(userhostAddr) {
+			return true
+		}
+	}
+	return false
+}
+
 func (i *IRCServer) cmdJoin(s *Session, reply *Replyctx, msg *irc.Message) {
 	var keys []string
 	if len(msg.Params) > 1 {
@@ -79,6 +88,13 @@ func (i *IRCServer) cmdJoin(s *Session, reply *Replyctx, msg *irc.Message) {
 				captchaChallengesSent.Inc()
 				continue
 			}
+		} else if banned(c.bans, s.ircPrefix.String(), s.Nick+"!"+s.Username+"@"+s.remoteAddr) {
+			i.sendUser(s, reply, &irc.Message{
+				Prefix:  i.ServerPrefix,
+				Command: irc.ERR_BANNEDFROMCHAN,
+				Params:  []string{s.Nick, c.name, "Cannot join channel (+b)"},
+			})
+			continue
 		}
 		// Invites are only valid once.
 		if c.modes['i'] || c.modes['x'] {

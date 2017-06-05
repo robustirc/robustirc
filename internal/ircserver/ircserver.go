@@ -149,6 +149,8 @@ type Session struct {
 	// deleted gets set by DeleteSession and used by SendMessages. Refer to the
 	// DeleteSession comment.
 	deleted bool
+
+	remoteAddr string // network address of the most recent message
 }
 
 // updateIrcPrefix MUST be called whenever the Nick field changes.
@@ -168,6 +170,11 @@ const (
 	maxChanMemberStatus
 )
 
+type banPattern struct {
+	re      *regexp.Regexp
+	pattern string
+}
+
 type channel struct {
 	// name is the (case-sensitive!) original name this channel had when it was
 	// first created.
@@ -182,6 +189,8 @@ type channel struct {
 	// We waste 65 bytes per channel for clearer code (being able to directly
 	// access modes by using their letter as an index).
 	modes ['z']bool
+
+	bans []banPattern
 }
 
 // svshold stores nickname reservations set by services, e.g. for reserving the
@@ -424,6 +433,11 @@ func (i *IRCServer) ProcessMessage(msg *robust.Message, ircmsg *irc.Message) *Re
 	}
 
 	command := strings.ToUpper(ircmsg.Command)
+	if msg.RemoteAddr != "" && msg.RemoteAddr != s.remoteAddr {
+		s.remoteAddr = msg.RemoteAddr
+		log.Printf("addr changed to %q", s.remoteAddr)
+		// TODO(secure): check if the IP is glined, add gline command first (should modify the network config)
+	}
 
 	messagesProcessed.WithLabelValues(command).Inc()
 

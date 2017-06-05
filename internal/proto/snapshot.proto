@@ -54,6 +54,7 @@ message Snapshot {
     Timestamp last_non_ping = 19;
     Timestamp last_solved_captcha = 20;
     Bool logged_in = 21;
+    string remote_addr = 23;
   }
   repeated Session sessions = 1;
 
@@ -69,6 +70,11 @@ message Snapshot {
     }
     map<string, Modes> nicks = 5;
     repeated string modes = 6;
+    message BanPattern {
+      string pattern = 1;
+      string regexp = 2;
+    }
+    repeated BanPattern bans = 7;
   }
   repeated Channel channels = 2;
   

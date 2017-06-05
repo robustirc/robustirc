@@ -2,6 +2,7 @@ package ircserver
 
 import (
 	"encoding/hex"
+	"regexp"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -77,6 +78,7 @@ func (i *IRCServer) Marshal(lastIncludedIndex uint64) ([]byte, error) {
 				User: session.ircPrefix.User,
 				Host: session.ircPrefix.Host,
 			},
+			RemoteAddr: session.remoteAddr,
 		})
 	}
 
@@ -99,6 +101,13 @@ func (i *IRCServer) Marshal(lastIncludedIndex uint64) ([]byte, error) {
 				modes = append(modes, string(mode))
 			}
 		}
+		bans := make([]*pb.Snapshot_Channel_BanPattern, len(channel.bans))
+		for idx, b := range channel.bans {
+			bans[idx] = &pb.Snapshot_Channel_BanPattern{
+				Pattern: b.pattern,
+				Regexp:  b.re.String(),
+			}
+		}
 		channels = append(channels, &pb.Snapshot_Channel{
 			Name:      channel.name,
 			TopicNick: channel.topicNick,
@@ -106,6 +115,7 @@ func (i *IRCServer) Marshal(lastIncludedIndex uint64) ([]byte, error) {
 			Topic:     channel.topic,
 			Nicks:     nicks,
 			Modes:     modes,
+			Bans:      bans,
 		})
 	}
 
@@ -218,6 +228,7 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 				User: s.IrcPrefix.User,
 				Host: s.IrcPrefix.Host,
 			},
+			remoteAddr: s.GetRemoteAddr(),
 		}
 		if newSession.LastNonPing.IsZero() {
 			newSession.LastNonPing = newSession.LastActivity
@@ -241,6 +252,17 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 		for _, mode := range c.Modes {
 			modes[mode[0]] = true
 		}
+		bans := make([]banPattern, len(c.Bans))
+		for idx, ban := range c.Bans {
+			re, err := regexp.Compile(ban.Regexp)
+			if err != nil {
+				return 0, err
+			}
+			bans[idx] = banPattern{
+				pattern: ban.Pattern,
+				re:      re,
+			}
+		}
 		newChannel := channel{
 			name:      c.Name,
 			topicNick: c.TopicNick,
@@ -248,6 +270,7 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 			topic:     c.Topic,
 			nicks:     nicks,
 			modes:     modes,
+			bans:      bans,
 		}
 		i.channels[ChanToLower(newChannel.name)] = &newChannel
 	}

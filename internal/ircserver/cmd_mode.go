@@ -1,12 +1,73 @@
 package ircserver
 
-import "gopkg.in/sorcix/irc.v2"
+import (
+	"fmt"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/robustirc/robustirc/internal/robust"
+
+	"gopkg.in/sorcix/irc.v2"
+)
 
 func init() {
 	Commands["MODE"] = &ircCommand{
 		Func:      (*IRCServer).cmdMode,
 		MinParams: 1,
 	}
+}
+
+// resolveSessionToRemoteAddrLocked replaces session references such as
+// “@robust/0x1234” in patterns with the corresponding remote address,
+// e.g. “@127.0.0.1”.
+func (i *IRCServer) resolveSessionToRemoteAddrLocked(pattern string) string {
+	idx := strings.Index(pattern, "@robust/0x")
+	if idx == -1 {
+		return pattern
+	}
+	id, err := strconv.ParseInt(pattern[idx+len("@robust/"):], 0, 64)
+	if err != nil {
+		return pattern
+	}
+	s, ok := i.sessions[robust.Id{Id: uint64(id)}]
+	if !ok || s.remoteAddr == "" {
+		return pattern
+	}
+	return pattern[:idx] + "@" + s.remoteAddr
+}
+
+func ban(c *channel, add bool, banmask, pattern string) error {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return err
+	}
+
+	if add {
+		c.bans = append(c.bans, banPattern{re: re, pattern: banmask})
+		return nil
+	}
+	// remove ban
+	newBans := make([]banPattern, 0, len(c.bans))
+	for _, b := range c.bans {
+		if b.pattern == banmask {
+			continue
+		}
+		newBans = append(newBans, b)
+	}
+	c.bans = newBans
+	return nil
+}
+
+func banBoth(c *channel, add bool, banmask, pattern, patternAddr string) error {
+	if err := ban(c, add, banmask, pattern); err != nil {
+		return err
+	}
+	if patternAddr != pattern {
+		return ban(c, add, banmask, patternAddr)
+	}
+	return nil
 }
 
 func (i *IRCServer) cmdMode(s *Session, reply *Replyctx, msg *irc.Message) {
@@ -37,7 +98,7 @@ func (i *IRCServer) cmdMode(s *Session, reply *Replyctx, msg *irc.Message) {
 
 		for _, mode := range modes {
 			char := mode.Mode[1]
-			if mode.Mode != "+b" {
+			if mode.Mode != "+b" || mode.Param != "" {
 				// Non-query modes
 				queryOnly = false
 				if !isChanOp {
@@ -80,6 +141,24 @@ func (i *IRCServer) cmdMode(s *Session, reply *Replyctx, msg *irc.Message) {
 							c.nicks[NickToLower(nick)][chanop] = newvalue
 						}
 					}
+
+				case 'b':
+					// The only supported repetition operator is “*”, which will
+					// be turned into “.*”.
+					pattern := regexp.QuoteMeta(mode.Param)
+					pattern = strings.Replace(pattern, "\\*", ".*", -1)
+					patternAddr := i.resolveSessionToRemoteAddrLocked(pattern)
+
+					if err := banBoth(c, newvalue, mode.Param, pattern, patternAddr); err != nil {
+						i.sendUser(s, reply, &irc.Message{
+							Prefix:  i.ServerPrefix,
+							Command: irc.ERR_UNKNOWNMODE,
+							Params:  []string{s.Nick, "+b", fmt.Sprintf("%q is not a valid regexp: %v", mode.Param, err)},
+						})
+					} else {
+						queryOnly = false
+					}
+
 				default:
 					i.sendUser(s, reply, &irc.Message{
 						Prefix:  i.ServerPrefix,
@@ -91,6 +170,22 @@ func (i *IRCServer) cmdMode(s *Session, reply *Replyctx, msg *irc.Message) {
 				// Query modes
 				switch char {
 				case 'b':
+					seen := make(map[string]bool)
+					for _, b := range c.bans {
+						seen[b.pattern] = true
+					}
+					patterns := make([]string, 0, len(seen))
+					for pattern := range seen {
+						patterns = append(patterns, pattern)
+					}
+					sort.Strings(patterns)
+					for _, pattern := range patterns {
+						i.sendUser(s, reply, &irc.Message{
+							Prefix:  i.ServerPrefix,
+							Command: irc.RPL_BANLIST,
+							Params:  []string{s.Nick, channelname, pattern},
+						})
+					}
 					i.sendUser(s, reply, &irc.Message{
 						Prefix:  i.ServerPrefix,
 						Command: irc.RPL_ENDOFBANLIST,

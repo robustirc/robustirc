@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/raft"
@@ -55,11 +57,23 @@ func (api *HTTP) handlePostMessage(w http.ResponseWriter, r *http.Request, sessi
 		return
 	}
 
+	remoteAddr := r.RemoteAddr
+	if api.ircServer.TrustedBridge(r.Header.Get("X-Bridge-Auth")) != "" {
+		remoteAddr = r.Header.Get("X-Forwarded-For")
+		if idx := strings.Index(remoteAddr, ","); idx > -1 {
+			remoteAddr = remoteAddr[:idx]
+		}
+		if host, _, err := net.SplitHostPort(remoteAddr); err == nil {
+			remoteAddr = host
+		}
+	}
+
 	msg := &robust.Message{
 		Session:         session,
 		Type:            robust.IRCFromClient,
 		Data:            req.Data,
 		ClientMessageId: req.ClientMessageId,
+		RemoteAddr:      remoteAddr,
 	}
 	if err := api.applyMessageWait(msg, 10*time.Second); err != nil {
 		if err == raft.ErrNotLeader {

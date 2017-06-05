@@ -219,3 +219,107 @@ func TestChannelCaseInsensitive(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 366 mero #TEST :End of /NAMES list."),
 		})
 }
+
+func TestBanned(t *testing.T) {
+	i, ids := stdIRCServer()
+	sMero, _ := i.GetSession(ids["mero"])
+
+	i.ProcessMessage(&robust.Message{Session: ids["mero"], RemoteAddr: "127.0.0.1"}, irc.ParseMessage("PING"))
+	i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("JOIN #test"))
+
+	mustMatchMsg(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("MODE #test +b *@127.0.0.1")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE #test +b *@127.0.0.1")
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("JOIN #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 474 mero #test :Cannot join channel (+b)"),
+		})
+
+	// mero roams to a non-banned IP address.
+	i.ProcessMessage(&robust.Message{Session: ids["mero"], RemoteAddr: "127.0.0.2"}, irc.ParseMessage("PING"))
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("JOIN #TEST")),
+		[]*irc.Message{
+			{Prefix: &sMero.ircPrefix, Command: irc.JOIN, Params: []string{"#TEST"}},
+			irc.ParseMessage(":robustirc.net SJOIN 1 #TEST :mero"),
+			irc.ParseMessage(":robustirc.net 324 mero #TEST +nt"),
+			irc.ParseMessage(":robustirc.net 331 mero #TEST :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 mero = #TEST :@sECuRE mero"),
+			irc.ParseMessage(":robustirc.net 366 mero #TEST :End of /NAMES list."),
+		})
+
+	i.ProcessMessage(&robust.Message{Session: ids["mero"], RemoteAddr: "127.0.0.2"}, irc.ParseMessage("PART #test"))
+
+	mustMatchMsg(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("MODE #test +b *@127.*")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE #test +b *@127.*")
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("MODE #test +b")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 367 sECuRE #test *@127.*"),
+			irc.ParseMessage(":robustirc.net 367 sECuRE #test *@127.0.0.1"),
+			irc.ParseMessage(":robustirc.net 368 sECuRE #test :End of Channel Ban List"),
+		})
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("JOIN #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 474 mero #test :Cannot join channel (+b)"),
+		})
+
+	mustMatchMsg(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("MODE #test -b *@127.*")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE #test -b *@127.*")
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("MODE #test +b")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 367 sECuRE #test *@127.0.0.1"),
+			irc.ParseMessage(":robustirc.net 368 sECuRE #test :End of Channel Ban List"),
+		})
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("JOIN #TEST")),
+		[]*irc.Message{
+			{Prefix: &sMero.ircPrefix, Command: irc.JOIN, Params: []string{"#TEST"}},
+			irc.ParseMessage(":robustirc.net SJOIN 1 #TEST :mero"),
+			irc.ParseMessage(":robustirc.net 324 mero #TEST +nt"),
+			irc.ParseMessage(":robustirc.net 331 mero #TEST :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 mero = #TEST :@sECuRE mero"),
+			irc.ParseMessage(":robustirc.net 366 mero #TEST :End of /NAMES list."),
+		})
+
+	i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("PART #test"))
+
+	// ban a robustid
+	mustMatchMsg(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("MODE #test +b *!*foo@robust/0x13b5aa0a2bcfb8ae")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE #test +b *!*foo@robust/0x13b5aa0a2bcfb8ae")
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("MODE #test +b")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 367 sECuRE #test *!*foo@robust/0x13b5aa0a2bcfb8ae"),
+			irc.ParseMessage(":robustirc.net 367 sECuRE #test *@127.0.0.1"),
+			irc.ParseMessage(":robustirc.net 368 sECuRE #test :End of Channel Ban List"),
+		})
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("JOIN #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 474 mero #test :Cannot join channel (+b)"),
+		})
+
+	// mero roams to a non-banned IP address.
+	i.ProcessMessage(&robust.Message{Session: ids["mero"], RemoteAddr: "192.168.1.2"}, irc.ParseMessage("PING"))
+
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("JOIN #test")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 474 mero #test :Cannot join channel (+b)"),
+		})
+}

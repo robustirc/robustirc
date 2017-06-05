@@ -103,6 +103,9 @@ type Message struct {
 	// Revision is the config file revision. Only present when Type ==
 	// robust.Config
 	Revision uint64 `json:",omitempty"`
+
+	// RemoteAddr is the network address that sent the request.
+	RemoteAddr string `json:",omitempty"`
 }
 
 func (m *Message) Timestamp() time.Time {
