@@ -24,10 +24,10 @@ func TestPlumbing(t *testing.T) {
 	i.CreateSession(ids["secure"], "auth-secure", time.Unix(0, int64(ids["secure"].Id)))
 	i.CreateSession(ids["mero"], "auth-mero", time.Unix(0, int64(ids["mero"].Id)))
 
-	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("NICK sECuRE"))
-	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
-	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("NICK mero"))
-	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("USER foo 0 * :Axel Wagner"))
+	i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("NICK sECuRE"))
+	i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("USER blah 0 * :Michael Stapelberg"))
+	i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("NICK mero"))
+	i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("USER foo 0 * :Axel Wagner"))
 
 	o, err := outputstream.NewOutputStream("")
 	if err != nil {
@@ -36,7 +36,7 @@ func TestPlumbing(t *testing.T) {
 	defer o.Close()
 
 	msgid := robust.Id{Id: uint64(time.Now().UnixNano())}
-	replies := i.ProcessMessage(msgid, ids["secure"], irc.ParseMessage("JOIN #test"))
+	replies := i.ProcessMessage(&robust.Message{Id: msgid, Session: ids["secure"]}, irc.ParseMessage("JOIN #test"))
 	sendMessages(replies, ids["secure"], msgid.Id, o)
 	got, ok := o.Get(msgid)
 	if !ok {
@@ -50,7 +50,7 @@ func TestPlumbing(t *testing.T) {
 	}
 
 	nextid := robust.Id{Id: uint64(time.Now().UnixNano())}
-	replies = i.ProcessMessage(nextid, ids["secure"], irc.ParseMessage("JOIN #foobar"))
+	replies = i.ProcessMessage(&robust.Message{Id: nextid, Session: ids["secure"]}, irc.ParseMessage("JOIN #foobar"))
 	sendMessages(replies, ids["secure"], nextid.Id, o)
 	got = o.GetNext(context.TODO(), msgid)
 	if !ok {
@@ -67,10 +67,10 @@ func TestPlumbing(t *testing.T) {
 		t.Fatalf("sMero interestedIn JOIN to #foobar, expected false")
 	}
 
-	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #baz"))
+	i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("JOIN #baz"))
 
 	msgid = robust.Id{Id: uint64(time.Now().UnixNano())}
-	replies = i.ProcessMessage(msgid, ids["secure"], irc.ParseMessage("JOIN #baz"))
+	replies = i.ProcessMessage(&robust.Message{Id: msgid, Session: ids["secure"]}, irc.ParseMessage("JOIN #baz"))
 	sendMessages(replies, ids["secure"], msgid.Id, o)
 	got, _ = o.Get(msgid)
 	if !got[0].InterestingFor[ids["mero"].Id] {

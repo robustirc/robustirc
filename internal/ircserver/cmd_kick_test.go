@@ -11,32 +11,32 @@ import (
 func TestKick(t *testing.T) {
 	i, ids := stdIRCServer()
 
-	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test"))
-	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("JOIN #test"))
 	sXeen, _ := i.GetSession(ids["xeen"])
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("KICK #test secure :bye")),
+		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("KICK #test secure :bye")),
 		":robustirc.net 482 mero #test :You're not channel operator")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["xeen"], irc.ParseMessage("KICK #test secure :bye")),
+		i.ProcessMessage(&robust.Message{Session: ids["xeen"]}, irc.ParseMessage("KICK #test secure :bye")),
 		":robustirc.net 442 xeen #test :You're not on that channel")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["xeen"], irc.ParseMessage("KICK #toast secure :bye")),
+		i.ProcessMessage(&robust.Message{Session: ids["xeen"]}, irc.ParseMessage("KICK #toast secure :bye")),
 		":robustirc.net 403 xeen #toast :No such nick/channel")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("KICK #test moro :bye bye")),
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("KICK #test moro :bye bye")),
 		":robustirc.net 441 sECuRE moro #test :They aren't on that channel")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("KICK #test mero :bye bye")),
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("KICK #test mero :bye bye")),
 		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad KICK #test mero :bye bye")
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(robust.Id{}, ids["xeen"], irc.ParseMessage("JOIN #TEST")),
+		i.ProcessMessage(&robust.Message{Session: ids["xeen"]}, irc.ParseMessage("JOIN #TEST")),
 		[]*irc.Message{
 			{Prefix: &sXeen.ircPrefix, Command: irc.JOIN, Params: []string{"#TEST"}},
 			irc.ParseMessage(":robustirc.net SJOIN 1 #TEST :xeen"),

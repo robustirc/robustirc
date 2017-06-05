@@ -11,22 +11,22 @@ import (
 func TestServerSvsnick(t *testing.T) {
 	i, ids := stdIRCServerWithServices()
 
-	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("JOIN #test"))
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage("SVSNICK secure socoro :1")),
+		i.ProcessMessage(&robust.Message{Session: ids["services"]}, irc.ParseMessage("SVSNICK secure socoro :1")),
 		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad NICK :socoro")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage("SVSNICK secure socoro :1")),
+		i.ProcessMessage(&robust.Message{Session: ids["services"]}, irc.ParseMessage("SVSNICK secure socoro :1")),
 		":robustirc.net 401 * secure :No such nick/channel")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage("SVSNICK secure ! :1")),
+		i.ProcessMessage(&robust.Message{Session: ids["services"]}, irc.ParseMessage("SVSNICK secure ! :1")),
 		":robustirc.net 432 * ! :Erroneous nickname")
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(robust.Id{}, ids["xeen"], irc.ParseMessage("JOIN #TEST")),
+		i.ProcessMessage(&robust.Message{Session: ids["xeen"]}, irc.ParseMessage("JOIN #TEST")),
 		[]*irc.Message{
 			irc.ParseMessage(":xeen!baz@robust/0x13b5aa0a2bcfb8af JOIN :#TEST"),
 			irc.ParseMessage(":robustirc.net SJOIN 1 #TEST :xeen"),

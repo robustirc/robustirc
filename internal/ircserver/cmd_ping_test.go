@@ -12,10 +12,10 @@ func TestPing(t *testing.T) {
 	i, ids := stdIRCServer()
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("PING")),
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("PING")),
 		":robustirc.net 409 sECuRE :No origin specified")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("PING foobar")),
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("PING foobar")),
 		":robustirc.net PONG foobar")
 }

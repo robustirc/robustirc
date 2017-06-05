@@ -11,33 +11,33 @@ import (
 func TestServerPrivmsg(t *testing.T) {
 	i, ids := stdIRCServerWithServices()
 
-	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("JOIN #test"))
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage(":ChanServ PRIVMSG secure :ohai")),
+		i.ProcessMessage(&robust.Message{Session: ids["services"]}, irc.ParseMessage(":ChanServ PRIVMSG secure :ohai")),
 		":ChanServ!services@services PRIVMSG secure :ohai")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage(":ChanServ PRIVMSG socoro :ohai")),
+		i.ProcessMessage(&robust.Message{Session: ids["services"]}, irc.ParseMessage(":ChanServ PRIVMSG socoro :ohai")),
 		":robustirc.net 401 ChanServ socoro :No such nick/channel")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage(":ChanServ PRIVMSG #test :ohai")),
+		i.ProcessMessage(&robust.Message{Session: ids["services"]}, irc.ParseMessage(":ChanServ PRIVMSG #test :ohai")),
 		":ChanServ!services@services PRIVMSG #test :ohai")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage(":ChanServ PRIVMSG")),
+		i.ProcessMessage(&robust.Message{Session: ids["services"]}, irc.ParseMessage(":ChanServ PRIVMSG")),
 		":robustirc.net 411 ChanServ :No recipient given (PRIVMSG)")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage(":ChanServ PRIVMSG #test")),
+		i.ProcessMessage(&robust.Message{Session: ids["services"]}, irc.ParseMessage(":ChanServ PRIVMSG #test")),
 		":ChanServ!services@services PRIVMSG #test :#test")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage(":ChanServ PRIVMSG #toast :a")),
+		i.ProcessMessage(&robust.Message{Session: ids["services"]}, irc.ParseMessage(":ChanServ PRIVMSG #toast :a")),
 		":robustirc.net 403 ChanServ #toast :No such channel")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["services"], irc.ParseMessage(":ChanServ NOTICE")),
+		i.ProcessMessage(&robust.Message{Session: ids["services"]}, irc.ParseMessage(":ChanServ NOTICE")),
 		":robustirc.net 411 ChanServ :No recipient given (NOTICE)")
 }

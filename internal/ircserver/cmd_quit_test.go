@@ -11,12 +11,12 @@ import (
 func TestQuit(t *testing.T) {
 	i, ids := stdIRCServer()
 
-	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test"))
-	i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("JOIN #test"))
-	i.ProcessMessage(robust.Id{}, ids["xeen"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(&robust.Message{Session: ids["xeen"]}, irc.ParseMessage("JOIN #test"))
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("WHO #test")),
+		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("WHO #test")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 352 mero #test foo robust/0x13b5aa0a2bcfb8ae robustirc.net mero H :0 Axel Wagner"),
 			irc.ParseMessage(":robustirc.net 352 mero #test blah robust/0x13b5aa0a2bcfb8ad robustirc.net sECuRE H :0 Michael Stapelberg"),
@@ -25,33 +25,33 @@ func TestQuit(t *testing.T) {
 		})
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("quit :bye bye")),
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("quit :bye bye")),
 		[]*irc.Message{
 			irc.ParseMessage(":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad QUIT :bye bye"),
 			irc.ParseMessage("ERROR :Closing Link: sECuRE[robust/0x13b5aa0a2bcfb8ad] (bye bye)"),
 		})
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("WHO #test")),
+		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("WHO #test")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 352 mero #test foo robust/0x13b5aa0a2bcfb8ae robustirc.net mero H :0 Axel Wagner"),
 			irc.ParseMessage(":robustirc.net 352 mero #test baz robust/0x13b5aa0a2bcfb8af robustirc.net xeen H :0 Iks Enn"),
 			irc.ParseMessage(":robustirc.net 315 mero #test :End of /WHO list"),
 		})
 
-	i.ProcessMessage(robust.Id{}, ids["xeen"], irc.ParseMessage("part #test"))
+	i.ProcessMessage(&robust.Message{Session: ids["xeen"]}, irc.ParseMessage("part #test"))
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("WHO #test")),
+		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("WHO #test")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 352 mero #test foo robust/0x13b5aa0a2bcfb8ae robustirc.net mero H :0 Axel Wagner"),
 			irc.ParseMessage(":robustirc.net 315 mero #test :End of /WHO list"),
 		})
 
-	i.ProcessMessage(robust.Id{}, ids["xeen"], irc.ParseMessage("join #test"))
+	i.ProcessMessage(&robust.Message{Session: ids["xeen"]}, irc.ParseMessage("join #test"))
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("WHO #test")),
+		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("WHO #test")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 352 mero #test foo robust/0x13b5aa0a2bcfb8ae robustirc.net mero H :0 Axel Wagner"),
 			irc.ParseMessage(":robustirc.net 352 mero #test baz robust/0x13b5aa0a2bcfb8af robustirc.net xeen H :0 Iks Enn"),

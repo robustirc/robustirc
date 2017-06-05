@@ -406,15 +406,15 @@ func (i *IRCServer) maybeDeleteChannelLocked(c *channel) {
 // ProcessMessage modifies state in response to 'message' and returns zero or
 // more IRC messages in response to 'message'. These messages can then be
 // stored for eventual retrieval by the clients by calling SendMessages.
-func (i *IRCServer) ProcessMessage(id robust.Id, session robust.Id, message *irc.Message) *Replyctx {
+func (i *IRCServer) ProcessMessage(msg *robust.Message, ircmsg *irc.Message) *Replyctx {
 	i.sessionsMu.Lock()
 	defer i.sessionsMu.Unlock()
 
 	// alias for convenience
-	s := i.sessions[session]
-	reply := &Replyctx{msgid: id.Id, session: s}
+	s := i.sessions[msg.Session]
+	reply := &Replyctx{msgid: msg.Id.Id, session: s}
 
-	if message == nil {
+	if ircmsg == nil {
 		i.sendUser(s, reply, &irc.Message{
 			Prefix:  i.ServerPrefix,
 			Command: irc.ERR_UNKNOWNCOMMAND,
@@ -423,7 +423,7 @@ func (i *IRCServer) ProcessMessage(id robust.Id, session robust.Id, message *irc
 		return reply
 	}
 
-	command := strings.ToUpper(message.Command)
+	command := strings.ToUpper(ircmsg.Command)
 
 	messagesProcessed.WithLabelValues(command).Inc()
 
@@ -462,7 +462,7 @@ func (i *IRCServer) ProcessMessage(id robust.Id, session robust.Id, message *irc
 		return reply
 	}
 
-	if len(message.Params) < cmd.MinParams {
+	if len(ircmsg.Params) < cmd.MinParams {
 		i.sendUser(s, reply, &irc.Message{
 			Prefix:  i.ServerPrefix,
 			Command: irc.ERR_NEEDMOREPARAMS,
@@ -471,7 +471,7 @@ func (i *IRCServer) ProcessMessage(id robust.Id, session robust.Id, message *irc
 		return reply
 	}
 
-	cmd.Func(i, s, reply, message)
+	cmd.Func(i, s, reply, ircmsg)
 	return reply
 }
 

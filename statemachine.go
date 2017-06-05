@@ -69,7 +69,7 @@ func applyRobustMessage(msg *robust.Message, i *ircserver.IRCServer, o *outputst
 	case robust.DeleteSession:
 		if _, err := i.GetSession(msg.Session); err == nil {
 			// TODO(secure): overwrite QUIT messages for services with an faq entry explaining that they are not robust yet.
-			reply := i.ProcessMessage(msg.Id, msg.Session, irc.ParseMessage("QUIT :"+string(msg.Data)))
+			reply := i.ProcessMessage(msg, irc.ParseMessage("QUIT :"+string(msg.Data)))
 			i.SetLastProcessed(robust.Id{Id: msg.Id.Id})
 			sendMessages(reply, msg.Session, msg.Id.Id, o)
 			i.MaybeDeleteSession(msg.Session)
@@ -82,7 +82,7 @@ func applyRobustMessage(msg *robust.Message, i *ircserver.IRCServer, o *outputst
 			log.Printf("Error updating the last message for session: %v\n", err)
 		} else {
 			ircmsg := irc.ParseMessage(msg.Data)
-			reply := i.ProcessMessage(msg.Id, msg.Session, ircmsg)
+			reply := i.ProcessMessage(msg, ircmsg)
 			i.SetLastProcessed(robust.Id{Id: msg.Session.Id})
 			sendMessages(reply, msg.Session, msg.Session.Id, o)
 			i.MaybeDeleteSession(msg.Session)

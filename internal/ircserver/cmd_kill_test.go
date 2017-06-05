@@ -11,18 +11,18 @@ import (
 func TestInterestedInKill(t *testing.T) {
 	i, ids := stdIRCServer()
 
-	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("JOIN #test"))
-	i.ProcessMessage(robust.Id{}, ids["xeen"], irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(&robust.Message{Session: ids["xeen"]}, irc.ParseMessage("JOIN #test"))
 
 	mustMatchIrcmsgs(t,
-		i.ProcessMessage(robust.Id{}, ids["mero"], irc.ParseMessage("OPER mero foo")),
+		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("OPER mero foo")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 381 mero :You are now an IRC operator"),
 			irc.ParseMessage(":robustirc.net MODE mero :+o"),
 		})
 
 	msg := irc.ParseMessage("KILL secure :bleh")
-	replies := i.ProcessMessage(robust.Id{}, ids["mero"], msg)
+	replies := i.ProcessMessage(&robust.Message{Session: ids["mero"]}, msg)
 	msgs := robustMessagesFromReply(replies)
 
 	mustMatchIrcmsgs(t,

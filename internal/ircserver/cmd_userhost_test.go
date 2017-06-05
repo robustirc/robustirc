@@ -11,15 +11,15 @@ import (
 func TestUserhost(t *testing.T) {
 	i, ids := stdIRCServer()
 
-	i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("OPER mero foo"))
+	i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("OPER mero foo"))
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("USERHOST n")),
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("USERHOST n")),
 		":robustirc.net 302 sECuRE :")
 
-	i.ProcessMessage(robust.Id{}, ids["xeen"], irc.ParseMessage("AWAY :gone"))
+	i.ProcessMessage(&robust.Message{Session: ids["xeen"]}, irc.ParseMessage("AWAY :gone"))
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, ids["secure"], irc.ParseMessage("USERHOST secure xeen mero")),
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("USERHOST secure xeen mero")),
 		":robustirc.net 302 sECuRE :sECuRE*=+sECuRE!blah@robust/0x13b5aa0a2bcfb8ad xeen=-xeen!baz@robust/0x13b5aa0a2bcfb8af mero=+mero!foo@robust/0x13b5aa0a2bcfb8ae")
 }

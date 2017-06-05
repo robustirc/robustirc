@@ -18,8 +18,8 @@ func TestMotd(t *testing.T) {
 
 	i.CreateSession(idSecure, "auth-secure", time.Unix(0, int64(idSecure.Id)))
 
-	i.ProcessMessage(robust.Id{}, idSecure, irc.ParseMessage("USER 1 2 3 :4"))
-	got = i.ProcessMessage(robust.Id{}, idSecure, irc.ParseMessage("NICK s[E]CuRE"))
+	i.ProcessMessage(&robust.Message{Session: idSecure}, irc.ParseMessage("USER 1 2 3 :4"))
+	got = i.ProcessMessage(&robust.Message{Session: idSecure}, irc.ParseMessage("NICK s[E]CuRE"))
 	motdFound := false
 	for i := 0; i < len(got.Messages)-2; i++ {
 		if irc.ParseMessage(got.Messages[i].Data).Command == irc.RPL_MOTDSTART &&

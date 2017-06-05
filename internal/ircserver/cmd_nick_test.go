@@ -20,7 +20,7 @@ func TestNickCollision(t *testing.T) {
 	i.CreateSession(idSecure, "auth-secure", time.Unix(0, int64(idSecure.Id)))
 	i.CreateSession(idMero, "auth-mero", time.Unix(0, int64(idMero.Id)))
 
-	got = i.ProcessMessage(robust.Id{}, idSecure, irc.ParseMessage("NICK s[E]CuRE"))
+	got = i.ProcessMessage(&robust.Message{Session: idSecure}, irc.ParseMessage("NICK s[E]CuRE"))
 	if len(got.Messages) > 0 {
 		for _, msg := range got.Messages {
 			if irc.ParseMessage(msg.Data).Command != irc.ERR_NICKNAMEINUSE {
@@ -31,15 +31,15 @@ func TestNickCollision(t *testing.T) {
 	}
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, idMero, irc.ParseMessage("NICK s[E]CuRE")),
+		i.ProcessMessage(&robust.Message{Session: idMero}, irc.ParseMessage("NICK s[E]CuRE")),
 		":robustirc.net 433 * s[E]CuRE :Nickname is already in use")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, idMero, irc.ParseMessage("NICK S[E]CURE")),
+		i.ProcessMessage(&robust.Message{Session: idMero}, irc.ParseMessage("NICK S[E]CURE")),
 		":robustirc.net 433 * S[E]CURE :Nickname is already in use")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, idMero, irc.ParseMessage("NICK S{E}CURE")),
+		i.ProcessMessage(&robust.Message{Session: idMero}, irc.ParseMessage("NICK S{E}CURE")),
 		":robustirc.net 433 * S{E}CURE :Nickname is already in use")
 }
 
@@ -93,7 +93,7 @@ func TestInvalidNickPlumbing(t *testing.T) {
 	}
 
 	mustMatchMsg(t,
-		i.ProcessMessage(robust.Id{}, id, irc.ParseMessage("NICK 0secure")),
+		i.ProcessMessage(&robust.Message{Session: id}, irc.ParseMessage("NICK 0secure")),
 		":robustirc.net 432 * 0secure :Erroneous nickname")
 
 	if s.Nick != "" {
