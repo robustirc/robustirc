@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -84,6 +85,10 @@ type HTTP struct {
 	// request to be exposed on the HTTP status handler.
 	getMessagesRequests   map[string]GetMessagesStats
 	getMessagesRequestsMu sync.RWMutex
+
+	throttleMu         sync.Mutex
+	lastWrongPassword  time.Time
+	throttlingExponent int
 }
 
 func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, peerStore *raft.JSONPeers, ircStore *raftstore.LevelDBStore, output *outputstream.OutputStream, transport *rafthttp.HTTPTransport, network string, networkPassword string, raftDir string, peerAddr string, mux *http.ServeMux) *HTTP {
@@ -174,6 +179,19 @@ func (api *HTTP) dispatchPrivate(w http.ResponseWriter, r *http.Request) {
 
 	username, password, ok := r.BasicAuth()
 	if !ok || username != "robustirc" || password != api.networkPassword {
+		const cooloff = 1 * time.Second
+		api.throttleMu.Lock()
+		defer api.throttleMu.Unlock()
+		if time.Since(api.lastWrongPassword) > cooloff {
+			api.throttlingExponent = 0
+		}
+		api.lastWrongPassword = time.Now()
+		delay := time.Duration(math.Pow(2, float64(api.throttlingExponent))) * time.Millisecond
+		if delay < cooloff {
+			api.throttlingExponent++
+		}
+		time.Sleep(delay)
+
 		w.Header().Set("WWW-Authenticate", `Basic realm="robustirc"`)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
