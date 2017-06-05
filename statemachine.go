@@ -93,6 +93,8 @@ func applyRobustMessage(msg *robust.Message, i *ircserver.IRCServer, o *outputst
 		if err != nil {
 			log.Printf("Skipping unexpectedly invalid configuration (%v)\n", err)
 		} else {
+			i.ConfigMu.Lock()
+			defer i.ConfigMu.Unlock()
 			i.Config = newCfg
 			i.Config.Revision = msg.Revision
 		}

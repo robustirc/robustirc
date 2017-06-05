@@ -13,6 +13,8 @@ func (i *IRCServer) cmdOper(s *Session, reply *Replyctx, msg *irc.Message) {
 	name := msg.Params[0]
 	password := msg.Params[1]
 	authenticated := false
+	i.ConfigMu.RLock()
+	defer i.ConfigMu.RUnlock()
 	for _, op := range i.Config.IRC.Operators {
 		if op.Name == name && op.Password == password {
 			authenticated = true

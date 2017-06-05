@@ -214,6 +214,8 @@ func (api *HTTP) handleStatus(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	api.ircServer.ConfigMu.RLock()
+	defer api.ircServer.ConfigMu.RUnlock()
 	args := struct {
 		Addr               string
 		State              raft.RaftState

@@ -306,6 +306,8 @@ func (i *IRCServer) DeleteSession(s *Session, msgid uint64) {
 func (i *IRCServer) ExpireSessions() []*robust.Message {
 	var deletes []*robust.Message
 
+	i.ConfigMu.RLock()
+	defer i.ConfigMu.RUnlock()
 	timeout := time.Duration(i.Config.SessionExpiration)
 
 	i.sessionsMu.RLock()
@@ -546,6 +548,8 @@ func (i *IRCServer) GetNick(sessionid robust.Id) string {
 
 // ThrottleUntil returns the last activity of |sessionid| or the zero time.
 func (i *IRCServer) ThrottleUntil(sessionid robust.Id) time.Time {
+	i.ConfigMu.RLock()
+	defer i.ConfigMu.RUnlock()
 	cooloff := time.Duration(i.Config.PostMessageCooloff)
 	if cooloff == 0 {
 		return time.Time{}

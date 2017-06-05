@@ -27,6 +27,8 @@ func servicesPrefix(prefix *irc.Prefix) *irc.Prefix {
 
 func (i *IRCServer) cmdServer(s *Session, reply *Replyctx, msg *irc.Message) {
 	authenticated := false
+	i.ConfigMu.RLock()
+	defer i.ConfigMu.RUnlock()
 	for _, service := range i.Config.IRC.Services {
 		if s.Pass == "services="+service.Password {
 			authenticated = true
