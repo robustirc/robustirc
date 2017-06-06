@@ -88,7 +88,7 @@ func (i *IRCServer) cmdJoin(s *Session, reply *Replyctx, msg *irc.Message) {
 				captchaChallengesSent.Inc()
 				continue
 			}
-		} else if banned(c.bans, s.ircPrefix.String(), s.Nick+"!"+s.Username+"@"+s.remoteAddr) {
+		} else if banned(c.bans, s.ircPrefix.String(), s.Nick+"!"+s.Username+"@"+s.RemoteAddr) {
 			i.sendUser(s, reply, &irc.Message{
 				Prefix:  i.ServerPrefix,
 				Command: irc.ERR_BANNEDFROMCHAN,

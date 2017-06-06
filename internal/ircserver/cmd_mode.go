@@ -32,10 +32,10 @@ func (i *IRCServer) resolveSessionToRemoteAddrLocked(pattern string) string {
 		return pattern
 	}
 	s, ok := i.sessions[robust.Id{Id: uint64(id)}]
-	if !ok || s.remoteAddr == "" {
+	if !ok || s.RemoteAddr == "" {
 		return pattern
 	}
-	return pattern[:idx] + "@" + s.remoteAddr
+	return pattern[:idx] + "@" + s.RemoteAddr
 }
 
 func ban(c *channel, add bool, banmask, pattern string) error {

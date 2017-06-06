@@ -35,7 +35,7 @@ func (i *IRCServer) cmdGline(s *Session, reply *Replyctx, msg *irc.Message) {
 		return
 	}
 
-	if session.remoteAddr == "" {
+	if session.RemoteAddr == "" {
 		i.sendUser(s, reply, &irc.Message{
 			Prefix:  i.ServerPrefix,
 			Command: irc.NOTICE,
@@ -46,7 +46,7 @@ func (i *IRCServer) cmdGline(s *Session, reply *Replyctx, msg *irc.Message) {
 
 	i.ConfigMu.Lock()
 	defer i.ConfigMu.Unlock()
-	i.Config.Banned[session.remoteAddr] = msg.Trailing()
+	i.Config.Banned[session.RemoteAddr] = msg.Trailing()
 
 	i.cmdKill(s, reply, msg)
 }
