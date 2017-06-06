@@ -9,20 +9,11 @@ import (
 func init() {
 	Commands["KILL"] = &ircCommand{
 		Func:      (*IRCServer).cmdKill,
-		MinParams: 1,
+		MinParams: 2,
 	}
 }
 
 func (i *IRCServer) cmdKill(s *Session, reply *Replyctx, msg *irc.Message) {
-	if len(msg.Params) < 2 {
-		i.sendUser(s, reply, &irc.Message{
-			Prefix:  i.ServerPrefix,
-			Command: irc.ERR_NEEDMOREPARAMS,
-			Params:  []string{s.Nick, msg.Command, "Not enough parameters"},
-		})
-		return
-	}
-
 	if !s.Operator {
 		i.sendUser(s, reply, &irc.Message{
 			Prefix:  i.ServerPrefix,

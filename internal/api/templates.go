@@ -153,6 +153,13 @@ $(document).ready(function() {
 							<td>{{ $name }}</td>
 						</tr>
 						{{ end }}
+						{{ range $addr, $reason := .NetConfig.Banned }}
+						<tr>
+							<th>Banned (GLINE)</th>
+							<td><span title="Reason: {{ $reason }}">{{ $addr }}</span></td>
+						</tr>
+						{{ end }}
+
 					</table>
 				</div>
 

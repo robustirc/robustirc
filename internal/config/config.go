@@ -93,16 +93,24 @@ type Network struct {
 
 	MaxSessions uint64
 	MaxChannels uint64
+
+	// Banned is a map from remote address to ban reason, managed via the GLINE
+	// IRC command.
+	Banned map[string]string
 }
 
 var DefaultConfig = Network{
 	SessionExpiration:  Duration(30 * time.Minute),
 	PostMessageCooloff: Duration(500 * time.Millisecond),
+	Banned:             make(map[string]string),
 }
 
 func FromString(input string) (Network, error) {
 	var cfg Network
 	_, err := toml.Decode(input, &cfg)
+	if cfg.Banned == nil {
+		cfg.Banned = make(map[string]string)
+	}
 	// TODO(secure): Use scrypt to hash the ircop passwords to make brute-forcing harder.
 	return cfg, err
 }

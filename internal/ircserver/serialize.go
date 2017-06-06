@@ -154,6 +154,7 @@ func (i *IRCServer) Marshal(lastIncludedIndex uint64) ([]byte, error) {
 		CaptchaRequiredForLogin: i.Config.CaptchaRequiredForLogin,
 		MaxSessions:             i.Config.MaxSessions,
 		MaxChannels:             i.Config.MaxChannels,
+		Banned:                  i.Config.Banned,
 	}
 	snapshot := pb.Snapshot{
 		Sessions:          sessions,
@@ -328,7 +329,10 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 		CaptchaRequiredForLogin: snapshot.Config.CaptchaRequiredForLogin,
 		MaxSessions:             snapshot.Config.MaxSessions,
 		MaxChannels:             snapshot.Config.MaxChannels,
+		Banned:                  snapshot.Config.Banned,
 	}
-
+	if i.Config.Banned == nil {
+		i.Config.Banned = make(map[string]string)
+	}
 	return snapshot.LastIncludedIndex, nil
 }

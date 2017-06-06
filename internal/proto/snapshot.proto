@@ -110,6 +110,7 @@ message Snapshot {
     bool captcha_required_for_login = 8;
     uint64 max_sessions = 9;
     uint64 max_channels = 10;
+    map<string, string> banned = 11;
   }
   Config config = 5;
 

@@ -412,6 +412,12 @@ func (i *IRCServer) maybeDeleteChannelLocked(c *channel) {
 	}
 }
 
+func (i *IRCServer) Banned(remoteAddr string) string {
+	i.ConfigMu.RLock()
+	defer i.ConfigMu.RUnlock()
+	return i.Config.Banned[remoteAddr]
+}
+
 // ProcessMessage modifies state in response to 'message' and returns zero or
 // more IRC messages in response to 'message'. These messages can then be
 // stored for eventual retrieval by the clients by calling SendMessages.
@@ -436,7 +442,14 @@ func (i *IRCServer) ProcessMessage(msg *robust.Message, ircmsg *irc.Message) *Re
 	if msg.RemoteAddr != "" && msg.RemoteAddr != s.remoteAddr {
 		s.remoteAddr = msg.RemoteAddr
 		log.Printf("addr changed to %q", s.remoteAddr)
-		// TODO(secure): check if the IP is glined, add gline command first (should modify the network config)
+		if reason := i.Banned(s.remoteAddr); reason != "" {
+			i.sendUser(s, reply, &irc.Message{
+				Command: irc.ERROR,
+				Params:  []string{"Closing Link: You are banned (" + reason + ")"},
+			})
+			i.deleteSessionLocked(s, reply.msgid)
+			return reply
+		}
 	}
 
 	messagesProcessed.WithLabelValues(command).Inc()

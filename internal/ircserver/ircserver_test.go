@@ -22,6 +22,7 @@ func stdIRCServer() (*IRCServer, map[string]robust.Id) {
 				{Name: "xeen", Password: "foo"},
 			},
 		},
+		Banned: make(map[string]string),
 	}
 
 	ids := make(map[string]robust.Id)
