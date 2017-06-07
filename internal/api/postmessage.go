@@ -63,9 +63,9 @@ func (api *HTTP) handlePostMessage(w http.ResponseWriter, r *http.Request, sessi
 		if idx := strings.Index(remoteAddr, ","); idx > -1 {
 			remoteAddr = remoteAddr[:idx]
 		}
-		if host, _, err := net.SplitHostPort(remoteAddr); err == nil {
-			remoteAddr = host
-		}
+	}
+	if host, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		remoteAddr = host
 	}
 
 	msg := &robust.Message{
