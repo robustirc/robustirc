@@ -13,7 +13,6 @@ func init() {
 }
 
 func (i *IRCServer) cmdPass(s *Session, reply *Replyctx, msg *irc.Message) {
-	// TODO(secure): document this in the admin/user manual
 	// You can specify multiple passwords in a single PASS command, separated
 	// by colons and prefixed with <key>=, e.g. “nickserv=secret” or
 	// “nickserv=secret:network=letmein” in case the network requires a
