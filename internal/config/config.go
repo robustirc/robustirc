@@ -97,6 +97,11 @@ type Network struct {
 	// Banned is a map from remote address to ban reason, managed via the GLINE
 	// IRC command.
 	Banned map[string]string
+
+	// WhitelistedOrigins contains HTTP origins
+	// (e.g. https://webchat.example.com) which are whitelisted for cross-origin
+	// HTTP requests.
+	WhitelistedOrigins map[string]bool
 }
 
 var DefaultConfig = Network{

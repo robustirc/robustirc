@@ -865,3 +865,9 @@ func (i *IRCServer) ChannelLimit() uint64 {
 	defer i.ConfigMu.RUnlock()
 	return i.Config.MaxChannels
 }
+
+func (i *IRCServer) OriginWhitelisted(origin string) bool {
+	i.ConfigMu.RLock()
+	defer i.ConfigMu.RUnlock()
+	return i.Config.WhitelistedOrigins[origin]
+}

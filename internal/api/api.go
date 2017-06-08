@@ -278,6 +278,13 @@ func (api *HTTP) dispatchPrivate(w http.ResponseWriter, r *http.Request) {
 func (api *HTTP) dispatchPublic(w http.ResponseWriter, r *http.Request) {
 	defer exitOnRecover()
 
+	if origin := r.Header.Get("Origin"); origin != "" && api.ircServer.OriginWhitelisted(origin) {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Headers", "X-Session-Auth, Accept, Content-Type")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+		w.Header().Set("Vary", "Accept-Encoding, Origin")
+	}
+
 	rest := r.URL.Path[len("/robustirc/v1/"):]
 	switch r.Method {
 	case http.MethodPost:
