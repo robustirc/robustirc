@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	metrics "github.com/armon/go-metrics"
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/internal/config"
 	"github.com/robustirc/robustirc/internal/ircserver"
@@ -155,6 +156,9 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 // server state (current sessions, channels, modes, …) should be
 // identical to the state before taking the snapshot.
 func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
+	start := time.Now()
+	defer metrics.MeasureSince([]string{"robustirc", "fsm", "snapshot"}, start)
+
 	first, err := fsm.ircstore.FirstIndex()
 	if err != nil {
 		return nil, err
@@ -262,6 +266,9 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 }
 
 func (fsm *FSM) Restore(snap io.ReadCloser) error {
+	start := time.Now()
+	defer metrics.MeasureSince([]string{"robustirc", "fsm", "restore"}, start)
+
 	log.Printf("Restoring snapshot\n")
 	defer snap.Close()
 
