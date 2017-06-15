@@ -13,6 +13,7 @@ import (
 	"github.com/robustirc/robustirc/internal/config"
 	"github.com/robustirc/robustirc/internal/ircserver"
 	"github.com/robustirc/robustirc/internal/privacy"
+	"github.com/robustirc/robustirc/internal/raftlog"
 	"github.com/robustirc/robustirc/internal/robust"
 
 	pb "github.com/robustirc/robustirc/internal/proto"
@@ -261,8 +262,8 @@ func (api *HTTP) handleIrclog(w http.ResponseWriter, r *http.Request) {
 	iterator := api.ircStore.GetBulkIterator(first, last+1)
 	defer iterator.Release()
 	for iterator.Next() {
-		var elog raft.Log
-		if err := json.Unmarshal(iterator.Value(), &elog); err != nil {
+		elog, err := raftlog.FromBytes(iterator.Value())
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

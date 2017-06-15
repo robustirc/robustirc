@@ -91,6 +91,11 @@ var (
 		4648398125000000000, // 2117-04-20 23:42:05
 		"will be added to all robust.Message ids. We need an offset because message ids must be monotonically increasing, and RobustIRC used to use UNIX nano timestamps. For new networks, the offset doesn’t hurt, and it’s configurable in case networks need to transition back and forth between the old and the new mechanism. See also issue #150.")
 
+	// XXX(1.0): delete this flag
+	useProtobuf = flag.Bool("pre1.0_protobuf",
+		false,
+		"Encode raft messages, store values and snapshots using protobuf (true) instead of JSON (false). Defaults to JSON, but protobuf will become the default in version 1.0")
+
 	node      *raft.Raft
 	peerStore *raft.JSONPeers
 	ircStore  *raftstore.LevelDBStore
@@ -306,7 +311,8 @@ func main() {
 		printDefault(flag.Lookup("listen"))
 		printDefault(flag.Lookup("raftdir"))
 		printDefault(flag.Lookup("tls_ca_file"))
-		printDefault(flag.Lookup("message_offset"))
+		printDefault(flag.Lookup("robustirc_message_offset"))
+		printDefault(flag.Lookup("pre1.0_protobuf"))
 		printDefault(flag.Lookup("version"))
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "The following flags are optional and provided by glog:\n")
@@ -454,11 +460,11 @@ func main() {
 	metrics.NewGlobal(metrics.DefaultConfig("raftmetrics"), sink)
 
 	bootstrapping := *singleNode || *join != ""
-	logStore, err := raftstore.NewLevelDBStore(filepath.Join(*raftDir, "raftlog"), bootstrapping)
+	logStore, err := raftstore.NewLevelDBStore(filepath.Join(*raftDir, "raftlog"), bootstrapping, *useProtobuf)
 	if err != nil {
 		log.Fatal(err)
 	}
-	ircStore, err = raftstore.NewLevelDBStore(filepath.Join(*raftDir, "irclog"), bootstrapping)
+	ircStore, err = raftstore.NewLevelDBStore(filepath.Join(*raftDir, "irclog"), bootstrapping, *useProtobuf)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -509,7 +515,8 @@ func main() {
 		*networkPassword,
 		*raftDir,
 		*peerAddr,
-		http.DefaultServeMux)
+		http.DefaultServeMux,
+		*useProtobuf)
 
 	srv := http.Server{Addr: *listen}
 	if err := http2.ConfigureServer(&srv, nil); err != nil {

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
@@ -20,6 +21,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/internal/privacy"
+	"github.com/robustirc/robustirc/internal/raftlog"
 	"github.com/robustirc/robustirc/internal/robust"
 	"github.com/syndtr/goleveldb/leveldb"
 	leveldb_errors "github.com/syndtr/goleveldb/leveldb/errors"
@@ -104,15 +106,14 @@ func dumpLeveldb(path string) error {
 	i := db.NewIterator(nil, nil)
 	defer i.Release()
 
-	var rlog raft.Log
-
 	if i.Last() {
 		for bytes.HasPrefix(i.Key(), []byte("stablestore-")) {
 			i.Prev()
 		}
 		for {
-			if err := json.Unmarshal(i.Value(), &rlog); err != nil {
-				log.Fatalf("Corrupted database: %v\n", err)
+			rlog, err := raftlog.FromBytes(i.Value())
+			if err != nil {
+				log.Fatalf("Corrupted database: %v", err)
 			}
 			if rlog.Type == raft.LogCommand {
 				rmsg := robust.NewMessageFromBytes(rlog.Data, robust.IdFromRaftIndex(rlog.Index))
@@ -130,14 +131,57 @@ func dumpLeveldb(path string) error {
 		if bytes.HasPrefix(i.Key(), []byte("stablestore-")) {
 			// TODO: also dump the stablestore values
 		} else {
-			if err := json.Unmarshal(i.Value(), &rlog); err != nil {
-				log.Fatalf("Corrupted database: %v\n", err)
+			rlog, err := raftlog.FromBytes(i.Value())
+			if err != nil {
+				log.Fatalf("Corrupted database: %v", err)
 			}
-			dumpLog(binary.BigEndian.Uint64(i.Key()), &rlog)
+			dumpLog(binary.BigEndian.Uint64(i.Key()), rlog)
 		}
 	}
 
 	return nil
+}
+
+func dumpSnapshotProto(b *bufio.Reader) error {
+	log.Printf("decoding protobuf snapshot")
+	// discard leading 'p'
+	if _, err := b.ReadByte(); err != nil {
+		return err
+	}
+	var lenbuf [8]byte // binary.Size(uint64(0))
+	for {
+		if _, err := io.ReadFull(b, lenbuf[:]); err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+		buf := make([]byte, binary.BigEndian.Uint64(lenbuf[:]))
+		if _, err := io.ReadFull(b, buf); err != nil {
+			return err
+		}
+		rlog, err := raftlog.FromBytes(buf)
+		if err != nil {
+			return err
+		}
+		dumpLog(0, rlog)
+	}
+	return nil
+}
+
+func dumpSnapshotJSON(b *bufio.Reader) error {
+	decoder := json.NewDecoder(b)
+	var rlog raft.Log
+	for {
+		if err := decoder.Decode(&rlog); err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+
+		dumpLog(0, &rlog)
+	}
 }
 
 func dumpSnapshot(path string) error {
@@ -153,18 +197,18 @@ func dumpSnapshot(path string) error {
 		return err
 	}
 	defer f.Close()
-	decoder := json.NewDecoder(f)
-	var rlog raft.Log
-	for {
-		if err := decoder.Decode(&rlog); err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			return err
-		}
 
-		dumpLog(0, &rlog)
+	// XXX(1.0): remove this conditional, all snapshots are protobuf-encoded now
+	b := bufio.NewReader(f)
+	first, err := b.Peek(1)
+	if err != nil {
+		return err
 	}
+	if first[0] == 'p' {
+		// protobuf snapshot prefix (invalid JSON)
+		return dumpSnapshotProto(b)
+	}
+	return dumpSnapshotJSON(b)
 }
 
 func main() {

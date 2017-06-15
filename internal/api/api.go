@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/hashicorp/raft"
 	"github.com/kardianos/osext"
 	"github.com/prometheus/client_golang/prometheus"
@@ -89,9 +90,12 @@ type HTTP struct {
 	throttleMu         sync.Mutex
 	lastWrongPassword  time.Time
 	throttlingExponent int
+
+	// XXX(1.0): delete this field
+	useProtobuf bool
 }
 
-func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, peerStore *raft.JSONPeers, ircStore *raftstore.LevelDBStore, output *outputstream.OutputStream, transport *rafthttp.HTTPTransport, network string, networkPassword string, raftDir string, peerAddr string, mux *http.ServeMux) *HTTP {
+func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, peerStore *raft.JSONPeers, ircStore *raftstore.LevelDBStore, output *outputstream.OutputStream, transport *rafthttp.HTTPTransport, network string, networkPassword string, raftDir string, peerAddr string, mux *http.ServeMux, useProtobuf bool) *HTTP {
 	api := &HTTP{
 		ircServer:           ircServer,
 		raftNode:            raftNode,
@@ -104,6 +108,7 @@ func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, peerStore *raf
 		raftDir:             raftDir,
 		peerAddr:            peerAddr,
 		getMessagesRequests: make(map[string]GetMessagesStats),
+		useProtobuf:         useProtobuf,
 	}
 
 	mux.HandleFunc("/robustirc/v1/", api.dispatchPublic)
@@ -327,9 +332,22 @@ func (api *HTTP) dispatchPublic(w http.ResponseWriter, r *http.Request) {
 // Raft index.
 func (api *HTTP) applyMessageWait(msg *robust.Message, timeout time.Duration) error {
 	msg.UnixNano = time.Now().UnixNano()
-	msgbytes, err := json.Marshal(msg)
-	if err != nil {
-		return err
+
+	var (
+		msgbytes []byte
+		err      error
+	)
+	if api.useProtobuf {
+		msgbytes, err = proto.Marshal(msg.ProtoMessage())
+		if err != nil {
+			return err
+		}
+		msgbytes = append([]byte{'p'}, msgbytes...)
+	} else {
+		msgbytes, err = json.Marshal(msg)
+		if err != nil {
+			return err
+		}
 	}
 
 	f := api.raftNode.Apply(msgbytes, timeout)

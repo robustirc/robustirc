@@ -25,11 +25,11 @@ func createIrcServer(tempdir string) (*raftstore.LevelDBStore, *raftstore.LevelD
 	}
 	flag.Set("raftdir", tempdir)
 
-	logstore, err := raftstore.NewLevelDBStore(filepath.Join(tempdir, "raftlog"), false)
+	logstore, err := raftstore.NewLevelDBStore(filepath.Join(tempdir, "raftlog"), false, false)
 	if err != nil {
 		return nil, nil, FSM{}, err
 	}
-	ircstore, err := raftstore.NewLevelDBStore(filepath.Join(tempdir, "irclog"), false)
+	ircstore, err := raftstore.NewLevelDBStore(filepath.Join(tempdir, "irclog"), false, false)
 	if err != nil {
 		return nil, nil, FSM{}, err
 	}

@@ -119,11 +119,11 @@ func TestCompaction(t *testing.T) {
 
 	flag.Set("raftdir", tempdir)
 
-	logstore, err := raftstore.NewLevelDBStore(filepath.Join(tempdir, "raftlog"), false)
+	logstore, err := raftstore.NewLevelDBStore(filepath.Join(tempdir, "raftlog"), false, false)
 	if err != nil {
 		t.Fatalf("Unexpected error in NewLevelDBStore: %v", err)
 	}
-	ircstore, err := raftstore.NewLevelDBStore(filepath.Join(tempdir, "irclog"), false)
+	ircstore, err := raftstore.NewLevelDBStore(filepath.Join(tempdir, "irclog"), false, false)
 	if err != nil {
 		t.Fatalf("Unexpected error in NewLevelDBStore: %v", err)
 	}
@@ -169,6 +169,9 @@ func TestCompaction(t *testing.T) {
 	if err := snapshot(&fsm, fss, uint64(len(logs))); err != nil {
 		t.Fatal(err)
 	}
+	// raft uses time.Now() in the snapshot name, so advance time by 1ms to
+	// guarantee we get a different filename.
+	time.Sleep(1 * time.Millisecond)
 	if err := snapshot(&fsm, fss, uint64(len(logs))); err != nil {
 		t.Fatal(err)
 	}

@@ -10,15 +10,22 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"sync"
+	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/hashicorp/raft"
+	"github.com/robustirc/robustirc/internal/raftlog"
+	"github.com/robustirc/robustirc/internal/robust"
 	"github.com/syndtr/goleveldb/leveldb"
 	leveldb_errors "github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb/util"
+
+	pb "github.com/robustirc/robustirc/internal/proto"
 )
 
 // LevelDBStore implements the raft.LogStore and raft.StableStore interfaces on
@@ -26,11 +33,15 @@ import (
 type LevelDBStore struct {
 	mu sync.RWMutex
 	db *leveldb.DB
+
+	// XXX(1.0): delete these fields
+	useProtobuf bool
+	dir         string
 }
 
 // NewLevelDBStore opens a leveldb at the given directory to be used as a log-
 // and stable storage for raft.
-func NewLevelDBStore(dir string, errorIfExist bool) (*LevelDBStore, error) {
+func NewLevelDBStore(dir string, errorIfExist bool, useProtobuf bool) (*LevelDBStore, error) {
 	db, err := leveldb.OpenFile(dir, &opt.Options{ErrorIfExist: errorIfExist})
 	if err != nil {
 		if errorIfExist && err == os.ErrExist {
@@ -45,7 +56,98 @@ func NewLevelDBStore(dir string, errorIfExist bool) (*LevelDBStore, error) {
 		}
 	}
 
-	return &LevelDBStore{db: db}, nil
+	s := &LevelDBStore{db: db, useProtobuf: useProtobuf, dir: dir}
+	if useProtobuf {
+		return s, s.ConvertToProto()
+	}
+	return s, nil
+}
+
+// convertToProto converts the database to use protobuf-encoded values instead
+// of json-encoded values. This is a no-op once the database has been converted.
+func (s *LevelDBStore) ConvertToProto() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	log.Printf("converting database %q to proto if necessary", s.dir)
+	start := time.Now()
+	defer func() { log.Printf("database conversion done in %v", time.Since(start)) }()
+	i := s.db.NewIterator(nil, nil)
+	defer i.Release()
+	if !i.First() {
+		return nil
+	}
+	for bytes.HasPrefix(i.Key(), []byte("stablestore-")) {
+		if !i.Next() {
+			return nil
+		}
+	}
+
+	var (
+		batch leveldb.Batch
+		rlog  pb.RaftLog
+	)
+	msg := &pb.RobustMessage{
+		Id:      &pb.RobustId{},
+		Session: &pb.RobustId{},
+	}
+	for !bytes.HasPrefix(i.Key(), []byte("stablestore-")) {
+		val := i.Value()
+		l, err := raftlog.FromBytes(val)
+		if err != nil {
+			return err
+		}
+		if l.Type != raft.LogCommand {
+			if len(val) > 0 && val[0] != 'p' {
+				rlog.Data = l.Data
+				rlog.Index = l.Index
+				rlog.Term = l.Term
+				rlog.Type = pb.RaftLog_LogType(l.Type)
+				v, err := proto.Marshal(&rlog)
+				if err != nil {
+					return err
+				}
+				batch.Put(i.Key(), append([]byte{'p'}, v...))
+			}
+
+			if !i.Next() {
+				break
+			}
+			continue
+		}
+		if (len(val) > 0 && val[0] != 'p') ||
+			(len(l.Data) > 0 && l.Data[0] != 'p') {
+			m := robust.NewMessageFromBytes(l.Data, robust.IdFromRaftIndex(l.Index))
+			m.CopyToProtoMessage(msg)
+			v, err := proto.Marshal(msg)
+			if err != nil {
+				return err
+			}
+			rlog.Data = append([]byte{'p'}, v...)
+			rlog.Index = l.Index
+			rlog.Term = l.Term
+			rlog.Type = pb.RaftLog_LogType(l.Type)
+			v, err = proto.Marshal(&rlog)
+			if err != nil {
+				return err
+			}
+			batch.Put(i.Key(), append([]byte{'p'}, v...))
+		} else {
+			// database already converted
+			log.Printf("database already converted")
+			return nil
+		}
+		if batch.Len() > 100 {
+			if err := s.db.Write(&batch, nil); err != nil {
+				return err
+			}
+			batch.Reset()
+		}
+
+		if !i.Next() {
+			break
+		}
+	}
+	return s.db.Write(&batch, nil)
 }
 
 // Close closes the LevelDBStore. No other methods may be called after this.
@@ -127,12 +229,31 @@ func (s *LevelDBStore) GetLog(index uint64, rlog *raft.Log) error {
 		}
 		return err
 	}
-	return json.Unmarshal(value, rlog)
+	if len(value) > 0 && value[0] == 'p' {
+		var msg pb.RaftLog
+		if err := proto.Unmarshal(value[1:], &msg); err != nil {
+			return err
+		}
+		rlog.Index = msg.Index
+		rlog.Term = msg.Term
+		rlog.Type = raft.LogType(msg.Type)
+		rlog.Data = msg.Data
+		return nil
+	} else {
+		// XXX(1.0): delete this branch, all stores use proto
+		return json.Unmarshal(value, rlog)
+	}
 }
 
 // StoreLog implements raft.LogStore.
 func (s *LevelDBStore) StoreLog(entry *raft.Log) error {
 	return s.StoreLogs([]*raft.Log{entry})
+}
+
+func (s *LevelDBStore) WriteBatch(batch *leveldb.Batch) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.db.Write(batch, nil)
 }
 
 // StoreLogs implements raft.LogStore.
@@ -143,19 +264,48 @@ func (s *LevelDBStore) StoreLogs(logs []*raft.Log) error {
 	var batch leveldb.Batch
 	key := make([]byte, binary.Size(uint64(0)))
 
-	for _, entry := range logs {
-		binary.BigEndian.PutUint64(key, entry.Index)
-		v, err := json.Marshal(entry)
-		if err != nil {
-			return err
+	if s.useProtobuf {
+		var msg pb.RaftLog
+		for _, entry := range logs {
+			binary.BigEndian.PutUint64(key, entry.Index)
+			msg.Index = entry.Index
+			msg.Term = entry.Term
+			msg.Type = pb.RaftLog_LogType(entry.Type)
+			msg.Data = entry.Data
+			v, err := proto.Marshal(&msg)
+			if err != nil {
+				return err
+			}
+			batch.Put(key, append([]byte{'p'}, v...))
 		}
-		batch.Put(key, v)
+	} else {
+		for _, entry := range logs {
+			binary.BigEndian.PutUint64(key, entry.Index)
+			v, err := json.Marshal(entry)
+			if err != nil {
+				return err
+			}
+			batch.Put(key, v)
+		}
 	}
 
-	if err := s.db.Write(&batch, nil); err != nil {
+	return s.db.Write(&batch, nil)
+}
+
+func (s *LevelDBStore) StoreLogProto(msg *pb.RaftLog) error {
+	v, err := proto.Marshal(msg)
+	if err != nil {
 		return err
 	}
-	return nil
+
+	var batch leveldb.Batch
+	key := make([]byte, binary.Size(uint64(0)))
+	binary.BigEndian.PutUint64(key, msg.Index)
+	batch.Put(key, append([]byte{'p'}, v...))
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.db.Write(&batch, nil)
 }
 
 // DeleteRange implements raft.LogStore.
@@ -175,10 +325,7 @@ func (s *LevelDBStore) DeleteRange(min, max uint64) error {
 		batch.Delete(iterator.Key())
 		available = iterator.Next()
 	}
-	if err := s.db.Write(&batch, nil); err != nil {
-		return err
-	}
-	return nil
+	return s.db.Write(&batch, nil)
 }
 
 // Set implements raft.StableStore.

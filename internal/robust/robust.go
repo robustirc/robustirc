@@ -7,7 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"gopkg.in/sorcix/irc.v2"
+
+	pb "github.com/robustirc/robustirc/internal/proto"
 )
 
 // XXX(1.0): replace MessageOffset with 7804071725000000000 (2217-04-20 23:42:05)
@@ -139,10 +142,67 @@ func (m *Message) PrivacyFilter() string {
 	return m.Data
 }
 
+func (m *Message) ProtoMessage() *pb.RobustMessage {
+	return &pb.RobustMessage{
+		Id: &pb.RobustId{
+			Id:    m.Id.Id,
+			Reply: m.Id.Reply,
+		},
+		Session: &pb.RobustId{
+			Id:    m.Session.Id,
+			Reply: m.Session.Reply,
+		},
+		Type:            pb.RobustMessage_RobustType(m.Type),
+		Data:            m.Data,
+		UnixNano:        m.UnixNano,
+		Servers:         m.Servers,
+		CurrentMaster:   m.Currentmaster,
+		ClientMessageId: m.ClientMessageId,
+		Revision:        m.Revision,
+		RemoteAddr:      m.RemoteAddr,
+	}
+}
+
+// CopyToProtoMessage writes the message to dst, assuming that dst is a fully
+// allocated RobustMessage.
+func (m *Message) CopyToProtoMessage(dst *pb.RobustMessage) {
+	dst.Id.Id = m.Id.Id
+	dst.Id.Reply = m.Id.Reply
+	dst.Session.Id = m.Session.Id
+	dst.Session.Reply = m.Session.Reply
+	dst.Type = pb.RobustMessage_RobustType(m.Type)
+	dst.Data = m.Data
+	dst.UnixNano = m.UnixNano
+	dst.Servers = m.Servers
+	dst.CurrentMaster = m.Currentmaster
+	dst.ClientMessageId = m.ClientMessageId
+	dst.Revision = m.Revision
+	dst.RemoteAddr = m.RemoteAddr
+}
+
 func NewMessageFromBytes(b []byte, index uint64) Message {
 	var msg Message
-	if err := json.Unmarshal(b, &msg); err != nil {
-		log.Panicf("Could not json.Unmarshal() a (supposed) robust.Message (%v): %v\n", b, err)
+	if len(b) > 0 && b[0] == 'p' {
+		var p pb.RobustMessage
+		if err := proto.Unmarshal(b[1:], &p); err != nil {
+			log.Panicf("Could not proto.Unmarshal() a (supposed) robust.Message (%x): %v", b[1:], err)
+		}
+		msg.Id.Id = p.Id.Id
+		msg.Id.Reply = p.Id.Reply
+		msg.Session.Id = p.Session.Id
+		msg.Session.Reply = p.Session.Reply
+		msg.Type = Type(p.Type)
+		msg.Data = p.Data
+		msg.UnixNano = p.UnixNano
+		msg.Servers = p.Servers
+		msg.Currentmaster = p.CurrentMaster
+		msg.ClientMessageId = p.ClientMessageId
+		msg.Revision = p.Revision
+		msg.RemoteAddr = p.RemoteAddr
+	} else {
+		if err := json.Unmarshal(b, &msg); err != nil {
+			log.Panicf("Could not json.Unmarshal() a (supposed) robust.Message (%v): %v\n", b, err)
+		}
 	}
 	if msg.Id.Id == 0 {
 		msg.Id.Id = index

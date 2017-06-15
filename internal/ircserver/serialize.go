@@ -229,7 +229,7 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 				User: s.IrcPrefix.User,
 				Host: s.IrcPrefix.Host,
 			},
-			RemoteAddr: s.GetRemoteAddr(),
+			RemoteAddr: s.RemoteAddr,
 		}
 		if newSession.LastNonPing.IsZero() {
 			newSession.LastNonPing = newSession.LastActivity

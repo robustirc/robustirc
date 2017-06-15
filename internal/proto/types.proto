@@ -18,21 +18,31 @@ message RobustMessage {
 		PING = 4;
 		MESSAGE_OF_DEATH = 5;
 		CONFIG = 6;
-		ANY = 7; // TODO: what is this used for?
+		STATE = 7;
+		ANY = 8; // TODO: what is this used for?
 	}
 	RobustType type = 3;
 	string data = 4;
 
 	// TODO: use oneof for the following to save space?
-	repeated string servers = 5;
-	string current_master = 6;
-	uint64 client_message_id = 7;
-	uint64 revision = 8;
+	int64 unix_nano = 5;
+	repeated string servers = 6;
+	string current_master = 7;
+	uint64 client_message_id = 8;
+	uint64 revision = 9;
+	string remote_addr = 10;
 }
 
-message SnapshotLog {
-        fixed64 index = 1;
-        fixed64 term = 2;
-        RobustMessage msg = 3;
+message RaftLog {
+	uint64 index = 1;
+	uint64 term = 2;
+	enum LogType {
+		COMMAND = 0;
+		NOOP = 1;
+		ADDPEER = 2;
+		REMOVEPEER = 3;
+		BARRIER = 4;
+	}
+	LogType type = 3;
+	bytes data = 4;
 }
-

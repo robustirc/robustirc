@@ -8,11 +8,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/internal/privacy"
 	"github.com/robustirc/robustirc/internal/robust"
 	"github.com/stapelberg/glog"
 	"gopkg.in/sorcix/irc.v2"
+
+	pb "github.com/robustirc/robustirc/internal/proto"
 )
 
 type canaryMessageOutput struct {
@@ -91,9 +94,24 @@ func canary(fsm raft.FSM, statePath string) {
 		}
 		idx := binary.BigEndian.Uint64(iterator.Key())
 		value := iterator.Value()
-		if err := json.Unmarshal(value, &nlog); err != nil {
-			glog.Errorf("Skipping log entry %d because of a JSON unmarshaling error: %v", idx, err)
-			continue
+		if len(value) > 0 && value[0] == 'p' {
+			var p pb.RaftLog
+			if err := proto.Unmarshal(value[1:], &p); err != nil {
+				glog.Errorf("Skipping log entry %d because of a proto unmarshaling error: %v", idx, err)
+				available = iterator.Next()
+				continue
+			}
+			nlog.Index = p.Index
+			nlog.Term = p.Term
+			nlog.Type = raft.LogType(p.Type)
+			nlog.Data = p.Data
+		} else {
+			// XXX(1.0): delete this branch, all stores use proto
+			if err := json.Unmarshal(value, &nlog); err != nil {
+				glog.Errorf("Skipping log entry %d because of a JSON unmarshaling error: %v", idx, err)
+				available = iterator.Next()
+				continue
+			}
 		}
 		available = iterator.Next()
 

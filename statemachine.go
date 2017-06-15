@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	metrics "github.com/armon/go-metrics"
+	"github.com/golang/protobuf/proto"
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/internal/config"
 	"github.com/robustirc/robustirc/internal/ircserver"
@@ -19,7 +21,10 @@ import (
 	"github.com/robustirc/robustirc/internal/raftstore"
 	"github.com/robustirc/robustirc/internal/robust"
 	"github.com/stapelberg/glog"
+	"github.com/syndtr/goleveldb/leveldb"
 	"gopkg.in/sorcix/irc.v2"
+
+	pb "github.com/robustirc/robustirc/internal/proto"
 )
 
 type FSM struct {
@@ -103,17 +108,7 @@ func applyRobustMessage(msg *robust.Message, i *ircserver.IRCServer, o *outputst
 	return nil
 }
 
-func (fsm *FSM) Apply(l *raft.Log) interface{} {
-	// Skip all messages that are raft-related.
-	if l.Type != raft.LogCommand {
-		return nil
-	}
-
-	if err := fsm.ircstore.StoreLog(l); err != nil {
-		log.Panicf("Could not persist message in irclogs/: %v", err)
-	}
-
-	msg := robust.NewMessageFromBytes(l.Data, robust.IdFromRaftIndex(l.Index))
+func (fsm *FSM) applyProto(l *pb.RaftLog, msg *robust.Message) interface{} {
 	glog.Infof("Apply(msg.Type=%s)\n", msg.Type)
 	defer func() {
 		if msg.Type == robust.MessageOfDeath {
@@ -130,12 +125,25 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 			// bug, i.e. an IRC message will then go unhandled, but it
 			// prevents RobustIRC from dying horribly in such a situation.
 			msg.Type = robust.MessageOfDeath
-			data, err := json.Marshal(msg)
-			if err != nil {
-				glog.Fatalf("Could not marshal message: %v", err)
+			var (
+				data []byte
+				err  error
+			)
+			if l.Data[0] == 'p' {
+				data, err = proto.Marshal(msg.ProtoMessage())
+				if err != nil {
+					glog.Fatalf("Could not marshal message: %v", err)
+				}
+				data = append([]byte{'p'}, data...)
+			} else {
+				// XXX(1.0): delete this branch, all messages use proto
+				data, err = json.Marshal(msg)
+				if err != nil {
+					glog.Fatalf("Could not marshal message: %v", err)
+				}
 			}
 			l.Data = data
-			if err := fsm.store.StoreLog(l); err != nil {
+			if err := fsm.store.StoreLogProto(l); err != nil {
 				glog.Fatalf("Could not store log while marking message as message of death: %v", err)
 			}
 			log.Printf("Marked %+v as message of death\n", l)
@@ -143,11 +151,38 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		}
 	}()
 
-	err := applyRobustMessage(&msg, ircServer, outputStream)
+	err := applyRobustMessage(msg, ircServer, outputStream)
 
 	appliedMessages.WithLabelValues(msg.Type.String()).Inc()
 
 	return err
+}
+
+func (fsm *FSM) Apply(l *raft.Log) interface{} {
+	// Skip all messages that are raft-related.
+	if l.Type != raft.LogCommand {
+		return nil
+	}
+
+	p := pb.RaftLog{
+		Index: l.Index,
+		Term:  l.Term,
+		Type:  pb.RaftLog_LogType(l.Type),
+		Data:  l.Data,
+	}
+
+	if *useProtobuf {
+		if err := fsm.ircstore.StoreLogProto(&p); err != nil {
+			log.Panicf("Could not persist message in irclogs/: %v", err)
+		}
+	} else {
+		if err := fsm.ircstore.StoreLog(l); err != nil {
+			log.Panicf("Could not persist message in irclogs/: %v", err)
+		}
+	}
+
+	msg := robust.NewMessageFromBytes(l.Data, robust.IdFromRaftIndex(l.Index))
+	return fsm.applyProto(&p, &msg)
 }
 
 // Snapshot returns a raftSnapshot, containing a snapshot of the
@@ -221,10 +256,24 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 		}
 		i := binary.BigEndian.Uint64(iterator.Key())
 		value := iterator.Value()
-		if err := json.Unmarshal(value, &nlog); err != nil {
-			glog.Errorf("Skipping log entry %d because of a JSON unmarshaling error: %v", i, err)
-			available = iterator.Next()
-			continue
+		if len(value) > 0 && value[0] == 'p' {
+			var p pb.RaftLog
+			if err := proto.Unmarshal(value[1:], &p); err != nil {
+				glog.Errorf("Skipping log entry %d because of a proto unmarshaling error: %v", i, err)
+				available = iterator.Next()
+				continue
+			}
+			nlog.Index = p.Index
+			nlog.Term = p.Term
+			nlog.Type = raft.LogType(p.Type)
+			nlog.Data = p.Data
+		} else {
+			// XXX(1.0): delete this branch, ircstore uses proto
+			if err := json.Unmarshal(value, &nlog); err != nil {
+				glog.Errorf("Skipping log entry %d because of a JSON unmarshaling error: %v", i, err)
+				available = iterator.Next()
+				continue
+			}
 		}
 		available = iterator.Next()
 
@@ -284,7 +333,7 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 		log.Fatal(err)
 	}
 	var err error
-	ircStore, err = raftstore.NewLevelDBStore(irclogPath, true)
+	ircStore, err = raftstore.NewLevelDBStore(irclogPath, true, *useProtobuf)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -298,14 +347,102 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 	if err != nil {
 		log.Fatal(err)
 	}
-	decoder := json.NewDecoder(snap)
+	// XXX(1.0): remove this conditional, all snapshots are protobuf-encoded now
+	b := bufio.NewReader(snap)
+	first, err := b.Peek(1)
+	if err != nil {
+		return err
+	}
+	if first[0] == 'p' {
+		// protobuf snapshot prefix (invalid JSON)
+		return fsm.decodeProtobuf(b)
+	}
+	if err := fsm.decodeJson(b); err != nil {
+		return err
+	}
+	if *useProtobuf {
+		return fsm.ircstore.ConvertToProto()
+	}
+	return nil
+}
+
+func (fsm *FSM) decodeProtobuf(b *bufio.Reader) error {
+	start := time.Now()
+	log.Printf("decoding protobuf snapshot")
+	// discard leading 'p'
+	if _, err := b.ReadByte(); err != nil {
+		return err
+	}
+	var (
+		lenbuf [8]byte // binary.Size(uint64(0))
+		entry  pb.RaftLog
+		batch  leveldb.Batch
+	)
+	for {
+		if _, err := io.ReadFull(b, lenbuf[:]); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+		buf := make([]byte, binary.BigEndian.Uint64(lenbuf[:]))
+		if _, err := io.ReadFull(b, buf); err != nil {
+			return err
+		}
+		if len(buf) > 0 {
+			if got, want := buf[0], byte('p'); got != want {
+				return fmt.Errorf("unexpected first byte: got %v, want %v", got, want)
+			}
+		}
+		if err := proto.Unmarshal(buf[1:], &entry); err != nil {
+			return err
+		}
+		msg := robust.NewMessageFromBytes(entry.Data, robust.IdFromRaftIndex(entry.Index))
+		if msg.Type == robust.State {
+			log.Printf("found RobustState, unmarshalling\n")
+			state, err := base64.StdEncoding.DecodeString(msg.Data)
+			if err != nil {
+				return err
+			}
+			lastIncludedIndex, err := ircServer.Unmarshal(state)
+			if err != nil {
+				return err
+			}
+			log.Printf("storing RobustState as index %d\n", lastIncludedIndex)
+			fsm.lastSnapshotState[lastIncludedIndex] = state
+			continue
+		}
+
+		binary.BigEndian.PutUint64(lenbuf[:], entry.Index)
+		batch.Put(lenbuf[:], buf)
+		if batch.Len() > 100 {
+			if err := fsm.ircstore.WriteBatch(&batch); err != nil {
+				log.Panicf("Could not persist message in irclogs/: %v", err)
+			}
+			batch.Reset()
+		}
+
+		fsm.applyProto(&entry, &msg)
+	}
+	if err := fsm.ircstore.WriteBatch(&batch); err != nil {
+		return err
+	}
+
+	log.Printf("Restored snapshot in %v", time.Since(start))
+	return nil
+}
+
+func (fsm *FSM) decodeJson(b *bufio.Reader) error {
+	start := time.Now()
+	log.Printf("decoding JSON snapshot")
+	decoder := json.NewDecoder(b)
 	for {
 		var entry raft.Log
 		if err := decoder.Decode(&entry); err != nil {
 			if err == io.EOF {
 				break
 			}
-			return err
+			return fmt.Errorf("Decode: %v", err)
 		}
 
 		msg := robust.NewMessageFromBytes(entry.Data, robust.IdFromRaftIndex(entry.Index))
@@ -327,7 +464,6 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 		fsm.Apply(&entry)
 	}
 
-	log.Printf("Restored snapshot\n")
-
+	log.Printf("Restored snapshot in %v", time.Since(start))
 	return nil
 }
