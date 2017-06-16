@@ -166,7 +166,6 @@ func dumpSnapshotProto(b *bufio.Reader) error {
 		}
 		dumpLog(0, rlog)
 	}
-	return nil
 }
 
 func dumpSnapshotJSON(b *bufio.Reader) error {
