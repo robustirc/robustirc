@@ -23,10 +23,10 @@ func TestIdle(t *testing.T) {
 	}
 	i.ProcessMessage(&robust.Message{Id: msg.Id, Session: ids["mero"]}, irc.ParseMessage(string(msg.Data)))
 	sMero, _ := i.GetSession(ids["mero"])
-	if got, want := sMero.LastNonPing, joinTime; got != want {
+	if got, want := sMero.LastNonPing, joinTime; !got.Equal(want) {
 		t.Fatalf("LastActivity for mero: got %v, want %v", got, want)
 	}
-	if got, want := sMero.LastActivity, joinTime; got != want {
+	if got, want := sMero.LastActivity, joinTime; !got.Equal(want) {
 		t.Fatalf("LastActivity for mero: got %v, want %v", got, want)
 	}
 
@@ -40,10 +40,10 @@ func TestIdle(t *testing.T) {
 		t.Fatalf("Unexpected error calling UpdateLastClientMessageID: %v", err)
 	}
 	i.ProcessMessage(&robust.Message{Id: msg.Id, Session: ids["mero"]}, irc.ParseMessage(string(msg.Data)))
-	if got, want := sMero.LastNonPing, joinTime; got != want {
+	if got, want := sMero.LastNonPing, joinTime; !got.Equal(want) {
 		t.Fatalf("LastActivity for mero: got %v, want %v", got, want)
 	}
-	if got, want := sMero.LastActivity, pingTime; got != want {
+	if got, want := sMero.LastActivity, pingTime; !got.Equal(want) {
 		t.Fatalf("LastActivity for mero: got %v, want %v", got, want)
 	}
 }
