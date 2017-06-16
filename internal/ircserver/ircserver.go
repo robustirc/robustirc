@@ -441,7 +441,6 @@ func (i *IRCServer) ProcessMessage(msg *robust.Message, ircmsg *irc.Message) *Re
 	command := strings.ToUpper(ircmsg.Command)
 	if msg.RemoteAddr != "" && msg.RemoteAddr != s.RemoteAddr {
 		s.RemoteAddr = msg.RemoteAddr
-		log.Printf("addr changed to %q", s.RemoteAddr)
 		if reason := i.Banned(s.RemoteAddr); reason != "" {
 			i.sendUser(s, reply, &irc.Message{
 				Command: irc.ERROR,
