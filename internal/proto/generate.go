@@ -2,4 +2,4 @@
 // capnproto generated code.
 package proto
 
-//go:generate protoc types.proto snapshot.proto --go_out=.
+//go:generate protoc types.proto snapshot.proto --gofast_out=.
