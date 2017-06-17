@@ -363,6 +363,8 @@ func IsValidChannel(channel string) bool {
 	return validChannelRe.MatchString(channel)
 }
 
+var nickToLowerReplacer = strings.NewReplacer("[", "{", "]", "}", "\\", "|")
+
 // NickToLower converts a nickname to lower case, following RFC2812:
 //
 // Because of IRC's scandanavian origin, the characters {}| are
@@ -370,8 +372,7 @@ func IsValidChannel(channel string) bool {
 // respectively. This is a critical issue when determining the
 // equivalence of two nicknames.
 func NickToLower(nick string) lcNick {
-	r := strings.NewReplacer("[", "{", "]", "}", "\\", "|")
-	return lcNick(r.Replace(strings.ToLower(nick)))
+	return lcNick(nickToLowerReplacer.Replace(strings.ToLower(nick)))
 }
 
 // ChanToLower converts a channel to lower case.
