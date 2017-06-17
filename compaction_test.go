@@ -128,9 +128,10 @@ func TestCompaction(t *testing.T) {
 		t.Fatalf("Unexpected error in NewLevelDBStore: %v", err)
 	}
 	fsm := FSM{
-		store:             logstore,
-		ircstore:          ircstore,
-		lastSnapshotState: make(map[uint64][]byte),
+		store:                logstore,
+		ircstore:             ircstore,
+		lastSnapshotState:    make(map[uint64][]byte),
+		sessionExpirationDur: 10 * time.Minute,
 	}
 
 	var logs []*raft.Log

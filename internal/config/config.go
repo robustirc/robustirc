@@ -105,7 +105,7 @@ type Network struct {
 }
 
 var DefaultConfig = Network{
-	SessionExpiration:  Duration(30 * time.Minute),
+	SessionExpiration:  Duration(10 * time.Minute),
 	PostMessageCooloff: Duration(500 * time.Millisecond),
 	Banned:             make(map[string]string),
 }

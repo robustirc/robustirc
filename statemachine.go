@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	metrics "github.com/armon/go-metrics"
@@ -39,6 +40,15 @@ type FSM struct {
 	// serialized pb.Snapshot (IRCServer state) which was taken the
 	// last time a Raft snapshot was taken.
 	lastSnapshotState map[uint64][]byte
+
+	sessionExpirationMu  sync.RWMutex
+	sessionExpirationDur time.Duration
+}
+
+func (fsm *FSM) sessionExpiration() time.Duration {
+	fsm.sessionExpirationMu.RLock()
+	defer fsm.sessionExpirationMu.RUnlock()
+	return fsm.sessionExpirationDur
 }
 
 // sendMessages appends the specified batch of messages to the output,
@@ -63,7 +73,7 @@ func sendMessages(reply *ircserver.Replyctx, session robust.Id, id uint64, o *ou
 	}
 }
 
-func applyRobustMessage(msg *robust.Message, i *ircserver.IRCServer, o *outputstream.OutputStream) error {
+func (fsm *FSM) applyRobustMessage(msg *robust.Message, i *ircserver.IRCServer, o *outputstream.OutputStream) error {
 	switch msg.Type {
 	case robust.MessageOfDeath:
 		// To prevent the message from being accepted again.
@@ -103,6 +113,9 @@ func applyRobustMessage(msg *robust.Message, i *ircserver.IRCServer, o *outputst
 			defer i.ConfigMu.Unlock()
 			i.Config = newCfg
 			i.Config.Revision = msg.Revision
+			fsm.sessionExpirationMu.Lock()
+			defer fsm.sessionExpirationMu.Unlock()
+			fsm.sessionExpirationDur = time.Duration(i.Config.SessionExpiration)
 		}
 	}
 	return nil
@@ -150,7 +163,7 @@ func (fsm *FSM) applyProto(l *pb.RaftLog, msg *robust.Message) interface{} {
 		}
 	}()
 
-	err := applyRobustMessage(msg, ircServer, outputStream)
+	err := fsm.applyRobustMessage(msg, ircServer, outputStream)
 
 	appliedMessages.WithLabelValues(msg.Type.String()).Inc()
 
@@ -220,7 +233,18 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 		log.Printf("compactionStart %s (overridden with -canary_compaction_start)\n", compactionStart.String())
 	}
 
-	compactionEnd := compactionStart.Add(-7 * 24 * time.Hour)
+	exp := fsm.sessionExpiration()
+	if exp == 0 {
+		// in case the config does not set SessionExpiration at all
+		exp = 10 * time.Minute
+	}
+	// Keep messages for as long as they could possibly be useful to continue a
+	// hanging session (think a user who suspends their notebook, walks around
+	// for 9m, opens the notebook and wants to resume the same session in
+	// RobustIRC).
+	exp += expireSessionsInterval
+	log.Printf("sessionExpiration is %v", exp)
+	compactionEnd := compactionStart.Add(-1 * exp)
 
 	tmpServer := ircserver.NewIRCServer("testnetwork", time.Now())
 	if oldState, ok := fsm.lastSnapshotState[first-1]; !ok {
@@ -287,7 +311,7 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 			break
 		}
 
-		applyRobustMessage(&parsed, tmpServer, nil)
+		fsm.applyRobustMessage(&parsed, tmpServer, nil)
 
 		if !fsm.skipDeletionForCanary {
 			// TODO: make the following more efficient, we can whack out the entire range at once.
