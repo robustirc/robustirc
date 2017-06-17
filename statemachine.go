@@ -109,7 +109,6 @@ func applyRobustMessage(msg *robust.Message, i *ircserver.IRCServer, o *outputst
 }
 
 func (fsm *FSM) applyProto(l *pb.RaftLog, msg *robust.Message) interface{} {
-	glog.Infof("Apply(msg.Type=%s)\n", msg.Type)
 	defer func() {
 		if msg.Type == robust.MessageOfDeath {
 			return
@@ -182,6 +181,7 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 	}
 
 	msg := robust.NewMessageFromBytes(l.Data, robust.IdFromRaftIndex(l.Index))
+	glog.Infof("Apply(msg.Type=%s)\n", msg.Type)
 	return fsm.applyProto(&p, &msg)
 }
 
