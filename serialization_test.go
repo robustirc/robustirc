@@ -16,25 +16,25 @@ import (
 	"gopkg.in/sorcix/irc.v2"
 )
 
-func createIrcServer(tempdir string) (*raftstore.LevelDBStore, *raftstore.LevelDBStore, FSM, error) {
+func createIrcServer(tempdir string) (*raftstore.LevelDBStore, *raftstore.LevelDBStore, *FSM, error) {
 	ircServer = ircserver.NewIRCServer("testnetwork", time.Now())
 	var err error
 	outputStream, err = outputstream.NewOutputStream("")
 	if err != nil {
-		return nil, nil, FSM{}, err
+		return nil, nil, &FSM{}, err
 	}
 	flag.Set("raftdir", tempdir)
 
 	logstore, err := raftstore.NewLevelDBStore(filepath.Join(tempdir, "raftlog"), false, false)
 	if err != nil {
-		return nil, nil, FSM{}, err
+		return nil, nil, &FSM{}, err
 	}
 	ircstore, err := raftstore.NewLevelDBStore(filepath.Join(tempdir, "irclog"), false, false)
 	if err != nil {
-		return nil, nil, FSM{}, err
+		return nil, nil, &FSM{}, err
 	}
 	fsm := FSM{store: logstore, ircstore: ircstore}
-	return logstore, ircstore, fsm, nil
+	return logstore, ircstore, &fsm, nil
 }
 
 func TestSerialization(t *testing.T) {
