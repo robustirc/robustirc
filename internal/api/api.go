@@ -312,6 +312,7 @@ func (api *HTTP) dispatchPublic(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(rest, "/messages") {
 			if sessionId := rest[:len(rest)-len("/messages")]; strings.Index(sessionId, "/") == -1 {
 				api.handleGetMessages(w, r, sessionId)
+				return
 			}
 		}
 
