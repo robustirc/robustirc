@@ -74,7 +74,7 @@ ALERT NoLeader
 
 ALERT LeaderFlapping
   IF (job:leader_flaps_stable:sum_deriv10m > 0)
-  FOR 10m
+  FOR 60m
   LABELS {
     job = "robustirc",
   }
