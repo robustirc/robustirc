@@ -4,10 +4,11 @@ sudo: false
 
 language: go
 go:
-  - 1.8
+  - 1.12
 
 env:
   global:
+    - GO111MODULE=on
     secure: GxkLYZFoOG6rI0An0YKrCr872VnUCCmZX0uNxt46lA4RTdPYSAvHCFEgCFmZFGn4F5VLNYMgrcKiOOYnnfy3tIY2tqgKeBrrZo+ZiSJ0XpzDJq4RO/yY9fIqnDBbgTS9K9RoUbHfAWjVulpCjje1Ydw4QUt1sQQH0QyPx7/nNB4=
 
 # Prerequisites for coveralls.io integration:
