@@ -19,7 +19,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hashicorp/raft"
-	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/robustirc/internal/robusthttp"
 	"github.com/robustirc/rafthttp"
 	"github.com/robustirc/robustirc/internal/ircserver"
@@ -73,7 +73,6 @@ func exitOnRecover() {
 type HTTP struct {
 	ircServer       *ircserver.IRCServer
 	raftNode        *raft.Raft
-	peerStore       *raft.JSONPeers
 	ircStore        *raftstore.LevelDBStore
 	output          *outputstream.OutputStream
 	transport       *rafthttp.HTTPTransport
@@ -92,13 +91,14 @@ type HTTP struct {
 
 	// XXX(1.0): delete this field
 	useProtobuf bool
+
+	raftProtocolVersion int
 }
 
-func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, peerStore *raft.JSONPeers, ircStore *raftstore.LevelDBStore, output *outputstream.OutputStream, transport *rafthttp.HTTPTransport, network string, networkPassword string, raftDir string, peerAddr string, mux *http.ServeMux, useProtobuf bool) *HTTP {
+func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, ircStore *raftstore.LevelDBStore, output *outputstream.OutputStream, transport *rafthttp.HTTPTransport, network string, networkPassword string, raftDir string, peerAddr string, mux *http.ServeMux, useProtobuf bool, raftProtocolVersion int) *HTTP {
 	api := &HTTP{
 		ircServer:           ircServer,
 		raftNode:            raftNode,
-		peerStore:           peerStore,
 		ircStore:            ircStore,
 		output:              output,
 		transport:           transport,
@@ -108,6 +108,7 @@ func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, peerStore *raf
 		peerAddr:            peerAddr,
 		getMessagesRequests: make(map[string]GetMessagesStats),
 		useProtobuf:         useProtobuf,
+		raftProtocolVersion: raftProtocolVersion,
 	}
 
 	mux.HandleFunc("/robustirc/v1/", api.dispatchPublic)
@@ -243,7 +244,7 @@ func (api *HTTP) dispatchPrivate(w http.ResponseWriter, r *http.Request) {
 			return
 
 		case "/metrics":
-			prometheus.Handler().ServeHTTP(w, r)
+			promhttp.Handler().ServeHTTP(w, r)
 			return
 		}
 
@@ -367,7 +368,7 @@ func (api *HTTP) ApplyMessageWait(msg *robust.Message, timeout time.Duration) er
 }
 
 func (api *HTTP) maybeProxyToLeader(w http.ResponseWriter, r *http.Request, body io.ReadCloser) {
-	leader := api.raftNode.Leader()
+	leader := string(api.raftNode.Leader())
 	if leader == "" {
 		http.Error(w, fmt.Sprintf("No leader known. Please try another server."),
 			http.StatusInternalServerError)

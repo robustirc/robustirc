@@ -177,10 +177,11 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 	}
 
 	p := pb.RaftLog{
-		Index: l.Index,
-		Term:  l.Term,
-		Type:  pb.RaftLog_LogType(l.Type),
-		Data:  l.Data,
+		Index:      l.Index,
+		Term:       l.Term,
+		Type:       pb.RaftLog_LogType(l.Type),
+		Data:       l.Data,
+		Extensions: l.Extensions,
 	}
 
 	if *useProtobuf {
@@ -291,6 +292,7 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 			nlog.Term = p.Term
 			nlog.Type = raft.LogType(p.Type)
 			nlog.Data = p.Data
+			nlog.Extensions = p.Extensions
 		} else {
 			// XXX(1.0): delete this branch, ircstore uses proto
 			if err := json.Unmarshal(value, &nlog); err != nil {

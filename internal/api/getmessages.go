@@ -29,9 +29,14 @@ func (api *HTTP) updateLastContact() {
 }
 
 func (api *HTTP) pingMessage() *robust.Message {
-	peers, err := api.peerStore.Peers()
-	if err != nil {
-		log.Fatalf("Could not get peers: %v (Peer file corrupted on disk?)", err)
+	cfgf := api.raftNode.GetConfiguration()
+	if err := cfgf.Error(); err != nil {
+		log.Fatalf("Could not get peers: %v", err)
+	}
+	servers := cfgf.Configuration().Servers
+	peers := make([]string, len(servers))
+	for idx, server := range servers {
+		peers[idx] = string(server.Address)
 	}
 	return &robust.Message{
 		Type:    robust.Ping,

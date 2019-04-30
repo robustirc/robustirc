@@ -27,9 +27,22 @@ func (api *HTTP) handleJoin(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Adding peer %q to the network.\n", req.Addr)
 
-	if err := api.raftNode.AddPeer(req.Addr).Error(); err != nil && err != raft.ErrKnownPeer {
-		log.Println("Could not add peer:", err)
-		http.Error(w, "Could not add peer", http.StatusInternalServerError)
-		return
+	if api.raftProtocolVersion < 3 {
+		if err := api.raftNode.AddPeer(raft.ServerAddress(req.Addr)).Error(); err != nil {
+			log.Println("Could not add peer:", err)
+			http.Error(w, "Could not add peer", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		idxf := api.raftNode.AddVoter(
+			raft.ServerID(req.Addr),
+			raft.ServerAddress(req.Addr),
+			0, // prevIndex of 0 means other config changes can happen
+			0) // no timeout
+		if err := idxf.Error(); err != nil {
+			log.Println("Could not add peer:", err)
+			http.Error(w, "Could not add peer", http.StatusInternalServerError)
+			return
+		}
 	}
 }

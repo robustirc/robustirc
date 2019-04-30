@@ -45,6 +45,7 @@ func NewLevelDBStore(dir string, errorIfExist bool, useProtobuf bool) (*LevelDBS
 	db, err := leveldb.OpenFile(dir, &opt.Options{ErrorIfExist: errorIfExist})
 	if err != nil {
 		if errorIfExist && err == os.ErrExist {
+			// TODO: migrate this check to raft.HasExistingState
 			return nil, fmt.Errorf("You specified -singlenode or -join, but %q already contains data, indicating this node is already part of a RobustIRC network. THIS IS UNSAFE! It will lead to split-brain scenarios and data-loss. Please see http://robustirc.net/docs/adminguide.html#_healing_partitions if you are trying to heal a network partition.", dir)
 		}
 		if _, ok := err.(*leveldb_errors.ErrCorrupted); !ok {
@@ -102,6 +103,7 @@ func (s *LevelDBStore) ConvertToProto() error {
 				rlog.Index = l.Index
 				rlog.Term = l.Term
 				rlog.Type = pb.RaftLog_LogType(l.Type)
+				rlog.Extensions = l.Extensions
 				v, err := proto.Marshal(&rlog)
 				if err != nil {
 					return err
@@ -126,6 +128,7 @@ func (s *LevelDBStore) ConvertToProto() error {
 			rlog.Index = l.Index
 			rlog.Term = l.Term
 			rlog.Type = pb.RaftLog_LogType(l.Type)
+			rlog.Extensions = l.Extensions
 			v, err = proto.Marshal(&rlog)
 			if err != nil {
 				return err
@@ -238,6 +241,7 @@ func (s *LevelDBStore) GetLog(index uint64, rlog *raft.Log) error {
 		rlog.Term = msg.Term
 		rlog.Type = raft.LogType(msg.Type)
 		rlog.Data = msg.Data
+		rlog.Extensions = msg.Extensions
 		return nil
 	} else {
 		// XXX(1.0): delete this branch, all stores use proto
@@ -272,6 +276,7 @@ func (s *LevelDBStore) StoreLogs(logs []*raft.Log) error {
 			msg.Term = entry.Term
 			msg.Type = pb.RaftLog_LogType(entry.Type)
 			msg.Data = entry.Data
+			msg.Extensions = entry.Extensions
 			v, err := proto.Marshal(&msg)
 			if err != nil {
 				return err

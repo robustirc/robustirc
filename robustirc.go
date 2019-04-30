@@ -21,6 +21,7 @@ import (
 
 	"golang.org/x/net/http2"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robustirc/bridge/tlsutil"
 	"github.com/robustirc/internal/robusthttp"
@@ -49,6 +50,9 @@ var (
 	raftDir = flag.String("raftdir",
 		"/var/lib/robustirc",
 		"Directory in which raft state is stored. If this directory is empty, you need to specify -join.")
+	raftProtocolVersion = flag.Int("raft_protocol_version",
+		1, // XXX(1.0): bump to 3
+		"Raft protocol version. See https://godoc.org/github.com/hashicorp/raft#ProtocolVersion")
 	listen = flag.String("listen",
 		":443",
 		"[host]:port to listen on. Set to a port in the dynamic port range (49152 to 65535) and use DNS SRV records.")
@@ -98,7 +102,6 @@ var (
 		"Encode raft messages, store values and snapshots using protobuf (true) instead of JSON (false). Defaults to JSON, but protobuf will become the default in version 1.0")
 
 	node      *raft.Raft
-	peerStore *raft.JSONPeers
 	ircStore  *raftstore.LevelDBStore
 	ircServer *ircserver.IRCServer
 
@@ -196,7 +199,7 @@ func init() {
 	prometheus.MustRegister(secondsInState)
 }
 
-func joinMaster(addr string, peerStore *raft.JSONPeers) []string {
+func joinMaster(addr string) {
 	type joinRequest struct {
 		Addr string
 	}
@@ -231,17 +234,8 @@ func joinMaster(addr string, peerStore *raft.JSONPeers) []string {
 			log.Fatalf("Could not parse redirection %q: %v", loc, err)
 		}
 
-		return joinMaster(u.Host, peerStore)
+		joinMaster(u.Host)
 	}
-
-	log.Printf("Adding master %q as peer\n", addr)
-	p, err := peerStore.Peers()
-	if err != nil {
-		log.Fatal("Could not read peers: ", err)
-	}
-	p = raft.AddUniquePeer(p, addr)
-	peerStore.SetPeers(p)
-	return p
 }
 
 // XXX(1.0): delete this function as users are expected to have upgraded.
@@ -319,6 +313,7 @@ func main() {
 		printDefault(flag.Lookup("pre1.0_protobuf"))
 		printDefault(flag.Lookup("version"))
 		printDefault(flag.Lookup("flakyhttp_rules_path"))
+		printDefault(flag.Lookup("raft_protocol_version"))
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "The following flags are optional and provided by glog:\n")
 		printDefault(flag.Lookup("alsologtostderr"))
@@ -392,41 +387,17 @@ func main() {
 	}
 
 	transport := rafthttp.NewHTTPTransport(
-		*peerAddr,
+		raft.ServerAddress(*peerAddr),
 		// Not deadlined, otherwise snapshot installments fail.
 		robusthttp.Client(*networkPassword, false),
 		nil,
 		"")
 
-	peerStore = raft.NewJSONPeers(*raftDir, transport)
-
-	if *join == "" && !*singleNode {
-		peers, err := peerStore.Peers()
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		if len(peers) == 0 {
-			if !*timesafeguard.DisableTimesafeguard {
-				log.Fatalf("No peers known and -join not specified. Joining the network is not safe because timesafeguard cannot be called.\n")
-			}
-		} else {
-			if len(peers) == 1 && peers[0] == *peerAddr {
-				// To prevent crashlooping too frequently in case the init system directly restarts our process.
-				time.Sleep(10 * time.Second)
-				log.Fatalf("Only known peer is myself (%q), implying this node was removed from the network. Please kill the process and remove the data.\n", *peerAddr)
-			}
-			if err := timesafeguard.SynchronizedWithNetwork(*peerAddr, peers, *networkPassword); err != nil {
-				log.Fatal(err.Error())
-			}
-		}
-	}
-
-	var p []string
-
 	config := raft.DefaultConfig()
-	config.Logger = log.New(glog.LogBridgeFor("INFO"), "", log.Lshortfile)
-	if *singleNode {
-		config.EnableSingleNode = true
+	config.Logger = hclog.FromStandardLogger(
+		log.New(glog.LogBridgeFor("INFO"), "", log.Lshortfile),
+		hclog.DefaultOptions)
+	if *dumpCanaryState != "" {
 		config.StartAsLeader = true
 	}
 
@@ -456,6 +427,9 @@ func main() {
 	config.HeartbeatTimeout = timesafeguard.ElectionTimeout
 	config.ElectionTimeout = timesafeguard.ElectionTimeout
 
+	config.ProtocolVersion = raft.ProtocolVersion(*raftProtocolVersion)
+	config.LocalID = raft.ServerID(*peerAddr)
+
 	// We use prometheus, so hook up the metrics package (used by raft) to
 	// prometheus as well.
 	sink, err := metrics_prometheus.NewPrometheusSink()
@@ -483,9 +457,51 @@ func main() {
 		log.Fatal(err)
 	}
 
-	node, err = raft.NewRaft(config, fsm, logcache, logStore, fss, peerStore, transport)
+	if !bootstrapping {
+		// GetConfiguration sets config.skipStartup = true, so make a copy of
+		// the configuration that is used by GetConfiguration() only, otherwise
+		// raft.NewRaft will not correctly initialize raft later.
+		configCopy := *config
+		cfg, err := raft.GetConfiguration(&configCopy, fsm, logcache, logStore, fss, transport)
+		if err != nil {
+			log.Fatal(err)
+		}
+		addrs := make([]string, len(cfg.Servers))
+		for idx, srv := range cfg.Servers {
+			addrs[idx] = string(srv.Address)
+		}
+		if len(addrs) == 0 {
+			if !*timesafeguard.DisableTimesafeguard {
+				log.Fatalf("No peers known and -join not specified. Joining the network is not safe because timesafeguard cannot be called.\n")
+			}
+		} else {
+			if len(addrs) == 1 && addrs[0] == *peerAddr {
+				// To prevent crashlooping too frequently in case the init system directly restarts our process.
+				time.Sleep(10 * time.Second)
+				log.Fatalf("Only known peer is myself (%q), implying this node was removed from the network. Please kill the process and remove the data.\n", *peerAddr)
+			}
+			if err := timesafeguard.SynchronizedWithNetwork(*peerAddr, addrs, *networkPassword); err != nil {
+				log.Fatal(err.Error())
+			}
+		}
+	}
+
+	node, err = raft.NewRaft(config, fsm, logcache, logStore, fss, transport)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	if *singleNode && *dumpCanaryState == "" {
+		if err := node.BootstrapCluster(raft.Configuration{
+			Servers: []raft.Server{
+				raft.Server{
+					ID:      config.LocalID,
+					Address: raft.ServerAddress(*peerAddr),
+				},
+			},
+		}).Error(); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	if *dumpCanaryState != "" {
@@ -512,7 +528,6 @@ func main() {
 	api := api.NewHTTP(
 		ircServer,
 		node,
-		peerStore,
 		ircStore,
 		outputStream,
 		transport,
@@ -521,7 +536,8 @@ func main() {
 		*raftDir,
 		*peerAddr,
 		http.DefaultServeMux,
-		*useProtobuf)
+		*useProtobuf,
+		*raftProtocolVersion)
 
 	srv := http.Server{Addr: *listen}
 	if err := http2.ConfigureServer(&srv, nil); err != nil {
@@ -554,12 +570,8 @@ func main() {
 			log.Fatal(err.Error())
 		}
 
-		p = joinMaster(*join, peerStore)
+		joinMaster(*join)
 		// TODO(secure): properly handle joins on the server-side where the joining node is already in the network.
-	}
-
-	if len(p) > 0 {
-		node.SetPeers(p)
 	}
 
 	expireSessionsTimer := time.After(expireSessionsInterval)

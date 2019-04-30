@@ -26,6 +26,7 @@ func FromBytes(b []byte) (*raft.Log, error) {
 		l.Term = p.Term
 		l.Type = raft.LogType(p.Type)
 		l.Data = p.Data
+		l.Extensions = p.Extensions
 	} else {
 		// XXX(1.0): delete this branch, proto is used everywhere
 		if err := json.Unmarshal(b, &l); err != nil {

@@ -60,7 +60,14 @@ func canary(fsm raft.FSM, statePath string) {
 		log.Fatalf("snapshot is not a robustSnapshot")
 	}
 
-	sink, err := raft.NewDiscardSnapshotStore().Create(rs.lastIndex, 1, []byte{})
+	sink, err := raft.NewDiscardSnapshotStore().Create(
+		0,                    // version
+		rs.lastIndex,         // index
+		1,                    // term
+		raft.Configuration{}, // configuration
+		1,                    // configurationIndex
+		nil,                  // transport
+	)
 	if err != nil {
 		log.Fatalf("DiscardSnapshotStore.Create(): %v\n", err)
 	}
@@ -105,6 +112,7 @@ func canary(fsm raft.FSM, statePath string) {
 			nlog.Term = p.Term
 			nlog.Type = raft.LogType(p.Type)
 			nlog.Data = p.Data
+			nlog.Extensions = p.Extensions
 		} else {
 			// XXX(1.0): delete this branch, all stores use proto
 			if err := json.Unmarshal(value, &nlog); err != nil {

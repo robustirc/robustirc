@@ -27,9 +27,21 @@ func (api *HTTP) handlePart(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Removing peer %q from the network.\n", req.Addr)
 
-	if err := api.raftNode.RemovePeer(req.Addr).Error(); err != nil && err != raft.ErrKnownPeer {
-		log.Println("Could not remove peer:", err)
-		http.Error(w, "Could not remove peer", http.StatusInternalServerError)
-		return
+	if api.raftProtocolVersion < 3 {
+		if err := api.raftNode.RemovePeer(raft.ServerAddress(req.Addr)).Error(); err != nil {
+			log.Println("Could not remove peer:", err)
+			http.Error(w, "Could not remove peer", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		idxf := api.raftNode.RemoveServer(
+			raft.ServerID(req.Addr),
+			0, // prevIndex of 0 means other config changes can happen
+			0) // no timeout
+		if err := idxf.Error(); err != nil {
+			log.Println("Could not remove peer:", err)
+			http.Error(w, "Could not remove peer", http.StatusInternalServerError)
+			return
+		}
 	}
 }

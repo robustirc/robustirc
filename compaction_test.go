@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/robustirc/rafthttp"
 	"github.com/robustirc/robustirc/internal/ircserver"
 	"github.com/robustirc/robustirc/internal/outputstream"
 	"github.com/robustirc/robustirc/internal/raftstore"
@@ -66,7 +67,13 @@ func snapshot(fsm raft.FSM, fss raft.SnapshotStore, numLogs uint64) error {
 		return fmt.Errorf("snapshot does not retain the last message, got: %d, want: %d", robustsnap.lastIndex, numLogs)
 	}
 
-	sink, err := fss.Create(numLogs, 1, []byte{})
+	sink, err := fss.Create(
+		1,                         // snapshot version
+		numLogs,                   // index
+		1,                         // term
+		raft.Configuration{},      // configuration (peers)
+		0,                         // configurationIndex
+		&rafthttp.HTTPTransport{}) // only needed for EncodePeers, which is stateless
 	if err != nil {
 		return fmt.Errorf("fss.Create: %v", err)
 	}

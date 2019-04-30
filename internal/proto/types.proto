@@ -45,4 +45,5 @@ message RaftLog {
 	}
 	LogType type = 3;
 	bytes data = 4;
+	bytes extensions = 5;
 }

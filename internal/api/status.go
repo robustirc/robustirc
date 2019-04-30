@@ -172,7 +172,16 @@ func (api *HTTP) handleStatusIrclog(w http.ResponseWriter, req *http.Request) {
 }
 
 func (api *HTTP) handleStatus(res http.ResponseWriter, req *http.Request) {
-	p, _ := api.peerStore.Peers()
+	cfgf := api.raftNode.GetConfiguration()
+	if err := cfgf.Error(); err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	servers := cfgf.Configuration().Servers
+	p := make([]string, len(servers))
+	for idx, server := range servers {
+		p[idx] = string(server.Address)
+	}
 
 	// robustirc-rollingrestart wants a machine-readable version of the status.
 	if req.Header.Get("Accept") == "application/json" {
@@ -187,7 +196,7 @@ func (api *HTTP) handleStatus(res http.ResponseWriter, req *http.Request) {
 			CurrentTime    time.Time
 		}
 		res.Header().Set("Content-Type", "application/json")
-		leaderStr := api.raftNode.Leader()
+		leaderStr := string(api.raftNode.Leader())
 		stats := api.raftNode.Stats()
 		appliedIndex, err := strconv.ParseUint(stats["applied_index"], 0, 64)
 		if err != nil {
@@ -230,7 +239,7 @@ func (api *HTTP) handleStatus(res http.ResponseWriter, req *http.Request) {
 	}{
 		Addr:               api.peerAddr,
 		State:              api.raftNode.State(),
-		Leader:             api.raftNode.Leader(),
+		Leader:             string(api.raftNode.Leader()),
 		Peers:              p,
 		Stats:              api.raftNode.Stats(),
 		Sessions:           api.ircServer.GetSessions(),
