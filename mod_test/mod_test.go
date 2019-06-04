@@ -121,6 +121,10 @@ func TestMessageOfDeath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not create robustsession: %v", err)
 	}
+	var (
+		mu    sync.Mutex
+		state = "no-join-yet"
+	)
 	foundjoin := make(chan bool)
 	go func() {
 		for msg := range session.Messages {
@@ -128,11 +132,12 @@ func TestMessageOfDeath(t *testing.T) {
 				!strings.HasSuffix(msg, " JOIN #mod") {
 				continue
 			}
-			select {
-			case foundjoin <- true:
-			default:
-				t.Errorf("Found JOIN too early or too late (channel write did not block)")
+			mu.Lock()
+			if state == "no-join-yet" {
+				t.Errorf("Found JOIN too early")
 			}
+			foundjoin <- true
+			mu.Unlock()
 		}
 	}()
 	go func() {
@@ -163,6 +168,9 @@ func TestMessageOfDeath(t *testing.T) {
 	}
 
 	// Verify sending a JOIN now results in an output message.
+	mu.Lock()
+	state = "expect-join"
+	mu.Unlock()
 	session.PostMessage("JOIN #mod")
 	select {
 	case <-foundjoin:
