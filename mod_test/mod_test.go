@@ -99,7 +99,7 @@ func TestMessageOfDeath(t *testing.T) {
 				t.Errorf("Cannot restart node: %v", err)
 				return
 			}
-			l.RecordResource("pid", strconv.Itoa(cmd.Process.Pid))
+			l.RecordResource("pid", strconv.Itoa(rcmd.Process.Pid))
 
 			// Ensure the node comes back up.
 			started := time.Now()
