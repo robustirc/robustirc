@@ -132,23 +132,23 @@ func (l *localnet) SetConfig(config string) error {
 	return robustnet.SetConfig(l.Servers(), config, l.NetworkPassword)
 }
 
-func (l *localnet) StartIRCServer(singlenode bool) (*exec.Cmd, string, string) {
-	args := []string{
-		"-network_name=localnet.localhost",
-		"-tls_cert_path=" + filepath.Join(l.dir, "cert.pem"),
-		"-tls_ca_file=" + filepath.Join(l.dir, "cert.pem"),
-		"-tls_key_path=" + filepath.Join(l.dir, "key.pem"),
-	}
-
-	args = append(args, fmt.Sprintf("-listen=localhost:%d", l.randomPort))
-
+func (l *localnet) StartIRCServer(singlenode bool, args ...string) (*exec.Cmd, string, string) {
 	// TODO(secure): support -persistent
 	tempdir, err := ioutil.TempDir("", "robustirc-localnet-")
 	if err != nil {
 		log.Fatal(err)
 	}
-	args = append(args, "-raftdir="+tempdir)
-	args = append(args, "-log_dir="+tempdir)
+
+	args = append(args,
+		"-network_name=localnet.localhost",
+		"-tls_cert_path="+filepath.Join(l.dir, "cert.pem"),
+		"-tls_ca_file="+filepath.Join(l.dir, "cert.pem"),
+		"-tls_key_path="+filepath.Join(l.dir, "key.pem"),
+		fmt.Sprintf("-listen=localhost:%d", l.randomPort),
+		"-alsologtostderr", // tail -f stderr.txt
+		"-raftdir="+tempdir,
+		"-log_dir="+tempdir)
+
 	if err := l.RecordResource("tempdir", tempdir); err != nil {
 		log.Panicf("Could not record tempdir: %v", err)
 	}

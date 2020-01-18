@@ -78,9 +78,9 @@ func main() {
 		l.Kill(*deleteTempdirs)
 	}()
 
-	l.StartIRCServer(true)
-	l.StartIRCServer(false)
-	l.StartIRCServer(false)
+	l.StartIRCServer(true, flag.Args()...)
+	l.StartIRCServer(false, flag.Args()...)
+	l.StartIRCServer(false, flag.Args()...)
 	l.StartBridge()
 
 	try := 0
