@@ -314,6 +314,7 @@ func main() {
 		printDefault(flag.Lookup("robustirc_message_offset"))
 		printDefault(flag.Lookup("pre1.0_protobuf"))
 		printDefault(flag.Lookup("version"))
+		printDefault(flag.Lookup("flakyhttp_rules_path"))
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "The following flags are optional and provided by glog:\n")
 		printDefault(flag.Lookup("alsologtostderr"))
@@ -376,7 +377,7 @@ func main() {
 
 	if *peerAddr == "" {
 		log.Printf("-peer_addr not set, initializing to %q. Make sure %q is a host:port string that other raft nodes can connect to!\n", *listen, *listen)
-		*peerAddr = *listen
+		flag.Set("peer_addr", *listen)
 	}
 
 	ircServer = ircserver.NewIRCServer(*network, time.Now())
