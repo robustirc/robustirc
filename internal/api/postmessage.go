@@ -68,10 +68,16 @@ func (api *HTTP) handlePostMessage(w http.ResponseWriter, r *http.Request, sessi
 		remoteAddr = host
 	}
 
+	// IRC messages are separated by the newline character, so ensure the
+	// message does not contain any newlines.
+	data := req.Data
+	if idx := strings.IndexByte(data, '\n'); idx > -1 {
+		data = data[:idx]
+	}
 	msg := &robust.Message{
 		Session:         session,
 		Type:            robust.IRCFromClient,
-		Data:            req.Data,
+		Data:            data,
 		ClientMessageId: req.ClientMessageId,
 		RemoteAddr:      remoteAddr,
 	}
