@@ -19,7 +19,6 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hashicorp/raft"
-	"github.com/kardianos/osext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robustirc/internal/robusthttp"
 	"github.com/robustirc/rafthttp"
@@ -35,7 +34,7 @@ const pingInterval = 20 * time.Second
 var executablehash = executableHash()
 
 func executableHash() string {
-	path, err := osext.Executable()
+	path, err := os.Executable()
 	if err != nil {
 		log.Fatal(err)
 	}
