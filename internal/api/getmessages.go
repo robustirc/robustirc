@@ -133,6 +133,20 @@ func (api *HTTP) getMessages(ctx context.Context, lastSeen robust.Id, msgschan c
 	}
 }
 
+// partitioned reports whether this node is neither the leader nor was it
+// recently in contact with the leader, suggesting that it is partitioned from
+// the rest of the network.
+func (api *HTTP) partitioned() bool {
+	// The 10 seconds threshold is arbitrary. The only criterion is
+	// that it must be higher than raft’s HeartbeatTimeout of 2s. The
+	// higher it is chosen, the longer users have to wait until they
+	// can connect to a different node. Note that in the worst case,
+	// |pingInterval| = 20s needs to pass before this threshold is
+	// evaluated.
+	return api.raftNode.State() != raft.Leader &&
+		time.Since(lastContact) > 10*time.Second
+}
+
 func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessionId string) {
 	// Avoid sessionOrProxy() because GetMessages can be answered on any raft
 	// node, it’s a read-only request.
@@ -160,6 +174,16 @@ func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessi
 			Reply: last,
 		}
 		log.Printf("Trying to resume at %v\n", lastSeen)
+	}
+
+	// Fail early if raft is not functional right now:
+	if api.partitioned() {
+		// Reject this GetMessages request so that clients can connect to a
+		// different server and receive new messages.
+		lastContact := api.raftNode.LastContact()
+		log.Printf("Rejecting GetMessages request due to LastContact (%v) too long ago\n", lastContact)
+		http.Error(w, fmt.Sprintf("raft: LastContact (%v) too long ago", lastContact), http.StatusInternalServerError)
+		return
 	}
 
 	// Acknowledge the request even if no messages need to be sent right now:
@@ -239,18 +263,9 @@ func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessi
 
 			api.updateLastContact()
 
-			// The 10 seconds threshold is arbitrary. The only criterion is
-			// that it must be higher than raft’s HeartbeatTimeout of 2s. The
-			// higher it is chosen, the longer users have to wait until they
-			// can connect to a different node. Note that in the worst case,
-			// |pingInterval| = 20s needs to pass before this threshold is
-			// evaluated.
-			if api.raftNode.State() != raft.Leader && time.Since(lastContact) > 10*time.Second {
-				// This node is neither the leader nor was it recently in
-				// contact with the master, indicating that it is partitioned
-				// from the rest of the network. We abort this GetMessages
-				// request so that clients can connect to a different server
-				// and receive new messages.
+			if api.partitioned() {
+				// We abort this GetMessages request so that clients can connect
+				// to a different server and receive new messages.
 				log.Printf("Aborting GetMessages request due to LastContact (%v) too long ago\n", api.raftNode.LastContact())
 				return
 			}
