@@ -162,6 +162,13 @@ func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessi
 		log.Printf("Trying to resume at %v\n", lastSeen)
 	}
 
+	// Acknowledge the request even if no messages need to be sent right now:
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+
 	enc := json.NewEncoder(w)
 	flushTimer := time.NewTimer(1 * time.Second)
 	flushTimer.Stop()
