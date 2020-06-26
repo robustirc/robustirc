@@ -132,7 +132,7 @@ func (l *localnet) SetConfig(config string) error {
 	return robustnet.SetConfig(l.Servers(), config, l.NetworkPassword)
 }
 
-func (l *localnet) StartIRCServer(singlenode bool, args ...string) (*os.Process, string, string) {
+func (l *localnet) StartIRCServer(singlenode bool, args ...string) (*exec.Cmd, string, string) {
 	// TODO(secure): support -persistent
 	tempdir, err := ioutil.TempDir("", "robustirc-localnet-")
 	if err != nil {
@@ -207,9 +207,6 @@ func (l *localnet) StartIRCServer(singlenode bool, args ...string) (*os.Process,
 	if err := cmd.Start(); err != nil {
 		log.Panicf("Could not start robustirc: %v", err)
 	}
-	go func() {
-		cmd.Wait() // reap child
-	}()
 	if err := l.RecordResource("pid", strconv.Itoa(cmd.Process.Pid)); err != nil {
 		log.Panicf("Could not record pid: %v", err)
 	}
@@ -253,10 +250,10 @@ func (l *localnet) StartIRCServer(singlenode bool, args ...string) (*os.Process,
 	log.Printf("Node is available at %s", addr)
 	l.randomPort++
 
-	return cmd.Process, tempdir, addr
+	return cmd, tempdir, addr
 }
 
-func (l *localnet) StartBridge() (*os.Process, string) {
+func (l *localnet) StartBridge() (*exec.Cmd, string) {
 	var servers []string
 	for _, port := range l.Ports {
 		servers = append(servers, fmt.Sprintf("localhost:%d", port))
@@ -328,13 +325,10 @@ func (l *localnet) StartBridge() (*os.Process, string) {
 	if err := cmd.Start(); err != nil {
 		log.Panicf("Could not start robustirc-bridge: %v", err)
 	}
-	go func() {
-		cmd.Wait() // reap child
-	}()
 	if err := l.RecordResource("pid", strconv.Itoa(cmd.Process.Pid)); err != nil {
 		log.Panicf("Could not record pid: %v", err)
 	}
-	return cmd.Process, tempdir
+	return cmd, tempdir
 }
 
 func (l *localnet) Kill(deleteTempdirs bool) {

@@ -206,10 +206,10 @@ func main() {
 	node3, node3dir, _ := l.StartIRCServer(false, flag.Args()...)
 	bridge, bridgedir := l.StartBridge()
 	processes := []*process{
-		{"node1", "1", node1, node1dir},
-		{"node2", "2", node2, node2dir},
-		{"node3", "3", node3, node3dir},
-		{"bridge", "b", bridge, bridgedir},
+		{"node1", "1", node1.Process, node1dir},
+		{"node2", "2", node2.Process, node2dir},
+		{"node3", "3", node3.Process, node3dir},
+		{"bridge", "b", bridge.Process, bridgedir},
 	}
 
 	try := 0
