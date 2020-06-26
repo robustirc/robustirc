@@ -8,8 +8,15 @@
 package main
 
 import (
+	"bufio"
+	"errors"
 	"flag"
+	"fmt"
 	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/robustirc/robustirc/internal/localnet"
@@ -31,6 +38,10 @@ var (
 	port = flag.Int("port",
 		-1,
 		"Port to (try to) use for the first RobustIRC server. If in use, another will be tried.")
+
+	startShell = flag.Bool("shell",
+		false,
+		"Enter interactive shell once RobustIRC network is brought up")
 )
 
 const config = `
@@ -50,6 +61,118 @@ PostMessageCooloff = "0"
 [TrustedBridges]
   "1234567890abcdef1234567890abcdef" = "localnet-bridge"
 `
+
+type process struct {
+	name      string
+	shorthand string
+	process   *os.Process
+	tempdir   string
+}
+
+var errUsage = errors.New("sentinel error: print usage")
+
+func kill(process **os.Process) {
+	if *process == nil {
+		fmt.Println("already killed. use restart command first")
+		return
+	}
+	fmt.Printf("killing pid %v\n", (*process).Pid)
+	(*process).Kill()
+	*process = nil
+}
+
+func restart(process **os.Process, dir string) {
+	if *process != nil {
+		kill(process)
+	}
+	cmd := exec.Command(filepath.Join(dir, "restart.sh"))
+	if err := cmd.Start(); err != nil {
+		fmt.Println(err)
+		return
+	}
+	*process = cmd.Process
+	go func() {
+		cmd.Wait() // reap child process
+	}()
+}
+
+func (s *shell) cmdKill(args []string) error {
+	if len(args) == 0 {
+		return errUsage
+	}
+
+	for _, p := range s.processes {
+		if args[0] != p.name && args[0] != p.shorthand {
+			continue
+		}
+		kill(&p.process)
+		return nil
+	}
+	return fmt.Errorf("invalid argument %q: expected one of bridge, node1, node2, node", args[0])
+}
+
+func (s *shell) cmdRestart(args []string) error {
+	if len(args) == 0 {
+		return errUsage
+	}
+
+	for _, p := range s.processes {
+		if args[0] != p.name && args[0] != p.shorthand {
+			continue
+		}
+		restart(&p.process, p.tempdir)
+		return nil
+	}
+	return fmt.Errorf("invalid argument %q: expected one of bridge, node1, node2, node", args[0])
+}
+
+type shell struct {
+	processes []*process
+}
+
+func (s *shell) run() error {
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Printf("robustirc-localnet> ")
+		if !scanner.Scan() {
+			break
+		}
+		line := strings.TrimSpace(scanner.Text())
+		fields := strings.Fields(line)
+		usage := func() {
+			fmt.Print(`
+Help:
+	kill <nodeN>|<bridge>
+	restart <nodeN>
+
+`)
+		}
+		if len(fields) == 0 || strings.EqualFold(fields[0], "help") {
+			usage()
+			continue
+		}
+		var err error
+		switch fields[0] {
+		default:
+			err = errUsage
+
+		case "kill", "k":
+			err = s.cmdKill(fields[1:])
+
+		case "restart", "r":
+			err = s.cmdRestart(fields[1:])
+		}
+		if err != nil {
+			if err == errUsage {
+				usage()
+			} else {
+				log.Print(err)
+			}
+			continue
+		}
+	}
+	return scanner.Err()
+}
 
 func main() {
 	flag.Parse()
@@ -78,10 +201,16 @@ func main() {
 		l.Kill(*deleteTempdirs)
 	}()
 
-	l.StartIRCServer(true, flag.Args()...)
-	l.StartIRCServer(false, flag.Args()...)
-	l.StartIRCServer(false, flag.Args()...)
-	l.StartBridge()
+	node1, node1dir, _ := l.StartIRCServer(true, flag.Args()...)
+	node2, node2dir, _ := l.StartIRCServer(false, flag.Args()...)
+	node3, node3dir, _ := l.StartIRCServer(false, flag.Args()...)
+	bridge, bridgedir := l.StartBridge()
+	processes := []*process{
+		{"node1", "1", node1, node1dir},
+		{"node2", "2", node2, node2dir},
+		{"node3", "3", node3, node3dir},
+		{"bridge", "b", bridge, bridgedir},
+	}
 
 	try := 0
 	for try < 10 {
@@ -96,5 +225,14 @@ func main() {
 
 	if err := l.SetConfig(config); err != nil {
 		log.Printf("Could not change config: %v\n", err)
+	}
+
+	if *startShell {
+		s := shell{
+			processes: processes,
+		}
+		if err := s.run(); err != nil {
+			log.Print(err)
+		}
 	}
 }
