@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"flag"
@@ -211,12 +212,15 @@ func joinMaster(addr string, peerStore *raft.JSONPeers) []string {
 	if err != nil {
 		log.Fatal(err)
 	}
+	ctx, canc := context.WithTimeout(context.Background(), 1*time.Minute)
+	defer canc()
+	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
 	if res, err := client.Do(req); err != nil {
-		log.Fatal("Could not send join request:", err)
+		log.Fatal("Could not send join request: ", err)
 	} else if res.StatusCode > 399 {
 		data, _ := ioutil.ReadAll(res.Body)
-		log.Fatal("Join request failed:", string(data))
+		log.Fatal("Join request failed: ", string(data))
 	} else if res.StatusCode > 299 {
 		loc := res.Header.Get("Location")
 		if loc == "" {
@@ -233,7 +237,7 @@ func joinMaster(addr string, peerStore *raft.JSONPeers) []string {
 	log.Printf("Adding master %q as peer\n", addr)
 	p, err := peerStore.Peers()
 	if err != nil {
-		log.Fatal("Could not read peers:", err)
+		log.Fatal("Could not read peers: ", err)
 	}
 	p = raft.AddUniquePeer(p, addr)
 	peerStore.SetPeers(p)
