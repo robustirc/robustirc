@@ -54,6 +54,10 @@ github.com/robustirc/bridge v1.7.3 h1:rNeZw+W/SSyU8jF7FYbCqg2M4fGPQj/3HaePcEBws9
 github.com/robustirc/bridge v1.7.3/go.mod h1:/BC0GGix13AzZKm99Hb80m3OEp4Q3GS6hkwSAN16VBw=
 github.com/robustirc/internal v0.0.0-20200118122313-7c28db6d51ab h1:iZHNIhgT83ZHdKSbQzsv2LlWAwJxXP7v1JJhcs+hFdU=
 github.com/robustirc/internal v0.0.0-20200118122313-7c28db6d51ab/go.mod h1:hAqWzE0QHcsiwoxN1nHuSHT1y9ulj5CkSXbA2Gp8oVA=
+github.com/robustirc/internal v0.0.0-20200723111553-dad3242a9095 h1:PNbrqDAqo3oT7ZpgAOswdhVS2e89jwuHelcpvf9zBy8=
+github.com/robustirc/internal v0.0.0-20200723111553-dad3242a9095/go.mod h1:hAqWzE0QHcsiwoxN1nHuSHT1y9ulj5CkSXbA2Gp8oVA=
+github.com/robustirc/internal v0.0.0-20200723112107-0d1c726d8c3a h1:IrXULqRIkH4gzDB+eLvpb/bQMeLyHy3z3YosSrkNjL0=
+github.com/robustirc/internal v0.0.0-20200723112107-0d1c726d8c3a/go.mod h1:hAqWzE0QHcsiwoxN1nHuSHT1y9ulj5CkSXbA2Gp8oVA=
 github.com/robustirc/rafthttp v0.0.0-20160522203950-0785f8c77b66 h1:tQSomnse16MbLgoqtyIDn/nH3fME9PvPpyYcnfA0C5g=
 github.com/robustirc/rafthttp v0.0.0-20160522203950-0785f8c77b66/go.mod h1:l55/CrGfro/Ss2yiNLyMOCuHFzll0IoOcqGkGQivC1c=
 github.com/sergi/go-diff v1.0.0 h1:Kpca3qRNrduNnOQeazBd0ysaKrUJiIuISHxogkT9RPQ=
