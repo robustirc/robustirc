@@ -69,7 +69,7 @@ func randomPassword(n int) (string, error) {
 type localnet struct {
 	dir             string
 	Ports           []int
-	randomPort      int
+	RandomPort      int
 	NetworkPassword string
 	// By default: a http.Client which has the generated SSL certificate in its
 	// list of root CAs.
@@ -154,7 +154,7 @@ func (l *localnet) StartIRCServer(singlenode bool, args ...string) (*exec.Cmd, s
 		"-tls_cert_path="+filepath.Join(l.dir, "cert.pem"),
 		"-tls_ca_file="+filepath.Join(l.dir, "cert.pem"),
 		"-tls_key_path="+filepath.Join(l.dir, "key.pem"),
-		fmt.Sprintf("-listen=localhost:%d", l.randomPort),
+		fmt.Sprintf("-listen=localhost:%d", l.RandomPort),
 		"-alsologtostderr", // tail -f stderr.txt
 		"-raftdir="+tempdir,
 		"-log_dir="+tempdir)
@@ -225,7 +225,7 @@ func (l *localnet) StartIRCServer(singlenode bool, args ...string) (*exec.Cmd, s
 	try := 0
 	running := false
 	for !running && try < 20 {
-		req, err := http.NewRequest("GET", fmt.Sprintf("https://localhost:%d/", l.randomPort), nil)
+		req, err := http.NewRequest("GET", fmt.Sprintf("https://localhost:%d/", l.RandomPort), nil)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -246,7 +246,7 @@ func (l *localnet) StartIRCServer(singlenode bool, args ...string) (*exec.Cmd, s
 		// TODO(secure): retry on a different port.
 		log.Fatal("robustirc was not reachable via HTTP after 5s")
 	}
-	l.Ports = append(l.Ports, l.randomPort)
+	l.Ports = append(l.Ports, l.RandomPort)
 
 	if singlenode {
 		for try := 0; try < 10; try++ {
@@ -260,10 +260,10 @@ func (l *localnet) StartIRCServer(singlenode bool, args ...string) (*exec.Cmd, s
 		}
 	}
 
-	addr := fmt.Sprintf("https://robustirc:%s@localhost:%d/", l.NetworkPassword, l.randomPort)
+	addr := fmt.Sprintf("https://robustirc:%s@localhost:%d/", l.NetworkPassword, l.RandomPort)
 
 	log.Printf("Node is available at %s", addr)
-	l.randomPort++
+	l.RandomPort++
 
 	return cmd, tempdir, addr
 }
@@ -442,9 +442,9 @@ func NewLocalnet(port int, dir string) (*localnet, error) {
 	// NOTE: 55535 instead of 65535 is intentional, so that the
 	// startircserver() can increase the port to find a higher unused port.
 	if port > -1 {
-		result.randomPort = port
+		result.RandomPort = port
 	} else {
-		result.randomPort = 49152 + rand.Intn(55535-49152)
+		result.RandomPort = 49152 + rand.Intn(55535-49152)
 	}
 
 	result.NetworkPassword = os.Getenv("ROBUSTIRC_NETWORK_PASSWORD")
