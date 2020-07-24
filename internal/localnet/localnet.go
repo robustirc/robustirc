@@ -144,7 +144,7 @@ func (l *localnet) SetConfig(config string) error {
 
 func (l *localnet) StartIRCServer(singlenode bool, args ...string) (*exec.Cmd, string, string) {
 	// TODO(secure): support -persistent
-	tempdir, err := ioutil.TempDir("", "robustirc-localnet-")
+	tempdir, err := ioutil.TempDir(l.dir, "robustirc-localnet-")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func (l *localnet) StartBridge() (*exec.Cmd, string) {
 		"-http=localhost:6171",
 	}
 
-	tempdir, err := ioutil.TempDir("", "robustirc-bridge-")
+	tempdir, err := ioutil.TempDir(l.dir, "robustirc-bridge-")
 	if err != nil {
 		log.Fatal(err)
 	}
