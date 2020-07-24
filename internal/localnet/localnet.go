@@ -105,9 +105,6 @@ func (l *localnet) leader(port int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err != nil {
-		return "", err
-	}
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("%q: got HTTP %v, expected 200\n", url, resp.Status)
 	}
