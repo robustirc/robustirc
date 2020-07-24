@@ -71,8 +71,11 @@ type localnet struct {
 	Ports           []int
 	randomPort      int
 	NetworkPassword string
-	// An http.Client which has the generated SSL certificate in its list of root CAs.
-	Httpclient *http.Client
+	// By default: a http.Client which has the generated SSL certificate in its
+	// list of root CAs.
+	Httpclient interface {
+		Do(*http.Request) (*http.Response, error)
+	}
 
 	// EnablePanicCommand is passed to the RobustIRC server processes in the
 	// ROBUSTIRC_TESTING_ENABLE_PANIC_COMMAND environment variable. If set to
@@ -94,7 +97,14 @@ func (l *localnet) RecordResource(rtype string, value string) error {
 
 func (l *localnet) leader(port int) (string, error) {
 	url := fmt.Sprintf("https://robustirc:%s@localhost:%d/leader", l.NetworkPassword, port)
-	resp, err := l.Httpclient.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := l.Httpclient.Do(req)
+	if err != nil {
+		return "", err
+	}
 	if err != nil {
 		return "", err
 	}
@@ -215,7 +225,12 @@ func (l *localnet) StartIRCServer(singlenode bool, args ...string) (*exec.Cmd, s
 	try := 0
 	running := false
 	for !running && try < 20 {
-		_, err := l.Httpclient.Get(fmt.Sprintf("https://localhost:%d/", l.randomPort))
+		req, err := http.NewRequest("GET", fmt.Sprintf("https://localhost:%d/", l.randomPort), nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		_, err = l.Httpclient.Do(req)
 		if err != nil {
 			try++
 			time.Sleep(250 * time.Millisecond)
