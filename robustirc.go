@@ -397,9 +397,6 @@ func main() {
 	config.Logger = hclog.FromStandardLogger(
 		log.New(glog.LogBridgeFor("INFO"), "", log.Lshortfile),
 		hclog.DefaultOptions)
-	if *dumpCanaryState != "" {
-		config.StartAsLeader = true
-	}
 
 	// Keep 5 snapshots in *raftDir/snapshots, log to stderr.
 	fss, err := raft.NewFileSnapshotStoreWithLogger(*raftDir, 5, config.Logger)
