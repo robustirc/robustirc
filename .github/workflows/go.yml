@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  installandtest:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Ensure all files were formatted as per gofmt
+      run: |
+        [ "$(gofmt -l $(find . -name '*.go') 2>&1)" = "" ]
+
+    - name: install binaries
+      run: go install ./cmd/... ./ github.com/robustirc/bridge/robustirc-bridge
+
+    - name: run tests
+      run: |
+        export PATH=$PATH:$(go env GOPATH)/bin
+        go test ./...
+
