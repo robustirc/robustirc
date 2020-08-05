@@ -95,6 +95,7 @@ type HTTP struct {
 	raftProtocolVersion int
 }
 
+// NewHTTP creates a new HTTP API handler.
 func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, ircStore *raftstore.LevelDBStore, output *outputstream.OutputStream, transport *rafthttp.HTTPTransport, network string, networkPassword string, raftDir string, peerAddr string, mux *http.ServeMux, useProtobuf bool, raftProtocolVersion int) *HTTP {
 	api := &HTTP{
 		ircServer:           ircServer,
