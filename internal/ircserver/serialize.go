@@ -90,7 +90,11 @@ func (i *IRCServer) Marshal(lastIncludedIndex uint64) ([]byte, error) {
 			// channelNickModes goes from chanop to maxChanMemberStatus.
 			for mode, value := range channelNickModes {
 				if value {
-					modes = append(modes, string(mode))
+					// string(rune(mode)) is not the best choice, but we
+					// accidentally started using it before Go warned about it,
+					// and it’s not terrible enough to warrant sequencing a
+					// change either…
+					modes = append(modes, string(rune(mode)))
 				}
 			}
 			nicks[string(nickName)] = &pb.Snapshot_Channel_Modes{Mode: modes}
