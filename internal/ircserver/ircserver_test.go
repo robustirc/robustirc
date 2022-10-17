@@ -49,13 +49,14 @@ func stdIRCServer() (*IRCServer, map[string]robust.Id) {
 // before failing the test if they don’t match byte for byte:
 //
 // --- FAIL: TestAway (0.00s)
-// 	ircserver_test.go:285: got (2 messages):
-// 	ircserver_test.go:287:     :s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :you there?
-// 	ircserver_test.go:287:     :robustirc.net 301 s[E]CuRE mero :upgrading server
-// 	ircserver_test.go:289: want (2 messages):
-// 	ircserver_test.go:291:     :s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :yo there?
-// 	ircserver_test.go:291:     :robustirc.net 301 s[E]CuRE mero :upgrading server
-// 	ircserver_test.go:293: ProcessMessage() return value does not match expectation: got [:s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :you there? :robustirc.net 301 s[E]CuRE mero :upgrading server], want [:s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :yo there? :robustirc.net 301 s[E]CuRE mero :upgrading server]
+//
+//	ircserver_test.go:285: got (2 messages):
+//	ircserver_test.go:287:     :s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :you there?
+//	ircserver_test.go:287:     :robustirc.net 301 s[E]CuRE mero :upgrading server
+//	ircserver_test.go:289: want (2 messages):
+//	ircserver_test.go:291:     :s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :yo there?
+//	ircserver_test.go:291:     :robustirc.net 301 s[E]CuRE mero :upgrading server
+//	ircserver_test.go:293: ProcessMessage() return value does not match expectation: got [:s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :you there? :robustirc.net 301 s[E]CuRE mero :upgrading server], want [:s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :yo there? :robustirc.net 301 s[E]CuRE mero :upgrading server]
 func mustMatchIrcmsgs(t *testing.T, got *Replyctx, want []*irc.Message) {
 	// TODO: mark mustMatchIrcmsgs as a helper function once
 	// https://github.com/golang/go/issues/4899 is addressed.

@@ -3,18 +3,20 @@
 // DO NOT EDIT!
 
 /*
-	Package proto is a generated protocol buffer package.
+Package proto is a generated protocol buffer package.
 
-	It is generated from these files:
-		types.proto
-		snapshot.proto
+It is generated from these files:
 
-	It has these top-level messages:
-		RobustId
-		RobustMessage
-		RaftLog
-		Timestamp
-		Snapshot
+	types.proto
+	snapshot.proto
+
+It has these top-level messages:
+
+	RobustId
+	RobustMessage
+	RaftLog
+	Timestamp
+	Snapshot
 */
 package proto
 
