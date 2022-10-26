@@ -119,8 +119,6 @@ func TestCompaction(t *testing.T) {
 	outputStream, err = outputstream.NewOutputStream("")
 
 	tempdir := t.TempDir()
-	defer os.RemoveAll(tempdir)
-
 	flag.Set("raftdir", tempdir)
 
 	logstore, err := raftstore.NewLevelDBStore(filepath.Join(tempdir, "raftlog"), false, false)
