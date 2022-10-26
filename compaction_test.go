@@ -118,10 +118,7 @@ func TestCompaction(t *testing.T) {
 	var err error
 	outputStream, err = outputstream.NewOutputStream("")
 
-	tempdir, err := ioutil.TempDir("", "robust-test-")
-	if err != nil {
-		t.Fatalf("ioutil.TempDir: %v", err)
-	}
+	tempdir := t.TempDir()
 	defer os.RemoveAll(tempdir)
 
 	flag.Set("raftdir", tempdir)
