@@ -118,12 +118,7 @@ func TestCompaction(t *testing.T) {
 	var err error
 	outputStream, err = outputstream.NewOutputStream("")
 
-	tempdir, err := ioutil.TempDir("", "robust-test-")
-	if err != nil {
-		t.Fatalf("ioutil.TempDir: %v", err)
-	}
-	defer os.RemoveAll(tempdir)
-
+	tempdir := t.TempDir()
 	flag.Set("raftdir", tempdir)
 
 	logstore, err := raftstore.NewLevelDBStore(filepath.Join(tempdir, "raftlog"), false, false)

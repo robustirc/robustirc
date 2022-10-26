@@ -1,7 +1,6 @@
 package mod_test
 
 import (
-	"io/ioutil"
 	"net/http"
 	"os/exec"
 	"path/filepath"
@@ -19,10 +18,7 @@ import (
 )
 
 func TestMessageOfDeath(t *testing.T) {
-	tempdir, err := ioutil.TempDir("", "robustirc-message-of-death-")
-	if err != nil {
-		t.Fatalf("Could not create tempdir: %v", err)
-	}
+	tempdir := t.TempDir()
 
 	l, err := localnet.NewLocalnet(-1, tempdir)
 	if err != nil {
