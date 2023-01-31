@@ -174,12 +174,12 @@ func TestInterrupt(t *testing.T) {
 	unblocked2 := make(chan bool)
 
 	go func() {
-		msgs = os.GetNext(ctx1, msgs[0].Id)
+		os.GetNext(ctx1, msgs[0].Id)
 		unblocked1 <- true
 	}()
 
 	go func() {
-		msgs = os.GetNext(ctx2, msgs[0].Id)
+		os.GetNext(ctx2, msgs[0].Id)
 		unblocked2 <- true
 	}()
 
