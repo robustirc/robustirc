@@ -96,6 +96,30 @@ func restart(process **os.Process, dir string) {
 	}()
 }
 
+func (s *shell) cmdDelete(args []string) error {
+	if len(args) == 0 {
+		return errUsage
+	}
+
+	for _, p := range s.processes {
+		if args[0] != p.name && args[0] != p.shorthand {
+			continue
+		}
+		kill(&p.process)
+		if err := os.RemoveAll(filepath.Join(p.tempdir, "raftlog")); err != nil {
+			return err
+		}
+		if err := os.RemoveAll(filepath.Join(p.tempdir, "irclog")); err != nil {
+			return err
+		}
+		if err := os.RemoveAll(filepath.Join(p.tempdir, "snapshots")); err != nil {
+			return err
+		}
+		return nil
+	}
+	return fmt.Errorf("invalid argument %q: expected one of bridge, node1, node2, node3", args[0])
+}
+
 func (s *shell) cmdKill(args []string) error {
 	if len(args) == 0 {
 		return errUsage
@@ -108,7 +132,7 @@ func (s *shell) cmdKill(args []string) error {
 		kill(&p.process)
 		return nil
 	}
-	return fmt.Errorf("invalid argument %q: expected one of bridge, node1, node2, node", args[0])
+	return fmt.Errorf("invalid argument %q: expected one of bridge, node1, node2, node3", args[0])
 }
 
 func (s *shell) cmdRestart(args []string) error {
@@ -123,7 +147,7 @@ func (s *shell) cmdRestart(args []string) error {
 		restart(&p.process, p.tempdir)
 		return nil
 	}
-	return fmt.Errorf("invalid argument %q: expected one of bridge, node1, node2, node", args[0])
+	return fmt.Errorf("invalid argument %q: expected one of bridge, node1, node2, node3", args[0])
 }
 
 type shell struct {
@@ -143,6 +167,7 @@ func (s *shell) run() error {
 			fmt.Print(`
 Help:
 	kill <nodeN>|<bridge>
+	delete <nodeN>
 	restart <nodeN>
 
 `)
@@ -161,6 +186,9 @@ Help:
 
 		case "restart", "r":
 			err = s.cmdRestart(fields[1:])
+
+		case "delete", "d":
+			err = s.cmdDelete(fields[1:])
 		}
 		if err != nil {
 			if err == errUsage {
