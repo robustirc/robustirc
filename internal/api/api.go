@@ -123,10 +123,6 @@ var (
 	// for each node (since the current leader might change abruptly).
 	nodeProxies   = make(map[string]*httputil.ReverseProxy)
 	nodeProxiesMu sync.RWMutex
-
-	// lastContact stores either node.LastContact() for non-leaders or
-	// time.Now() for leaders.
-	lastContact = time.Now()
 )
 
 // GetMessageStats encapsulates information about a GetMessages request.

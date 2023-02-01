@@ -17,17 +17,6 @@ import (
 	"github.com/stapelberg/glog"
 )
 
-func (api *HTTP) updateLastContact() {
-	r := api.raftNode
-	// node.LastContact() is only updated when we receive heartbeats from the
-	// leader, i.e. only when we are a follower.
-	if r.State() == raft.Follower && !r.LastContact().IsZero() {
-		lastContact = r.LastContact()
-	} else if r.State() == raft.Leader {
-		lastContact = time.Now()
-	}
-}
-
 func (api *HTTP) pingMessage() *robust.Message {
 	cfgf := api.raftNode.GetConfiguration()
 	if err := cfgf.Error(); err != nil {
@@ -141,15 +130,24 @@ func (api *HTTP) getMessages(ctx context.Context, lastSeen robust.Id, msgschan c
 // partitioned reports whether this node is neither the leader nor was it
 // recently in contact with the leader, suggesting that it is partitioned from
 // the rest of the network.
-func (api *HTTP) partitioned() bool {
-	// The 10 seconds threshold is arbitrary. The only criterion is
-	// that it must be higher than raft’s HeartbeatTimeout of 2s. The
-	// higher it is chosen, the longer users have to wait until they
-	// can connect to a different node. Note that in the worst case,
-	// |pingInterval| = 20s needs to pass before this threshold is
-	// evaluated.
-	return api.raftNode.State() != raft.Leader &&
-		time.Since(lastContact) > 10*time.Second
+func (api *HTTP) partitioned() (time.Time, bool) {
+	state := api.raftNode.State()
+	if state == raft.Leader {
+		return time.Time{}, false
+	}
+
+	if state == raft.Follower {
+		// The 10 seconds threshold is arbitrary. The only criterion is
+		// that it must be higher than raft’s HeartbeatTimeout of 2s. The
+		// higher it is chosen, the longer users have to wait until they
+		// can connect to a different node.
+		lastContact := api.raftNode.LastContact()
+		return lastContact, time.Since(lastContact) > 10*time.Second
+	}
+
+	// Neither leader nor follower, maybe still trying to join the network after
+	// restarting?
+	return time.Time{}, true
 }
 
 func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessionId string) {
@@ -182,10 +180,9 @@ func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessi
 	}
 
 	// Fail early if raft is not functional right now:
-	if api.partitioned() {
+	if lastContact, partitioned := api.partitioned(); partitioned {
 		// Reject this GetMessages request so that clients can connect to a
 		// different server and receive new messages.
-		lastContact := api.raftNode.LastContact()
 		log.Printf("Rejecting GetMessages request due to LastContact (%v) too long ago\n", lastContact)
 		http.Error(w, fmt.Sprintf("raft: LastContact (%v) too long ago", lastContact), http.StatusInternalServerError)
 		return
@@ -266,12 +263,10 @@ func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessi
 				return
 			}
 
-			api.updateLastContact()
-
-			if api.partitioned() {
+			if lastContact, partitioned := api.partitioned(); partitioned {
 				// We abort this GetMessages request so that clients can connect
 				// to a different server and receive new messages.
-				log.Printf("Aborting GetMessages request due to LastContact (%v) too long ago\n", api.raftNode.LastContact())
+				log.Printf("Aborting GetMessages request due to LastContact (%v) too long ago\n", lastContact)
 				return
 			}
 
