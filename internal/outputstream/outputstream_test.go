@@ -1,13 +1,12 @@
 package outputstream
 
 import (
+	"context"
 	"runtime"
 	"testing"
 	"time"
 
 	"github.com/robustirc/robustirc/internal/robust"
-
-	"golang.org/x/net/context"
 )
 
 func addEmptyMsg(os *OutputStream, id, reply uint64) {

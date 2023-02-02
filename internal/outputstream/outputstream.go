@@ -8,6 +8,7 @@
 package outputstream
 
 import (
+	"context"
 	"encoding/binary"
 	"io/ioutil"
 	"log"
@@ -16,8 +17,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"golang.org/x/net/context"
 
 	"github.com/robustirc/robustirc/internal/robust"
 	"github.com/syndtr/goleveldb/leveldb"

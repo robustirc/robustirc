@@ -1,13 +1,13 @@
 package main
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/robustirc/robustirc/internal/ircserver"
 	"github.com/robustirc/robustirc/internal/outputstream"
 	"github.com/robustirc/robustirc/internal/robust"
-	"golang.org/x/net/context"
 	"gopkg.in/sorcix/irc.v2"
 )
 
