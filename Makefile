@@ -9,7 +9,7 @@ all: container
 
 container:
 	go generate
-	go build -ldflags "-X 'main.Version=${VERSION}'"
+	CGO_ENABLED=0 go build -ldflags "-X 'main.Version=${VERSION}'"
 	# This list is from go/src/crypto/x509/root_unix.go.
 	install $(shell ls \
 /etc/ssl/certs/ca-certificates.crt \
