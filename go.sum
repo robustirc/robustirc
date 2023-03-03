@@ -110,11 +110,10 @@ github.com/prometheus/procfs v0.0.8 h1:+fpWZdT24pJBiqJdAwYBjPSk+5YmQzYNPYzQsdzLk
 github.com/prometheus/procfs v0.0.8/go.mod h1:7Qr8sr6344vo1JqZ6HhLceV9o3AJ1Ff+GxbHq6oeK9A=
 github.com/rjeczalik/notify v0.9.2 h1:MiTWrPj55mNDHEiIX5YUSKefw/+lCQVoAFmD6oQm5w8=
 github.com/rjeczalik/notify v0.9.2/go.mod h1:aErll2f0sUX9PXZnVNyeiObbmTlk5jnMoCa4QEjJeqM=
-github.com/robustirc/bridge v1.7.3/go.mod h1:/BC0GGix13AzZKm99Hb80m3OEp4Q3GS6hkwSAN16VBw=
 github.com/robustirc/bridge v1.7.4-0.20200723135014-0da71ab55111 h1:MljqgGKhj0d2ewi1LzsP547Bkckm41nqhyjv9kfkNwQ=
 github.com/robustirc/bridge v1.7.4-0.20200723135014-0da71ab55111/go.mod h1:rvFLubPZZr88qw52X07Pv/Sd3yvSzi5rXriGAWyg5p4=
-github.com/robustirc/internal v0.0.0-20200723112107-0d1c726d8c3a h1:IrXULqRIkH4gzDB+eLvpb/bQMeLyHy3z3YosSrkNjL0=
-github.com/robustirc/internal v0.0.0-20200723112107-0d1c726d8c3a/go.mod h1:hAqWzE0QHcsiwoxN1nHuSHT1y9ulj5CkSXbA2Gp8oVA=
+github.com/robustirc/internal v0.0.0-20220204120844-14d7a6b96cf5 h1:NdSWVOXvKtS4JBr4KdKqmWpvdDjMWq7+BN1m+k3x5fE=
+github.com/robustirc/internal v0.0.0-20220204120844-14d7a6b96cf5/go.mod h1:ZcLMCK5JAhoYsG0tDzm43OQQVM4Zg8V2YuKRqEtU5bw=
 github.com/robustirc/rafthttp v0.0.0-20160522203950-0785f8c77b66/go.mod h1:l55/CrGfro/Ss2yiNLyMOCuHFzll0IoOcqGkGQivC1c=
 github.com/robustirc/rafthttp v0.0.0-20200730141850-f3c10122992a h1:nd4lEOf+iV78fpc1Fx0hV15gDe7hH0J9YPK2+YNKAic=
 github.com/robustirc/rafthttp v0.0.0-20200730141850-f3c10122992a/go.mod h1:aai3AChT15PEVYuxs3ZMvlYsLsuou6zwtNZoGcYlUQQ=
