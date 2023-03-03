@@ -98,7 +98,7 @@ var (
 
 	// XXX(1.0): delete this flag
 	useProtobuf = flag.Bool("pre1.0_protobuf",
-		false,
+		true,
 		"Encode raft messages, store values and snapshots using protobuf (true) instead of JSON (false). Defaults to JSON, but protobuf will become the default in version 1.0")
 
 	node      *raft.Raft
