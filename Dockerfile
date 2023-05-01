@@ -1,15 +1,19 @@
 # Start with busybox, but with libc.so.6
-FROM busybox:ubuntu-14.04
+FROM busybox:latest
+
+ARG TARGETARCH
 
 MAINTAINER Michael Stapelberg <michael@robustirc.net>
 
+# Remove existing nobody user from /etc/passwd
+RUN sed -ni '/nobody/!p' /etc/passwd
 # So that we can run as unprivileged user inside the container.
 RUN echo 'nobody:x:99:99:nobody:/:/bin/sh' >> /etc/passwd
 
 USER nobody
 
 ADD ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-ADD robustirc /usr/bin/robustirc
+ADD robustirc.${TARGETARCH} /usr/bin/robustirc
 
 # RobustIRC listens on port 443 by default, but a port in the dynamic port
 # range (49152 to 65535) should be used when exposing this port on the host.
