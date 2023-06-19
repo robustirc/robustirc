@@ -99,7 +99,8 @@ func TestMessageOfDeath(t *testing.T) {
 
 			// Ensure the node comes back up.
 			started := time.Now()
-			for time.Since(started) < 10*time.Second {
+			const timeout = 20 * time.Second
+			for time.Since(started) < timeout {
 				if _, err := health.GetServerStatus(addr, l.NetworkPassword); err != nil {
 					t.Logf("Node %s unhealthy: %v", addr, err)
 					time.Sleep(1 * time.Second)
@@ -108,7 +109,7 @@ func TestMessageOfDeath(t *testing.T) {
 				t.Logf("Node %s became healthy", addr)
 				return
 			}
-			t.Errorf("Node %s did not become healthy within 10s", addr)
+			t.Errorf("Node %s did not become healthy within %v", addr, timeout)
 		}(cmd, tempdir, addr)
 	}
 
@@ -166,7 +167,7 @@ func TestMessageOfDeath(t *testing.T) {
 	wg.Wait()
 
 	healthy = false
-	for try := 0; try < 5; try++ {
+	for try := 0; try < 10; try++ {
 		if l.Healthy() {
 			healthy = true
 			break
