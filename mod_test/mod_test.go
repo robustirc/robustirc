@@ -84,9 +84,9 @@ func TestMessageOfDeath(t *testing.T) {
 			// Wait for the server to either crash or skip a message of death.
 			select {
 			case <-terminated:
-				t.Logf("Node terminated (as expected)")
+				t.Logf("Node %s terminated (as expected)", addr)
 			case <-skipped:
-				t.Logf("Node skipped message of death")
+				t.Logf("Node %s skipped message of death", addr)
 			}
 
 			// Run restart.sh for that node.
@@ -108,7 +108,7 @@ func TestMessageOfDeath(t *testing.T) {
 				t.Logf("Node %s became healthy", addr)
 				return
 			}
-			t.Errorf("Node did not become healthy within 10s")
+			t.Errorf("Node %s did not become healthy within 10s", addr)
 		}(cmd, tempdir, addr)
 	}
 
