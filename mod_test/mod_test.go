@@ -112,6 +112,21 @@ func TestMessageOfDeath(t *testing.T) {
 		}(cmd, tempdir, addr)
 	}
 
+	// All servers are running. Wait for the network to become healthy, i.e. all
+	// servers agreeing on the election status.
+	healthy := false
+	for try := 0; try < 10; try++ {
+		if l.Healthy() {
+			healthy = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	if !healthy {
+		t.Fatalf("Expected healthy network, but not all nodes are healthy")
+	}
+
 	// Connect and send the PANIC message.
 	session, err := robustsession.Create(strings.Join(l.Servers(), ","), filepath.Join(tempdir, "cert.pem"))
 	if err != nil {
@@ -150,7 +165,7 @@ func TestMessageOfDeath(t *testing.T) {
 
 	wg.Wait()
 
-	healthy := false
+	healthy = false
 	for try := 0; try < 5; try++ {
 		if l.Healthy() {
 			healthy = true
