@@ -153,6 +153,10 @@ func (l *localnet) StartIRCServer(singlenode bool, args ...string) (*exec.Cmd, s
 		"-tls_key_path="+filepath.Join(l.dir, "key.pem"),
 		fmt.Sprintf("-listen=localhost:%d", l.RandomPort),
 		"-alsologtostderr", // tail -f stderr.txt
+		// The timesafeguard protects production deployments from clock skew,
+		// but in noisy CI runner environments, we let the clock drift to reduce
+		// test flakiness.
+		"-disable_timesafeguard",
 		"-raftdir="+tempdir,
 		"-log_dir="+tempdir)
 
