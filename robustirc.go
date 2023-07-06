@@ -448,6 +448,9 @@ func main() {
 		store:             logStore,
 		ircstore:          ircStore,
 		lastSnapshotState: make(map[uint64][]byte),
+		ReplaceState: func(*ircserver.IRCServer, *raftstore.LevelDBStore, *outputstream.OutputStream) {
+			// no-op, will be replaced down below with api.ReplaceState
+		},
 	}
 	logcache, err := raft.NewLogCache(config.MaxAppendEntries, logStore)
 	if err != nil {
@@ -535,6 +538,8 @@ func main() {
 		http.DefaultServeMux,
 		*useProtobuf,
 		*raftProtocolVersion)
+
+	fsm.ReplaceState = api.ReplaceState
 
 	srv := http.Server{Addr: *listen}
 	if err := http2.ConfigureServer(&srv, nil); err != nil {

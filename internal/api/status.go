@@ -31,7 +31,7 @@ func (api *HTTP) handleStatusGetMessage(w http.ResponseWriter, req *http.Request
 		Addr:               api.peerAddr,
 		GetMessageRequests: api.copyGetMessagesRequests(),
 		CurrentLink:        "/status/getmessage",
-		Sessions:           api.ircServer.GetSessions(),
+		Sessions:           api.ircServer().GetSessions(),
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -46,7 +46,7 @@ func (api *HTTP) handleStatusSessions(w http.ResponseWriter, req *http.Request) 
 		GetMessageRequests map[string]GetMessagesStats
 	}{
 		Addr:               api.peerAddr,
-		Sessions:           api.ircServer.GetSessions(),
+		Sessions:           api.ircServer().GetSessions(),
 		CurrentLink:        "/status/sessions",
 		GetMessageRequests: api.copyGetMessagesRequests(),
 	}); err != nil {
@@ -57,7 +57,7 @@ func (api *HTTP) handleStatusSessions(w http.ResponseWriter, req *http.Request) 
 
 func (api *HTTP) handleStatusState(w http.ResponseWriter, req *http.Request) {
 	textState := "state serialization failed"
-	state, err := api.ircServer.Marshal(0)
+	state, err := api.ircServer().Marshal(0)
 	if err != nil {
 		textState = fmt.Sprintf("state serialization failed: %v", err)
 	} else {
@@ -81,7 +81,7 @@ func (api *HTTP) handleStatusState(w http.ResponseWriter, req *http.Request) {
 		Addr:               api.peerAddr,
 		ServerState:        textState,
 		CurrentLink:        "/status/state",
-		Sessions:           api.ircServer.GetSessions(),
+		Sessions:           api.ircServer().GetSessions(),
 		GetMessageRequests: api.copyGetMessagesRequests(),
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -90,13 +90,13 @@ func (api *HTTP) handleStatusState(w http.ResponseWriter, req *http.Request) {
 }
 
 func (api *HTTP) handleStatusIrclog(w http.ResponseWriter, req *http.Request) {
-	lo, err := api.ircStore.FirstIndex()
+	lo, err := api.ircStore().FirstIndex()
 	if err != nil {
 		log.Printf("Could not get first index: %v", err)
 		http.Error(w, "internal error", 500)
 		return
 	}
-	hi, err := api.ircStore.LastIndex()
+	hi, err := api.ircStore().LastIndex()
 	if err != nil {
 		log.Printf("Could not get last index: %v", err)
 		http.Error(w, "internal error", 500)
@@ -126,7 +126,7 @@ func (api *HTTP) handleStatusIrclog(w http.ResponseWriter, req *http.Request) {
 		for i := lo; i <= hi; i++ {
 			l := new(raft.Log)
 
-			if err := api.ircStore.GetLog(i, l); err != nil {
+			if err := api.ircStore().GetLog(i, l); err != nil {
 				// Not every message goes into the ircStore (e.g. raft peer change
 				// messages do not).
 				continue
@@ -163,7 +163,7 @@ func (api *HTTP) handleStatusIrclog(w http.ResponseWriter, req *http.Request) {
 		PrevOffset:         prevOffset,
 		NextOffset:         lo + 50,
 		CurrentLink:        "/status/irclog",
-		Sessions:           api.ircServer.GetSessions(),
+		Sessions:           api.ircServer().GetSessions(),
 		GetMessageRequests: api.copyGetMessagesRequests(),
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -224,8 +224,8 @@ func (api *HTTP) handleStatus(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	api.ircServer.ConfigMu.RLock()
-	defer api.ircServer.ConfigMu.RUnlock()
+	api.ircServer().ConfigMu.RLock()
+	defer api.ircServer().ConfigMu.RUnlock()
 	args := struct {
 		Addr               string
 		State              raft.RaftState
@@ -242,9 +242,9 @@ func (api *HTTP) handleStatus(res http.ResponseWriter, req *http.Request) {
 		Leader:             string(api.raftNode.Leader()),
 		Peers:              p,
 		Stats:              api.raftNode.Stats(),
-		Sessions:           api.ircServer.GetSessions(),
+		Sessions:           api.ircServer().GetSessions(),
 		GetMessageRequests: api.copyGetMessagesRequests(),
-		NetConfig:          api.ircServer.Config,
+		NetConfig:          api.ircServer().Config,
 		CurrentLink:        "/status",
 	}
 
@@ -266,9 +266,9 @@ func (api *HTTP) handleIrclog(w http.ResponseWriter, r *http.Request) {
 	// TODO(secure): pagination
 
 	var messages []*robust.Message
-	first, _ := api.ircStore.FirstIndex()
-	last, _ := api.ircStore.LastIndex()
-	iterator := api.ircStore.GetBulkIterator(first, last+1)
+	first, _ := api.ircStore().FirstIndex()
+	last, _ := api.ircStore().LastIndex()
+	iterator := api.ircStore().GetBulkIterator(first, last+1)
 	defer iterator.Release()
 	for iterator.Next() {
 		elog, err := raftlog.FromBytes(iterator.Value())
@@ -283,7 +283,7 @@ func (api *HTTP) handleIrclog(w http.ResponseWriter, r *http.Request) {
 		if msg.Session.Id == session.Id {
 			messages = append(messages, &msg)
 		}
-		output, ok := api.output.Get(msg.Id)
+		output, ok := api.output().Get(msg.Id)
 		if ok {
 			for _, msg := range outputToRobustMessages(output) {
 				if !msg.InterestingFor[session.Id] {

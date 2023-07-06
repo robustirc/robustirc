@@ -134,6 +134,9 @@ func TestCompaction(t *testing.T) {
 		ircstore:             ircstore,
 		lastSnapshotState:    make(map[uint64][]byte),
 		sessionExpirationDur: 10 * time.Minute,
+		ReplaceState: func(*ircserver.IRCServer, *raftstore.LevelDBStore, *outputstream.OutputStream) {
+			// no-op for the compaction test
+		},
 	}
 
 	var logs []*raft.Log
@@ -195,6 +198,9 @@ func TestCompaction(t *testing.T) {
 		store:             logstore,
 		ircstore:          ircstore,
 		lastSnapshotState: make(map[uint64][]byte),
+		ReplaceState: func(*ircserver.IRCServer, *raftstore.LevelDBStore, *outputstream.OutputStream) {
+			// no-op for the compaction test
+		},
 	}
 
 	if err := restore(&fsm, fss, uint64(len(logs))); err != nil {

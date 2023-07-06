@@ -15,7 +15,7 @@ import (
 )
 
 func (api *HTTP) configRevision() uint64 {
-	i := api.ircServer
+	i := api.ircServer()
 	i.ConfigMu.RLock()
 	defer i.ConfigMu.RUnlock()
 	return i.Config.Revision

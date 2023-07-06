@@ -19,7 +19,7 @@ import (
 // occurred. If successful, it returns the unique id of the message.
 func (api *HTTP) handlePostMessage(w http.ResponseWriter, r *http.Request, session robust.Id) {
 	// Don’t throttle server-to-server connections (services)
-	until := api.ircServer.ThrottleUntil(session)
+	until := api.ircServer().ThrottleUntil(session)
 	time.Sleep(until.Sub(time.Now()))
 
 	var req struct {
@@ -48,7 +48,7 @@ func (api *HTTP) handlePostMessage(w http.ResponseWriter, r *http.Request, sessi
 	}
 
 	// If we have already seen this message, we just reply with a canned response.
-	if api.ircServer.LastPostMessage(session) == req.ClientMessageId {
+	if api.ircServer().LastPostMessage(session) == req.ClientMessageId {
 		return
 	}
 
@@ -58,7 +58,7 @@ func (api *HTTP) handlePostMessage(w http.ResponseWriter, r *http.Request, sessi
 	}
 
 	remoteAddr := r.RemoteAddr
-	if api.ircServer.TrustedBridge(r.Header.Get("X-Bridge-Auth")) != "" {
+	if api.ircServer().TrustedBridge(r.Header.Get("X-Bridge-Auth")) != "" {
 		remoteAddr = r.Header.Get("X-Forwarded-For")
 		if idx := strings.Index(remoteAddr, ","); idx > -1 {
 			remoteAddr = remoteAddr[:idx]

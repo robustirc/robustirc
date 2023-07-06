@@ -43,6 +43,8 @@ type FSM struct {
 
 	sessionExpirationMu  sync.RWMutex
 	sessionExpirationDur time.Duration
+
+	ReplaceState func(*ircserver.IRCServer, *raftstore.LevelDBStore, *outputstream.OutputStream)
 }
 
 func (fsm *FSM) sessionExpiration() time.Duration {
@@ -373,6 +375,7 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 	if err != nil {
 		log.Fatal(err)
 	}
+	fsm.ReplaceState(ircServer, ircStore, outputStream)
 	// XXX(1.0): remove this conditional, all snapshots are protobuf-encoded now
 	b := bufio.NewReader(snap)
 	first, err := b.Peek(1)

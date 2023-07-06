@@ -71,10 +71,15 @@ func exitOnRecover() {
 // HTTP provides an HTTP API to RobustIRC, including HTTP handlers for
 // interactive use (e.g. status pages).
 type HTTP struct {
-	ircServer       *ircserver.IRCServer
+	// These fields need to be protected by a mutex because FSM.Restore() can
+	// re-create them whenever Raft decides that a node is too far behind with
+	// replication and needs to restore from snapshot.
+	mu                sync.Mutex
+	ircServerUnlocked *ircserver.IRCServer
+	ircStoreUnlocked  *raftstore.LevelDBStore
+	outputUnlocked    *outputstream.OutputStream
+
 	raftNode        *raft.Raft
-	ircStore        *raftstore.LevelDBStore
-	output          *outputstream.OutputStream
 	transport       *rafthttp.HTTPTransport
 	network         string
 	networkPassword string
@@ -95,13 +100,40 @@ type HTTP struct {
 	raftProtocolVersion int
 }
 
+func (h *HTTP) ircServer() *ircserver.IRCServer {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.ircServerUnlocked
+}
+
+func (h *HTTP) ircStore() *raftstore.LevelDBStore {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.ircStoreUnlocked
+}
+
+func (h *HTTP) output() *outputstream.OutputStream {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.outputUnlocked
+}
+
+func (h *HTTP) ReplaceState(ircServer *ircserver.IRCServer, ircStore *raftstore.LevelDBStore, output *outputstream.OutputStream) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.ircServerUnlocked = ircServer
+	h.ircStoreUnlocked = ircStore
+	h.outputUnlocked = output
+}
+
 // NewHTTP creates a new HTTP API handler.
 func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, ircStore *raftstore.LevelDBStore, output *outputstream.OutputStream, transport *rafthttp.HTTPTransport, network string, networkPassword string, raftDir string, peerAddr string, mux *http.ServeMux, useProtobuf bool, raftProtocolVersion int) *HTTP {
 	api := &HTTP{
-		ircServer:           ircServer,
+		ircServerUnlocked: ircServer,
+		ircStoreUnlocked:  ircStore,
+		outputUnlocked:    output,
+
 		raftNode:            raftNode,
-		ircStore:            ircStore,
-		output:              output,
 		transport:           transport,
 		network:             network,
 		networkPassword:     networkPassword,
@@ -142,7 +174,7 @@ func (stats GetMessagesStats) NickWithFallback() string {
 	if stats.Nick != "" {
 		return stats.Nick
 	}
-	if session, err := stats.api.ircServer.GetSession(stats.Session); err == nil {
+	if session, err := stats.api.ircServer().GetSession(stats.Session); err == nil {
 		return session.Nick
 	}
 	return ""
@@ -280,7 +312,7 @@ func (api *HTTP) dispatchPrivate(w http.ResponseWriter, r *http.Request) {
 func (api *HTTP) dispatchPublic(w http.ResponseWriter, r *http.Request) {
 	defer exitOnRecover()
 
-	if origin := r.Header.Get("Origin"); origin != "" && api.ircServer.OriginWhitelisted(origin) {
+	if origin := r.Header.Get("Origin"); origin != "" && api.ircServer().OriginWhitelisted(origin) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Headers", "X-Session-Auth, Accept, Content-Type")
 		w.Header().Set("Access-Control-Max-Age", "86400")
@@ -407,7 +439,7 @@ func (api *HTTP) session(r *http.Request, sessionId string) (robust.Id, error) {
 		return sessionid, fmt.Errorf("no X-Session-Auth header set")
 	}
 
-	auth, err := api.ircServer.GetAuth(robust.Id{Id: id})
+	auth, err := api.ircServer().GetAuth(robust.Id{Id: id})
 	if err != nil {
 		return sessionid, err
 	}

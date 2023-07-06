@@ -89,7 +89,7 @@ func (api *HTTP) getMessages(ctx context.Context, lastSeen robust.Id, msgschan c
 	// Id=1431542836610113945.
 	// Hence, we need to Get(1431542836610113945.2) to send
 	// 1431542836610113945.3 and following to the client.
-	if msgs, ok := api.output.Get(lastSeen); ok && int(lastSeen.Reply) < len(msgs) {
+	if msgs, ok := api.output().Get(lastSeen); ok && int(lastSeen.Reply) < len(msgs) {
 		select {
 		case <-ctx.Done():
 			return
@@ -98,7 +98,7 @@ func (api *HTTP) getMessages(ctx context.Context, lastSeen robust.Id, msgschan c
 	}
 
 	for {
-		if msgs = api.output.GetNext(ctx, lastSeen); len(msgs) == 0 {
+		if msgs = api.output().GetNext(ctx, lastSeen); len(msgs) == 0 {
 			if ctx.Err() != nil {
 				return
 			}
@@ -217,7 +217,7 @@ func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessi
 		cancel()
 		// Wake up the getMessages goroutine from its GetNext call
 		// to quickly free up resources.
-		api.output.InterruptGetNext()
+		api.output().InterruptGetNext()
 
 		if !wasSuperseded {
 			api.deleteGetMessagesRequests(sessionId)
@@ -227,11 +227,11 @@ func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessi
 	api.setGetMessagesRequests(sessionId, GetMessagesStats{
 		RemoteAddr:    r.RemoteAddr,
 		Session:       session,
-		Nick:          api.ircServer.GetNick(session),
+		Nick:          api.ircServer().GetNick(session),
 		Started:       time.Now(),
 		UserAgent:     r.Header.Get("User-Agent"),
 		ForwardedFor:  r.Header.Get("X-Forwarded-For"),
-		TrustedBridge: api.ircServer.TrustedBridge(r.Header.Get("X-Bridge-Auth")),
+		TrustedBridge: api.ircServer().TrustedBridge(r.Header.Get("X-Bridge-Auth")),
 		cancel:        cancelAll,
 		api:           api,
 	})
@@ -258,7 +258,7 @@ func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessi
 				}
 			}
 
-			if _, err := api.ircServer.GetSession(session); err != nil {
+			if _, err := api.ircServer().GetSession(session); err != nil {
 				// Session was deleted in the meanwhile, abort this request.
 				return
 			}
