@@ -1,6 +1,7 @@
 package ircserver
 
 import (
+	"fmt"
 	"strings"
 
 	"gopkg.in/sorcix/irc.v2"
@@ -20,7 +21,7 @@ func (i *IRCServer) cmdPrivmsg(s *Session, reply *Replyctx, msg *irc.Message) {
 		i.sendUser(s, reply, &irc.Message{
 			Prefix:  i.ServerPrefix,
 			Command: irc.ERR_NORECIPIENT,
-			Params:  []string{s.Nick, "No recipient given (PRIVMSG)"},
+			Params:  []string{s.Nick, fmt.Sprintf("No recipient given (%s)", msg.Command)},
 		})
 		return
 	}
