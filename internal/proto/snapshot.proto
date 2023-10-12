@@ -75,6 +75,7 @@ message Snapshot {
       string regexp = 2;
     }
     repeated BanPattern bans = 7;
+    string key = 8;
   }
   repeated Channel channels = 2;
   

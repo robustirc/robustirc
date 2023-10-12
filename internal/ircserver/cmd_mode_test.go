@@ -111,6 +111,22 @@ func TestBans(t *testing.T) {
 		":robustirc.net 368 sECuRE #test :End of Channel Ban List")
 }
 
+func TestKey(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("JOIN #test"))
+
+	mustMatchMsg(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("MODE #test +k")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE #test +k")
+	mustMatchMsg(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("MODE #test +k 1234")),
+		":robustirc.net MODE #test +k 1234")
+	mustMatchMsg(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("MODE #test -k")),
+		":robustirc.net MODE #test -k 1234")
+}
+
 func TestChannelMemberStatus(t *testing.T) {
 	i, ids := stdIRCServer()
 

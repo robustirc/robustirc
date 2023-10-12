@@ -95,6 +95,13 @@ func (i *IRCServer) cmdJoin(s *Session, reply *Replyctx, msg *irc.Message) {
 				Params:  []string{s.Nick, c.name, "Cannot join channel (+b)"},
 			})
 			continue
+		} else if c.modes['k'] && c.key != key {
+			i.sendUser(s, reply, &irc.Message{
+				Prefix:  i.ServerPrefix,
+				Command: irc.ERR_BADCHANNELKEY,
+				Params:  []string{s.Nick, channelname, "Cannot join channel (+k) - Incorrect key"},
+			})
+			continue
 		}
 		// Invites are only valid once.
 		if c.modes['i'] || c.modes['x'] {

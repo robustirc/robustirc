@@ -120,6 +120,7 @@ func (i *IRCServer) Marshal(lastIncludedIndex uint64) ([]byte, error) {
 			Nicks:     nicks,
 			Modes:     modes,
 			Bans:      bans,
+			Key:       channel.key,
 		})
 	}
 
@@ -276,6 +277,7 @@ func (i *IRCServer) Unmarshal(data []byte) (uint64, error) {
 			nicks:     nicks,
 			modes:     modes,
 			bans:      bans,
+			key:       c.Key,
 		}
 		i.channels[ChanToLower(newChannel.name)] = &newChannel
 	}

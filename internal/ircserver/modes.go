@@ -56,7 +56,7 @@ func normalizeModes(msg *irc.Message) []modeCmd {
 		switch char {
 		case '+', '-':
 			adding = (char == '+')
-		case 'o', 'd', 'b':
+		case 'o', 'd', 'b', 'k':
 			// Modes which require a parameter.
 			if len(msg.Params) > modearg {
 				mode.Param = msg.Params[modearg]
