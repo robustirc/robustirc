@@ -59,6 +59,21 @@ func (i *IRCServer) cmdPrivmsg(s *Session, reply *Replyctx, msg *irc.Message) {
 			Params:  []string{msg.Params[0], msg.Trailing()},
 		})
 		return
+	} else if strings.HasPrefix(msg.Params[0], "$") {
+		if msg.Params[0] == "$"+i.ServerPrefix.Name || msg.Params[0] == "$*" {
+			i.sendAllUsers(reply, &irc.Message{
+				Prefix:  &s.ircPrefix,
+				Command: msg.Command,
+				Params:  []string{msg.Params[0], msg.Trailing()},
+			})
+			return
+		}
+		i.sendUser(s, reply, &irc.Message{
+			Prefix:  i.ServerPrefix,
+			Command: irc.ERR_NOSUCHSERVER,
+			Params:  []string{s.Nick, msg.Params[0], "No such server"},
+		})
+		return
 	}
 
 	session, ok := i.nicks[NickToLower(msg.Params[0])]

@@ -690,6 +690,15 @@ func (i *IRCServer) sendUser(user *Session, reply *Replyctx, msg *irc.Message) *
 	return msg
 }
 
+// sendAllUsers sends |msg| to all users on the server.
+func (i *IRCServer) sendAllUsers(reply *Replyctx, msg *irc.Message) *irc.Message {
+	robustmsg := i.send(reply, msg)
+	for _, session := range i.nicks {
+		robustmsg.InterestingFor[session.Id.Id] = true
+	}
+	return msg
+}
+
 // sendCommonChannels sends |msg| to all users which are in one of the channels
 // on which |user| is in.
 func (i *IRCServer) sendCommonChannels(user *Session, reply *Replyctx, msg *irc.Message) *irc.Message {

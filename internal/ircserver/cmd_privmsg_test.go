@@ -33,6 +33,18 @@ func TestInvalidPrivmsg(t *testing.T) {
 		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("PRIVMSG sorcix :foo")),
 		":robustirc.net 401 sECuRE sorcix :No such nick/channel")
 
+	mustMatchMsg(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("PRIVMSG $x foo")),
+		":robustirc.net 402 sECuRE $x :No such server")
+
+	mustMatchMsg(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("PRIVMSG $robustirc.net foo")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG $robustirc.net foo")
+
+	mustMatchMsg(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("PRIVMSG $* foo")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG $* foo")
+
 	i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("JOIN #NoExternalMessages"))
 	i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("MODE #NoExternalMessages +n"))
 
@@ -68,6 +80,18 @@ func TestInvalidNotice(t *testing.T) {
 	mustMatchMsg(t,
 		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("NOTICE sorcix :foo")),
 		":robustirc.net 401 sECuRE sorcix :No such nick/channel")
+
+	mustMatchMsg(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("NOTICE $x foo")),
+		":robustirc.net 402 sECuRE $x :No such server")
+
+	mustMatchMsg(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("NOTICE $robustirc.net foo")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad NOTICE $robustirc.net foo")
+
+	mustMatchMsg(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("NOTICE $* foo")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad NOTICE $* foo")
 
 	i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("JOIN #NoExternalMessages"))
 	i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("MODE #NoExternalMessages +n"))
