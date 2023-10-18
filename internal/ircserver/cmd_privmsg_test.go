@@ -46,9 +46,9 @@ func TestInvalidPrivmsg(t *testing.T) {
 	mustMatchMsg(t,
 		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("PRIVMSG $x foo")),
 		":robustirc.net 481 sECuRE :Permission Denied - You're not an IRC operator")
-		
+
 	i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("OPER mero foo"))
-		
+
 	mustMatchMsg(t,
 		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("PRIVMSG $x foo")),
 		":mero!foo@robust/0x13b5aa0a2bcfb8ae PRIVMSG $x foo")
@@ -92,9 +92,9 @@ func TestInvalidNotice(t *testing.T) {
 	mustMatchMsg(t,
 		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("NOTICE $x foo")),
 		":robustirc.net 481 sECuRE :Permission Denied - You're not an IRC operator")
-		
+
 	i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("OPER mero foo"))
-		
+
 	mustMatchMsg(t,
 		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("NOTICE $x foo")),
 		":mero!foo@robust/0x13b5aa0a2bcfb8ae NOTICE $x foo")
