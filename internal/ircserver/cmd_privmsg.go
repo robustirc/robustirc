@@ -59,6 +59,21 @@ func (i *IRCServer) cmdPrivmsg(s *Session, reply *Replyctx, msg *irc.Message) {
 			Params:  []string{msg.Params[0], msg.Trailing()},
 		})
 		return
+	} else if strings.HasPrefix(msg.Params[0], "$") {
+		if s.Operator {
+			i.sendAllUsers(reply, &irc.Message{
+				Prefix:  &s.ircPrefix,
+				Command: msg.Command,
+				Params:  []string{msg.Params[0], msg.Trailing()},
+			})
+			return
+		}
+		i.sendUser(s, reply, &irc.Message{
+			Prefix:  i.ServerPrefix,
+			Command: irc.ERR_NOPRIVILEGES,
+			Params:  []string{s.Nick, "Permission Denied - You're not an IRC operator"},
+		})
+		return
 	}
 
 	session, ok := i.nicks[NickToLower(msg.Params[0])]
