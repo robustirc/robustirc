@@ -323,3 +323,52 @@ func TestBanned(t *testing.T) {
 			irc.ParseMessage(":robustirc.net 474 mero #test :Cannot join channel (+b)"),
 		})
 }
+
+func TestJoinChannelWithKey(t *testing.T) {
+	i, ids := stdIRCServer()
+	s, _ := i.GetSession(ids["secure"])
+
+	// Join the channel and set the channel key
+	i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("JOIN #TEST"))
+	mustMatchMsg(t,
+		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("MODE #TEST +k 1234")),
+		":robustirc.net MODE #TEST +k 1234")
+
+	// Verify channel key enforcement
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("JOIN #TEST")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 475 sECuRE #TEST :Cannot join channel (+k) - Incorrect key"),
+		})
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("JOIN #TEST 123")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 475 sECuRE #TEST :Cannot join channel (+k) - Incorrect key"),
+		})
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("JOIN #TEST 1234")),
+		[]*irc.Message{
+			{Prefix: &s.ircPrefix, Command: irc.JOIN, Params: []string{"#TEST"}},
+			irc.ParseMessage(":robustirc.net SJOIN 1 #TEST :sECuRE"),
+			irc.ParseMessage(":robustirc.net 324 sECuRE #TEST +knt"),
+			irc.ParseMessage(":robustirc.net 331 sECuRE #TEST :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 sECuRE = #TEST :@mero sECuRE"),
+			irc.ParseMessage(":robustirc.net 366 sECuRE #TEST :End of /NAMES list."),
+		})
+
+	// Remove channel key and verify join
+	mustMatchMsg(t,
+		i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("MODE #TEST -k")),
+		":robustirc.net MODE #TEST -k 1234")
+	i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("PART #TEST"))
+	mustMatchIrcmsgs(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("JOIN #TEST")),
+		[]*irc.Message{
+			{Prefix: &s.ircPrefix, Command: irc.JOIN, Params: []string{"#TEST"}},
+			irc.ParseMessage(":robustirc.net SJOIN 1 #TEST :sECuRE"),
+			irc.ParseMessage(":robustirc.net 324 sECuRE #TEST +nt"),
+			irc.ParseMessage(":robustirc.net 331 sECuRE #TEST :No topic is set"),
+			irc.ParseMessage(":robustirc.net 353 sECuRE = #TEST :@mero sECuRE"),
+			irc.ParseMessage(":robustirc.net 366 sECuRE #TEST :End of /NAMES list."),
+		})
+}

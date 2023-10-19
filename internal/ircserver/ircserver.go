@@ -190,6 +190,8 @@ type channel struct {
 	// access modes by using their letter as an index).
 	modes ['z']bool
 
+	key string
+
 	bans []banPattern
 }
 

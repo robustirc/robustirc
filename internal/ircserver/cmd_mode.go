@@ -114,6 +114,27 @@ func (i *IRCServer) cmdMode(s *Session, reply *Replyctx, msg *irc.Message) {
 				case 't', 's', 'i', 'n':
 					c.modes[char] = newvalue
 
+				case 'k':
+					if newvalue {
+						if mode.Param == "" {
+							break
+						}
+						c.key = mode.Param
+						i.sendUser(s, reply, &irc.Message{
+							Prefix:  i.ServerPrefix,
+							Command: irc.MODE,
+							Params:  []string{channelname, "+k", c.key},
+						})
+					} else {
+						i.sendUser(s, reply, &irc.Message{
+							Prefix:  i.ServerPrefix,
+							Command: irc.MODE,
+							Params:  []string{channelname, "-k", c.key},
+						})
+						c.key = ""
+					}
+					c.modes[char] = newvalue
+
 				case 'x':
 					if i.captchaConfigured() {
 						c.modes[char] = newvalue
