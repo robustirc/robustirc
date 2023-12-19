@@ -20,14 +20,14 @@ func init() {
 }
 
 // resolveSessionToRemoteAddrLocked replaces session references such as
-// “@robust/0x1234” in patterns with the corresponding remote address,
-// e.g. “@127.0.0.1”.
+// “robust/0x1234” in patterns with the corresponding remote address,
+// e.g. “127.0.0.1”.
 func (i *IRCServer) resolveSessionToRemoteAddrLocked(pattern string) string {
-	idx := strings.Index(pattern, "@robust/0x")
+	idx := strings.Index(pattern, "robust/0x")
 	if idx == -1 {
 		return pattern
 	}
-	id, err := strconv.ParseInt(pattern[idx+len("@robust/"):], 0, 64)
+	id, err := strconv.ParseInt(pattern[idx+len("robust/"):], 0, 64)
 	if err != nil {
 		return pattern
 	}
@@ -35,7 +35,7 @@ func (i *IRCServer) resolveSessionToRemoteAddrLocked(pattern string) string {
 	if !ok || s.RemoteAddr == "" {
 		return pattern
 	}
-	return pattern[:idx] + "@" + s.RemoteAddr
+	return pattern[:idx] + s.RemoteAddr
 }
 
 func ban(c *channel, add bool, banmask, pattern string) error {
