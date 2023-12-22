@@ -66,6 +66,11 @@ func (i *IRCServer) cmdNick(s *Session, reply *Replyctx, msg *irc.Message) {
 		delete(i.svsholds, NickToLower(nick))
 	}
 
+	if s.Nick == nick {
+		// No change: the user already *has* that nickname.
+		return
+	}
+
 	oldNick := NickToLower(s.Nick)
 	s.Nick = nick
 	i.nicks[NickToLower(s.Nick)] = s

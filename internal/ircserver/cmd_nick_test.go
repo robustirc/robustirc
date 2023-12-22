@@ -100,3 +100,19 @@ func TestInvalidNickPlumbing(t *testing.T) {
 		t.Fatalf("session.Nick: got %q, want %q", s.Nick, "")
 	}
 }
+
+func TestSameNick(t *testing.T) {
+	i, ids := stdIRCServer()
+
+	i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("JOIN #test"))
+	i.ProcessMessage(&robust.Message{Session: ids["mero"]}, irc.ParseMessage("JOIN #test"))
+
+	mustMatchMsg(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("NICK sec")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad NICK sec")
+
+	got := i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("NICK sec"))
+	if len(got.Messages) > 0 {
+		t.Fatalf("NICK change from sec to sec unexpectedly resulted in messages: %v", got.Messages[0])
+	}
+}
