@@ -58,6 +58,7 @@ func stdIRCServer() (*IRCServer, map[string]robust.Id) {
 //	ircserver_test.go:291:     :robustirc.net 301 s[E]CuRE mero :upgrading server
 //	ircserver_test.go:293: ProcessMessage() return value does not match expectation: got [:s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :you there? :robustirc.net 301 s[E]CuRE mero :upgrading server], want [:s[E]CuRE!blah@robust/0x13b5aa0a2bcfb8ad PRIVMSG mero :yo there? :robustirc.net 301 s[E]CuRE mero :upgrading server]
 func mustMatchIrcmsgs(t *testing.T, got *Replyctx, want []*irc.Message) {
+	t.Helper()
 	// TODO: mark mustMatchIrcmsgs as a helper function once
 	// https://github.com/golang/go/issues/4899 is addressed.
 	failed := len(got.Messages) != len(want)
@@ -78,10 +79,12 @@ func mustMatchIrcmsgs(t *testing.T, got *Replyctx, want []*irc.Message) {
 }
 
 func mustMatchIrcmsg(t *testing.T, got *Replyctx, want *irc.Message) {
+	t.Helper()
 	mustMatchIrcmsgs(t, got, []*irc.Message{want})
 }
 
 func mustMatchMsg(t *testing.T, got *Replyctx, want string) {
+	t.Helper()
 	mustMatchIrcmsgs(t, got, []*irc.Message{irc.ParseMessage(want)})
 }
 
