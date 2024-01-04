@@ -1,6 +1,10 @@
 package ircserver
 
-import "gopkg.in/sorcix/irc.v2"
+import (
+	"errors"
+
+	"gopkg.in/sorcix/irc.v2"
+)
 
 func init() {
 	Commands["OPER"] = &ircCommand{
@@ -9,24 +13,26 @@ func init() {
 	}
 }
 
-func (i *IRCServer) cmdOper(s *Session, reply *Replyctx, msg *irc.Message) {
-	name := msg.Params[0]
-	password := msg.Params[1]
-	authenticated := false
+var authOper = func(i *IRCServer, s *Session, name, password string) error {
 	i.ConfigMu.RLock()
 	defer i.ConfigMu.RUnlock()
 	for _, op := range i.Config.IRC.Operators {
 		if op.Name == name && op.Password == password {
-			authenticated = true
-			break
+			return nil // authenticated
 		}
 	}
 
-	if !authenticated {
+	return errors.New("Password incorrect")
+}
+
+func (i *IRCServer) cmdOper(s *Session, reply *Replyctx, msg *irc.Message) {
+	name := msg.Params[0]
+	password := msg.Params[1]
+	if authErr := authOper(i, s, name, password); authErr != nil {
 		i.sendUser(s, reply, &irc.Message{
 			Prefix:  i.ServerPrefix,
 			Command: irc.ERR_PASSWDMISMATCH,
-			Params:  []string{s.Nick, "Password incorrect"},
+			Params:  []string{s.Nick, authErr.Error()},
 		})
 		return
 	}
