@@ -535,9 +535,10 @@ func main() {
 		*networkPassword,
 		*raftDir,
 		*peerAddr,
-		http.DefaultServeMux,
 		*useProtobuf,
 		*raftProtocolVersion)
+	http.HandleFunc("/robustirc/v1/", api.DispatchPublic)
+	http.HandleFunc("/", api.DispatchPrivate)
 
 	fsm.ReplaceState = api.ReplaceState
 

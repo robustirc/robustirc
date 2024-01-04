@@ -127,8 +127,8 @@ func (h *HTTP) ReplaceState(ircServer *ircserver.IRCServer, ircStore *raftstore.
 }
 
 // NewHTTP creates a new HTTP API handler.
-func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, ircStore *raftstore.LevelDBStore, output *outputstream.OutputStream, transport *rafthttp.HTTPTransport, network string, networkPassword string, raftDir string, peerAddr string, mux *http.ServeMux, useProtobuf bool, raftProtocolVersion int) *HTTP {
-	api := &HTTP{
+func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, ircStore *raftstore.LevelDBStore, output *outputstream.OutputStream, transport *rafthttp.HTTPTransport, network string, networkPassword string, raftDir string, peerAddr string, useProtobuf bool, raftProtocolVersion int) *HTTP {
+	return &HTTP{
 		ircServerUnlocked: ircServer,
 		ircStoreUnlocked:  ircStore,
 		outputUnlocked:    output,
@@ -143,11 +143,6 @@ func NewHTTP(ircServer *ircserver.IRCServer, raftNode *raft.Raft, ircStore *raft
 		useProtobuf:         useProtobuf,
 		raftProtocolVersion: raftProtocolVersion,
 	}
-
-	mux.HandleFunc("/robustirc/v1/", api.dispatchPublic)
-	mux.HandleFunc("/", api.dispatchPrivate)
-
-	return api
 }
 
 var (
@@ -208,7 +203,7 @@ func setNodeProxy(leader string, proxy *httputil.ReverseProxy) {
 	nodeProxies[leader] = proxy
 }
 
-func (api *HTTP) dispatchPrivate(w http.ResponseWriter, r *http.Request) {
+func (api *HTTP) DispatchPrivate(w http.ResponseWriter, r *http.Request) {
 	defer exitOnRecover()
 
 	username, password, ok := r.BasicAuth()
@@ -230,6 +225,12 @@ func (api *HTTP) dispatchPrivate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+
+	api.DispatchPrivateWithoutAuth(w, r)
+}
+
+func (api *HTTP) DispatchPrivateWithoutAuth(w http.ResponseWriter, r *http.Request) {
+	defer exitOnRecover()
 
 	switch r.Method {
 	case http.MethodGet:
@@ -309,7 +310,7 @@ func (api *HTTP) dispatchPrivate(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Not found", http.StatusNotFound)
 }
 
-func (api *HTTP) dispatchPublic(w http.ResponseWriter, r *http.Request) {
+func (api *HTTP) DispatchPublic(w http.ResponseWriter, r *http.Request) {
 	defer exitOnRecover()
 
 	if origin := r.Header.Get("Origin"); origin != "" && api.ircServer().OriginWhitelisted(origin) {
