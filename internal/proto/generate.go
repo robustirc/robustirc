@@ -1,5 +1,5 @@
 // Empty file containing instructions for “go generate” on how to rebuild the
-// capnproto generated code.
+// Go Protobuf generated code.
 package proto
 
-//go:generate protoc types.proto snapshot.proto --gofast_out=.
+//go:generate protoc types.proto snapshot.proto --go_out=. --go_opt=paths=source_relative

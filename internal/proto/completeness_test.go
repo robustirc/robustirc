@@ -11,6 +11,7 @@ var (
 	typeMapping = map[string]string{
 		"[]*raft.Log":  "[]*proto.RaftLog",
 		"raft.LogType": "proto.RaftLog_LogType",
+		"time.Time":    "*timestamppb.Timestamp",
 	}
 )
 

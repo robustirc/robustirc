@@ -24,6 +24,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/iterator"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb/util"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	pb "github.com/robustirc/robustirc/internal/proto"
 )
@@ -104,6 +105,7 @@ func (s *LevelDBStore) ConvertToProto() error {
 				rlog.Term = l.Term
 				rlog.Type = pb.RaftLog_LogType(l.Type)
 				rlog.Extensions = l.Extensions
+				rlog.AppendedAt = timestamppb.New(l.AppendedAt)
 				v, err := proto.Marshal(&rlog)
 				if err != nil {
 					return err
@@ -129,6 +131,7 @@ func (s *LevelDBStore) ConvertToProto() error {
 			rlog.Term = l.Term
 			rlog.Type = pb.RaftLog_LogType(l.Type)
 			rlog.Extensions = l.Extensions
+			rlog.AppendedAt = timestamppb.New(l.AppendedAt)
 			v, err = proto.Marshal(&rlog)
 			if err != nil {
 				return err
@@ -242,6 +245,7 @@ func (s *LevelDBStore) GetLog(index uint64, rlog *raft.Log) error {
 		rlog.Type = raft.LogType(msg.Type)
 		rlog.Data = msg.Data
 		rlog.Extensions = msg.Extensions
+		rlog.AppendedAt = msg.AppendedAt.AsTime()
 		return nil
 	} else {
 		// XXX(1.0): delete this branch, all stores use proto
@@ -277,6 +281,7 @@ func (s *LevelDBStore) StoreLogs(logs []*raft.Log) error {
 			msg.Type = pb.RaftLog_LogType(entry.Type)
 			msg.Data = entry.Data
 			msg.Extensions = entry.Extensions
+			msg.AppendedAt = timestamppb.New(entry.AppendedAt)
 			v, err := proto.Marshal(&msg)
 			if err != nil {
 				return err

@@ -113,6 +113,7 @@ func canary(fsm raft.FSM, statePath string) {
 			nlog.Type = raft.LogType(p.Type)
 			nlog.Data = p.Data
 			nlog.Extensions = p.Extensions
+			nlog.AppendedAt = p.AppendedAt.AsTime()
 		} else {
 			// XXX(1.0): delete this branch, all stores use proto
 			if err := json.Unmarshal(value, &nlog); err != nil {

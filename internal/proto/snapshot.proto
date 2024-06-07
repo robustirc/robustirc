@@ -4,6 +4,8 @@ package proto;
 
 import "types.proto";  // for RobustId
 
+option go_package = "github.com/robustirc/robustirc/internal/proto";
+
 // Timestamp serializes a Go time.Time value with correct IsZero()
 // semantics. Merely serializing the UnixNano() value is not
 // sufficient, see https://play.golang.org/p/n3ZWGwZCKR

@@ -23,6 +23,7 @@ import (
 	"github.com/robustirc/robustirc/internal/robust"
 	"github.com/stapelberg/glog"
 	"github.com/syndtr/goleveldb/leveldb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/sorcix/irc.v2"
 
 	pb "github.com/robustirc/robustirc/internal/proto"
@@ -184,6 +185,7 @@ func (fsm *FSM) Apply(l *raft.Log) interface{} {
 		Type:       pb.RaftLog_LogType(l.Type),
 		Data:       l.Data,
 		Extensions: l.Extensions,
+		AppendedAt: timestamppb.New(l.AppendedAt),
 	}
 
 	if *useProtobuf {
@@ -295,6 +297,7 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 			nlog.Type = raft.LogType(p.Type)
 			nlog.Data = p.Data
 			nlog.Extensions = p.Extensions
+			nlog.AppendedAt = p.AppendedAt.AsTime()
 		} else {
 			// XXX(1.0): delete this branch, ircstore uses proto
 			if err := json.Unmarshal(value, &nlog); err != nil {

@@ -2,6 +2,10 @@ syntax = "proto3";
 
 package proto;
 
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/robustirc/robustirc/internal/proto";
+
 message RobustId {
 	fixed64 id = 1;
 	fixed64 reply = 2;
@@ -46,4 +50,5 @@ message RaftLog {
 	LogType type = 3;
 	bytes data = 4;
 	bytes extensions = 5;
+	google.protobuf.Timestamp appended_at = 6;
 }

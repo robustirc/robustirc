@@ -15,6 +15,7 @@ require (
 	github.com/stapelberg/glog v0.0.0-20160603071839-f15f13b47694
 	github.com/syndtr/goleveldb v0.0.0-20181012014443-6b91fda63f2e
 	golang.org/x/net v0.16.0
+	google.golang.org/protobuf v1.34.1
 	gopkg.in/sorcix/irc.v2 v2.0.0-20190306112350-8d7a73540b90
 )
 
@@ -37,7 +38,6 @@ require (
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
 	golang.org/x/sys v0.13.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
-	google.golang.org/protobuf v1.28.1 // indirect
 )
 
 // replace github.com/robustirc/internal => /home/michael/go/src/github.com/robustirc/internal
