@@ -41,4 +41,4 @@ require (
 
 // replace github.com/robustirc/internal => /home/michael/go/src/github.com/robustirc/internal
 
-go 1.20
+go 1.22
