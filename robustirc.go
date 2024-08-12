@@ -343,6 +343,10 @@ func main() {
 		return
 	}
 
+	if err := os.MkdirAll(*raftDir, 0700); err != nil {
+		log.Fatal(err)
+	}
+
 	if _, err := os.Stat(filepath.Join(*raftDir, "deletestate")); err == nil {
 		if err := os.RemoveAll(*raftDir); err != nil {
 			log.Fatal(err)
