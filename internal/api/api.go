@@ -57,7 +57,7 @@ func executableHash() string {
 // installs. We need to exit in order to get restarted by the init
 // system/supervisor and get into a clean state again.
 func exitOnRecover() {
-	if r := recover(); r != nil {
+	if r := recover(); r != nil && r != http.ErrAbortHandler {
 		// This mimics go/src/net/http/server.go.
 		const size = 64 << 10
 		buf := make([]byte, size)
