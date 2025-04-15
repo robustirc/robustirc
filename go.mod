@@ -9,7 +9,7 @@ require (
 	github.com/prometheus/client_golang v1.4.0
 	github.com/prometheus/common v0.9.1
 	github.com/robustirc/bridge v1.7.4-0.20200723135014-0da71ab55111
-	github.com/robustirc/internal v0.0.0-20220204120844-14d7a6b96cf5
+	github.com/robustirc/internal v0.0.0-20250415075440-8deed36c4b54
 	github.com/robustirc/rafthttp v0.0.0-20200730141850-f3c10122992a
 	github.com/sergi/go-diff v1.0.0
 	github.com/stapelberg/glog v0.0.0-20160603071839-f15f13b47694

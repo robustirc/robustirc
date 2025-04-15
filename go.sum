@@ -120,8 +120,8 @@ github.com/rjeczalik/notify v0.9.2 h1:MiTWrPj55mNDHEiIX5YUSKefw/+lCQVoAFmD6oQm5w
 github.com/rjeczalik/notify v0.9.2/go.mod h1:aErll2f0sUX9PXZnVNyeiObbmTlk5jnMoCa4QEjJeqM=
 github.com/robustirc/bridge v1.7.4-0.20200723135014-0da71ab55111 h1:MljqgGKhj0d2ewi1LzsP547Bkckm41nqhyjv9kfkNwQ=
 github.com/robustirc/bridge v1.7.4-0.20200723135014-0da71ab55111/go.mod h1:rvFLubPZZr88qw52X07Pv/Sd3yvSzi5rXriGAWyg5p4=
-github.com/robustirc/internal v0.0.0-20220204120844-14d7a6b96cf5 h1:NdSWVOXvKtS4JBr4KdKqmWpvdDjMWq7+BN1m+k3x5fE=
-github.com/robustirc/internal v0.0.0-20220204120844-14d7a6b96cf5/go.mod h1:ZcLMCK5JAhoYsG0tDzm43OQQVM4Zg8V2YuKRqEtU5bw=
+github.com/robustirc/internal v0.0.0-20250415075440-8deed36c4b54 h1:1WiyCDVa1ajwdhI5LJtDFO2KVqSrd4UavbYXs8qoiNs=
+github.com/robustirc/internal v0.0.0-20250415075440-8deed36c4b54/go.mod h1:ZcLMCK5JAhoYsG0tDzm43OQQVM4Zg8V2YuKRqEtU5bw=
 github.com/robustirc/rafthttp v0.0.0-20160522203950-0785f8c77b66/go.mod h1:l55/CrGfro/Ss2yiNLyMOCuHFzll0IoOcqGkGQivC1c=
 github.com/robustirc/rafthttp v0.0.0-20200730141850-f3c10122992a h1:nd4lEOf+iV78fpc1Fx0hV15gDe7hH0J9YPK2+YNKAic=
 github.com/robustirc/rafthttp v0.0.0-20200730141850-f3c10122992a/go.mod h1:aai3AChT15PEVYuxs3ZMvlYsLsuou6zwtNZoGcYlUQQ=
