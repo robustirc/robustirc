@@ -11,14 +11,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v4
+    - uses: actions/setup-go@v5
       with:
-        # Run on the latest minor release of Go 1.21:
-        go-version: ^1.21
-      id: go
+        # Latest stable version of Go, e.g. 1.20.2
+        go-version: 'stable'
 
     - name: Ensure all files were formatted as per gofmt
       run: |
