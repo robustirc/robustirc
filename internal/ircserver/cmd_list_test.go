@@ -53,6 +53,14 @@ func TestList(t *testing.T) {
 		})
 
 	mustMatchIrcmsgs(t,
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("LIST :")),
+		[]*irc.Message{
+			irc.ParseMessage(":robustirc.net 322 sECuRE #new 1 :"),
+			irc.ParseMessage(":robustirc.net 322 sECuRE #test 2 :this is a topic"),
+			irc.ParseMessage(":robustirc.net 323 sECuRE :End of LIST"),
+		})
+
+	mustMatchIrcmsgs(t,
 		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("LIST #test")),
 		[]*irc.Message{
 			irc.ParseMessage(":robustirc.net 322 sECuRE #test 2 :this is a topic"),

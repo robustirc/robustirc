@@ -16,8 +16,14 @@ func init() {
 
 func (i *IRCServer) cmdList(s *Session, reply *Replyctx, msg *irc.Message) {
 	channels := make([]string, 0, len(i.channels))
+	var filter []string
 	if len(msg.Params) > 0 {
-		for _, channel := range strings.Split(msg.Params[0], ",") {
+		if stripped := strings.TrimSpace(msg.Params[0]); stripped != "" {
+			filter = strings.Split(stripped, ",")
+		}
+	}
+	if len(filter) > 0 {
+		for _, channel := range filter {
 			channelname := ChanToLower(strings.TrimSpace(channel))
 			if _, ok := i.channels[channelname]; ok {
 				channels = append(channels, string(channelname))
