@@ -16,9 +16,13 @@ func init() {
 func (i *IRCServer) cmdNames(s *Session, reply *Replyctx, msg *irc.Message) {
 	if len(msg.Params) > 0 {
 		channelname := msg.Params[0]
-		if c, ok := i.channels[ChanToLower(channelname)]; ok {
+		lcChan := ChanToLower(channelname)
+		if c, ok := i.channels[lcChan]; ok {
 			nicks := make([]string, 0, len(c.nicks))
 			for nick, perms := range c.nicks {
+				if i.nicks[nick].modes['i'] && !s.Channels[lcChan] {
+					continue // invisible
+				}
 				var prefix string
 				if perms[chanop] {
 					prefix = prefix + string('@')

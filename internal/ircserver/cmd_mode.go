@@ -274,6 +274,8 @@ func (i *IRCServer) cmdMode(s *Session, reply *Replyctx, msg *irc.Message) {
 				switch char {
 				case 'i':
 					session.modes[char] = newvalue
+				case 'G':
+					session.modes[char] = newvalue
 				}
 			}
 

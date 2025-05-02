@@ -86,8 +86,8 @@ func (i *IRCServer) cmdPrivmsg(s *Session, reply *Replyctx, msg *irc.Message) {
 		return
 	}
 
-	if session.modes['i'] {
-		// To message invisible users, you must share a channel with them.
+	if session.modes['G'] {
+		// To message invisible-callerid users, you must share a channel with them.
 		common := false
 		for channelname := range session.Channels {
 			if _, ok := s.Channels[channelname]; ok {

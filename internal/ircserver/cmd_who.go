@@ -31,7 +31,8 @@ func (i *IRCServer) cmdWho(s *Session, reply *Replyctx, msg *irc.Message) {
 		Params:  []string{s.Nick, channelname, "End of /WHO list"},
 	}
 
-	c, ok := i.channels[ChanToLower(channelname)]
+	lcChan := ChanToLower(channelname)
+	c, ok := i.channels[lcChan]
 	if !ok {
 		i.sendUser(s, reply, lastmsg)
 		return
@@ -46,6 +47,9 @@ func (i *IRCServer) cmdWho(s *Session, reply *Replyctx, msg *irc.Message) {
 
 	nicks := make([]string, 0, len(c.nicks))
 	for nick := range c.nicks {
+		if i.nicks[nick].modes['i'] && !s.Channels[lcChan] {
+			continue
+		}
 		nicks = append(nicks, i.nicks[nick].Nick)
 	}
 

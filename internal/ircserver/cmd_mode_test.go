@@ -189,7 +189,7 @@ func TestChannelMemberStatus(t *testing.T) {
 		":xeen!baz@robust/0x13b5aa0a2bcfb8af MODE #test +o xeen")
 }
 
-func TestInvisible(t *testing.T) {
+func TestInvisibleMessage(t *testing.T) {
 	i, ids := stdIRCServer()
 
 	mustMatchMsg(t,
@@ -197,8 +197,8 @@ func TestInvisible(t *testing.T) {
 		":xeen!baz@robust/0x13b5aa0a2bcfb8af PRIVMSG sECuRE :before invisible")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("MODE sECuRE +i")),
-		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE sECuRE :+i")
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("MODE sECuRE +G")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE sECuRE :+G")
 
 	mustMatchIrcmsgs(t,
 		i.ProcessMessage(&robust.Message{Session: ids["xeen"]}, irc.ParseMessage("PRIVMSG sECuRE :after invisible")),
@@ -220,8 +220,8 @@ func TestInvisible(t *testing.T) {
 		":xeen!baz@robust/0x13b5aa0a2bcfb8af NOTICE sECuRE :common channel")
 
 	mustMatchMsg(t,
-		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("MODE sECuRE -i")),
-		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE sECuRE :-i")
+		i.ProcessMessage(&robust.Message{Session: ids["secure"]}, irc.ParseMessage("MODE sECuRE -G")),
+		":sECuRE!blah@robust/0x13b5aa0a2bcfb8ad MODE sECuRE :-G")
 }
 
 func TestDefaultChannelModes(t *testing.T) {
