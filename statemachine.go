@@ -46,6 +46,8 @@ type FSM struct {
 	sessionExpirationDur time.Duration
 
 	ReplaceState func(*ircserver.IRCServer, *raftstore.LevelDBStore, *outputstream.OutputStream)
+
+	restoreMu sync.Mutex
 }
 
 func (fsm *FSM) sessionExpiration() time.Duration {
@@ -225,7 +227,7 @@ func (fsm *FSM) Snapshot() (raft.FSMSnapshot, error) {
 		return nil, fmt.Errorf("first index of ircstore (%d) is < 1", first)
 	}
 
-	log.Printf("Filtering and writing up to %d indexes (from %d to %d)\n", last-first, first, last)
+	log.Printf("Filtering and writing up to %d indexes (from %d to %d)\n", last-first+1, first, last)
 
 	// Get a timestamp and keep it constant, so that we only compact messages
 	// older than n days from compactionStart. If we used time.Since, new
@@ -350,6 +352,10 @@ func (fsm *FSM) Restore(snap io.ReadCloser) error {
 	defer metrics.MeasureSince([]string{"robustirc", "fsm", "restore"}, start)
 
 	log.Printf("Restoring snapshot\n")
+	log.Printf("Acquiring restore lock")
+	fsm.restoreMu.Lock()
+	defer fsm.restoreMu.Unlock()
+	log.Printf("Obtained restore lock")
 	defer snap.Close()
 
 	if err := fsm.ircstore.Close(); err != nil {

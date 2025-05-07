@@ -4,6 +4,7 @@ require (
 	github.com/BurntSushi/toml v0.3.1
 	github.com/armon/go-metrics v0.4.1
 	github.com/golang/protobuf v1.5.2
+	github.com/google/renameio/v2 v2.0.0
 	github.com/hashicorp/go-hclog v1.6.2
 	github.com/hashicorp/raft v1.6.1
 	github.com/prometheus/client_golang v1.4.0
