@@ -50,6 +50,9 @@ var (
 	raftDir = flag.String("raftdir",
 		"/var/lib/robustirc",
 		"Directory in which raft state is stored. If this directory is empty, you need to specify -join.")
+	textlogDumpDir = flag.String("textlog_dump_dir",
+		"",
+		"If non-empty, a directory in which to store plain-text dumps of all processed IRC messages (input and output). RobustIRC will create a subdirectory for each day (YYYY-mm-dd) and then a .csv file each minute")
 	raftProtocolVersion = flag.Int("raft_protocol_version",
 		1, // XXX(1.0): bump to 3
 		"Raft protocol version. See https://godoc.org/github.com/hashicorp/raft#ProtocolVersion")
@@ -581,6 +584,12 @@ func main() {
 		// TODO(secure): properly handle joins on the server-side where the joining node is already in the network.
 	}
 
+	if dumpDir := *textlogDumpDir; dumpDir == "" {
+		log.Printf("(textlog dumping disabled: -textlog_dump_dir not set)")
+	} else {
+		go dumpLogToDisk(fsm, dumpDir)
+	}
+
 	expireSessionsTimer := time.After(expireSessionsInterval)
 	secondTicker := time.Tick(1 * time.Second)
 	for {
@@ -605,6 +614,27 @@ func main() {
 					log.Printf("Apply(): %v", err)
 				}
 			}
+		}
+	}
+}
+
+func dumpLogToDisk(fsm *FSM, dumpDir string) {
+	for ; ; time.Sleep(1 * time.Minute) {
+		blockUntilLeader()
+		if err := dumpLogToDisk1(fsm, dumpDir); err != nil {
+			glog.Errorf("dumping log to disk failed: %v", err)
+		}
+	}
+}
+
+func blockUntilLeader() {
+	ch := node.LeaderCh() // make(chan bool, 1)
+	if node.State() == raft.Leader {
+		return // already leader, do not wait
+	}
+	for range ch {
+		if node.State() == raft.Leader {
+			return
 		}
 	}
 }

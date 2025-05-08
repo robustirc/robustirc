@@ -158,6 +158,7 @@ func (l *localnet) StartIRCServer(singlenode bool, args ...string) (*exec.Cmd, s
 		// test flakiness.
 		"-disable_timesafeguard",
 		"-raftdir="+tempdir,
+		"-textlog_dump_dir="+tempdir+"/textlog_dump",
 		"-log_dir="+tempdir)
 
 	if err := l.RecordResource("tempdir", tempdir); err != nil {
