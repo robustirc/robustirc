@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	metrics "github.com/armon/go-metrics"
 	"github.com/golang/protobuf/proto"
+	metrics "github.com/hashicorp/go-metrics"
 	"github.com/hashicorp/raft"
 	"github.com/robustirc/robustirc/internal/config"
 	"github.com/robustirc/robustirc/internal/ircserver"

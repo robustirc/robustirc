@@ -33,8 +33,8 @@ import (
 	"github.com/robustirc/robustirc/internal/robust"
 	"github.com/robustirc/robustirc/internal/timesafeguard"
 
-	"github.com/armon/go-metrics"
-	metrics_prometheus "github.com/armon/go-metrics/prometheus"
+	"github.com/hashicorp/go-metrics"
+	metrics_prometheus "github.com/hashicorp/go-metrics/prometheus"
 	"github.com/hashicorp/raft"
 	"github.com/stapelberg/glog"
 
