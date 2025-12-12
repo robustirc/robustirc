@@ -238,6 +238,12 @@ func (api *HTTP) handleGetMessages(w http.ResponseWriter, r *http.Request, sessi
 
 	defer cancelAll(false)
 
+	// Inject a synthetic PING message as soon as there's a reader for it. This guarantees we send
+	// *something* for a new GET, so clients confirm they're talking to a currently-healthy server.
+	go func() {
+		msgschan <- []*robust.Message{api.pingMessage()}
+	}()
+
 	go api.pingTicker(ctx, msgschan)
 	go api.getMessages(ctx, lastSeen, msgschan)
 
