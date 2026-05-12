@@ -638,7 +638,7 @@ func (i *IRCServer) NumSessions() int {
 	return len(i.sessions)
 }
 
-// NumSessions returns the current number of channels.
+// NumChannels returns the current number of channels.
 func (i *IRCServer) NumChannels() int {
 	// TODO: replace this with a more appropriate lock
 	i.sessionsMu.RLock()
